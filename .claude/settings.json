@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "defaultMode": "plan",
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(.venv/Scripts/python -m ruff *)",
+      "Bash(.venv/Scripts/python -m mypy *)",
+      "Bash(.venv/Scripts/python -m pytest *)",
+      "Bash(.venv/Scripts/python -m pytest)",
+      "Bash(cargo fmt *)",
+      "Bash(cargo check *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo test *)",
+      "Bash(cargo test)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test *)"
+    ],
+    "ask": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(pip *)",
+      "Bash(.venv/Scripts/python -m pip *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm install *)",
+      "Bash(cargo add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(ollama pull *)",
+      "Bash(ollama rm *)",
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)"
+    ]
+  }
+}

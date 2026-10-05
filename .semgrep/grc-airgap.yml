@@ -1,0 +1,131 @@
+# Project-specific Semgrep rules that encode the CLAUDE.md air-gap protocol.
+# Used by CI (semgrep scan --config .semgrep/) and by CodeRabbit (tools.semgrep.config_file).
+rules:
+  # ---------- Python: no shell execution ----------
+  - id: grc-py-subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: "shell=True is forbidden (CLAUDE.md 3.5). Pass an argument list with shell=False."
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: grc-py-os-shell
+    languages: [python]
+    severity: ERROR
+    message: "os.system/os.popen spawn a shell (CLAUDE.md 3.5). Use subprocess.run([...], shell=False)."
+    pattern-either:
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+
+  - id: grc-py-eval-exec
+    languages: [python]
+    severity: ERROR
+    message: "eval/exec are forbidden (CLAUDE.md 3.5)."
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+
+  # ---------- Python: loopback only ----------
+  - id: grc-py-bind-all-interfaces
+    languages: [python]
+    severity: ERROR
+    message: "Servers must bind to 127.0.0.1 only (CLAUDE.md 3.3)."
+    pattern-either:
+      - pattern: uvicorn.run(..., host="0.0.0.0", ...)
+      - pattern: uvicorn.run(..., host="::", ...)
+      - pattern: uvicorn.Config(..., host="0.0.0.0", ...)
+      - pattern: uvicorn.Config(..., host="::", ...)
+
+  # ---------- Python: egress choke point ----------
+  - id: grc-py-httpx-client-outside-factory
+    languages: [python]
+    severity: ERROR
+    message: "Create HTTP clients only via grc_sidecar.security.net (CLAUDE.md 3.2). Direct httpx clients bypass loopback and proxy controls."
+    paths:
+      exclude:
+        - "**/security/net.py"
+        - "**/tests/**"
+    pattern-either:
+      - pattern: httpx.Client(...)
+      - pattern: httpx.AsyncClient(...)
+
+  - id: grc-py-httpx-trust-env
+    languages: [python]
+    severity: ERROR
+    message: "httpx clients must set trust_env=False so proxy env vars cannot redirect traffic (CLAUDE.md 3.2)."
+    pattern-either:
+      - patterns:
+          - pattern: httpx.AsyncClient(...)
+          - pattern-not: httpx.AsyncClient(..., trust_env=False, ...)
+      - patterns:
+          - pattern: httpx.Client(...)
+          - pattern-not: httpx.Client(..., trust_env=False, ...)
+
+  - id: grc-py-module-level-http
+    languages: [python]
+    severity: ERROR
+    message: "Module-level HTTP helpers bypass the client factory (CLAUDE.md 3.2)."
+    pattern-either:
+      - pattern: urllib.request.urlopen(...)
+      - patterns:
+          - pattern-either:
+              - pattern: httpx.$M(...)
+              - pattern: requests.$M(...)
+          - metavariable-regex:
+              metavariable: $M
+              regex: ^(get|post|put|patch|delete|head|options|request|stream)$
+
+  - id: grc-py-forbidden-network-imports
+    languages: [python]
+    severity: ERROR
+    message: "Cloud AI / hosted service SDKs are forbidden (CLAUDE.md 3.1)."
+    patterns:
+      - pattern-either:
+          - pattern: import $MOD
+          - pattern: from $MOD import $X
+      - metavariable-regex:
+          metavariable: $MOD
+          regex: ^(openai|anthropic|google\.generativeai|google\.genai|pinecone|cohere|langsmith|langchain_openai|langchain_anthropic|boto3|requests)(\..*)?$
+
+  - id: grc-py-ollama-pull
+    languages: [python]
+    severity: ERROR
+    message: "The app must never download models (CLAUDE.md 3.7)."
+    pattern-regex: /api/pull
+
+  # ---------- Rust: no shell ----------
+  - id: grc-rs-shell-command
+    languages: [rust]
+    severity: ERROR
+    message: "Spawning a shell is forbidden (CLAUDE.md 3.5). Invoke the target binary directly with args."
+    patterns:
+      - pattern: Command::new($BIN)
+      - metavariable-regex:
+          metavariable: $BIN
+          regex: (?i)^"(cmd|cmd\.exe|powershell|powershell\.exe|pwsh|sh|bash|zsh)"$
+
+  - id: grc-rs-bind-all-interfaces
+    languages: [rust]
+    severity: ERROR
+    message: "Bind to 127.0.0.1 only (CLAUDE.md 3.3)."
+    pattern-regex: '"(0\.0\.0\.0|\[::\]|::)(:\d+)?"'
+
+  # ---------- TypeScript / React ----------
+  - id: grc-ts-dangerously-set-inner-html
+    languages: [typescript]
+    severity: ERROR
+    message: "Raw HTML injection is forbidden. Render text through React, or sanitize in a reviewed helper."
+    pattern-either:
+      - pattern: <$EL dangerouslySetInnerHTML={$X} />
+      - pattern: <$EL dangerouslySetInnerHTML={$X}>$CHILD</$EL>
+      - pattern: $EL.innerHTML = $X
+      - pattern: $EL.outerHTML = $X
+
+  - id: grc-ts-external-fetch
+    languages: [typescript]
+    severity: ERROR
+    message: "The frontend must not call external URLs (CLAUDE.md 3.2). Use Tauri IPC commands."
+    patterns:
+      - pattern: fetch("$URL", ...)
+      - metavariable-regex:
+          metavariable: $URL
+          regex: ^https?://(?!(127\.0\.0\.1|localhost|ipc\.localhost|\[::1\])([:/]|$))

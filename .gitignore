@@ -1,0 +1,38 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+*.spec
+
+# Node / frontend
+node_modules/
+dist/
+
+# Rust / Tauri
+target/
+apps/desktop/src-tauri/binaries/
+
+# Local data and derived state (vector index is disposable)
+*.sqlite
+*.sqlite3
+*.db
+data/
+output/
+*.log
+
+# Secrets and local overrides
+.env
+.env.*
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

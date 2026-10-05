@@ -1,0 +1,268 @@
+# CLAUDE.md: GRC Second Brain
+
+Read this entire file before any task. Rules marked **MUST** are non-negotiable. If a task conflicts with a MUST rule, stop and ask instead of working around it.
+
+---
+
+## 1. What this project is
+
+A local-first, air-gapped desktop GRC (Governance, Risk, and Compliance) application. It uses local LLMs through Ollama to:
+
+- auto-fill security questionnaires (SIG, CAIQ, custom Excel),
+- map content to compliance frameworks (SOC 2, NIST 800-53, ISO 27001),
+- propose infrastructure remediations (Terraform/Docker) as reviewable drafts,
+
+grounded entirely in a local, Obsidian-compatible Markdown knowledge vault.
+
+The architecture must stay modular (clean interfaces, repository pattern, typed boundaries) so the codebase can later evolve into a commercial product under BizAI Solutions.
+
+The owner (Mike) must be able to explain every design decision and every line of code. Optimize for clarity and correctness over cleverness.
+
+---
+
+## 2. Working agreement (how to collaborate)
+
+1. **Plan before code.** For any non-trivial task, produce a plan first: files to create/modify, public interfaces, test cases, security considerations, and open questions. Wait for approval before writing code.
+2. **One chunk at a time.** Work only on the current milestone chunk (see Section 9). Do not start the next chunk until Mike reports the verification results.
+3. **Explain the why.** For every architectural choice, give a 2 to 4 sentence rationale Mike could repeat in an interview. Record significant decisions as ADRs in `docs/adr/NNN-title.md` (Context, Decision, Consequences).
+4. **Be literal about steps.** When Mike must run something, give the exact command, the directory to run it from, and what success output looks like. Explain jargon inline.
+5. **Never claim unverified results.** Do not say tests or linters pass unless you ran them and saw the output. If you could not run something, say so.
+6. **Dependencies require approval.** Before adding any package, state its name, pinned version, purpose, license, and whether it has any network, telemetry, or auto-update behavior.
+7. **No fabricated content.** Never invent metrics, benchmark numbers, or claims for the README or docs. All sample data is synthetic and labeled as such.
+8. **End every chunk with the verification commands** from Section 6 for the areas touched.
+
+---
+
+## 3. Air-gap protocol (MUST)
+
+**Scope:** these rules govern the shipped application at runtime. Development tools (pnpm, cargo, pip, Claude Code) use the network to install packages; that is expected. The product itself never does.
+
+1. **No cloud AI or SaaS SDKs.** The only LLM endpoint is `http://127.0.0.1:11434` (Ollama). Never import or call OpenAI, Anthropic, Google, AWS, Pinecone, LangSmith, or any hosted service.
+2. **No external network.**
+   - Python: every HTTP client is created by the single factory in `grc_sidecar/security/net.py`, which sets `trust_env=False` and rejects any non-loopback `base_url`. No other module constructs `httpx` clients (enforced by Semgrep).
+   - Rust: every `reqwest` client uses `.no_proxy()` and a loopback URL.
+   - No telemetry, analytics, crash reporters, remote feature flags, or update checkers. Never add the Tauri updater plugin.
+   - Frontend: no CDNs or remote fonts. Bundle all assets. Content Security Policy: `default-src 'self'`; `connect-src` limited to `ipc:` and `http://ipc.localhost`.
+   - Any library with optional telemetry (e.g. ChromaDB) must have it explicitly disabled in code and covered by a test.
+3. **Loopback only.** Uvicorn binds `host="127.0.0.1"`, `port=0` (OS-assigned). Never `0.0.0.0` or `::`.
+4. **Zero-trust IPC.**
+   - Rust generates a 32-byte token from a CSPRNG at startup, hex-encodes it, and passes it to the sidecar as env var `GRC_AUTH_TOKEN`.
+   - The sidecar reads the token once at startup, then deletes it from `os.environ`.
+   - Every HTTP request (including `/health`) must carry header `X-GRC-Auth`, verified with `hmac.compare_digest`. Failure returns `401` with no detail.
+   - Port handshake: after binding, the sidecar prints exactly one JSON line to stdout, `{"event":"ready","port":<int>}`. Rust reads it with a timeout and kills the sidecar if it never arrives.
+5. **No shell execution.** Never use `shell=True`, `os.system`, `eval`, `exec`, or invoke `cmd.exe`, `powershell`, or `bash` from app code. Use `subprocess.run([...], shell=False, timeout=..., env=<explicit minimal env>)`. The child env must NOT contain `GRC_AUTH_TOKEN`. In Rust, use `std::process::Command` with explicit args or the Tauri sidecar API with a scoped capability.
+6. **Safe filesystem.** Every path from the user or the frontend is canonicalized with `Path.resolve(strict=True)` and checked with `candidate.is_relative_to(approved_root)`. Reject anything that escapes, including via `..` or symlinks. Rust performs the same check (`canonicalize` + `starts_with`) before forwarding. Defense in depth: both layers check.
+7. **Models are provisioned by a human.** At startup the sidecar calls Ollama `GET /api/tags` and fails closed with a clear error if a required model is missing. The app never calls `/api/pull`.
+8. **Egress guard test.** A session-wide pytest fixture patches `socket.socket.connect` to raise on any non-loopback address. The full suite must pass with it enabled.
+
+---
+
+## 4. Tech stack
+
+| Layer | Choice |
+|---|---|
+| Frontend | React, TypeScript (strict), TailwindCSS, React Flow, Zod |
+| Host | Tauri v2, Rust (stable) |
+| Sidecar | Python 3.11, FastAPI, Uvicorn, Pydantic v2, packaged with PyInstaller |
+| Generation model | `llama3.1:8b` via Ollama (configurable; default pinned) |
+| Embedding model | `nomic-embed-text` via Ollama |
+| Vector store | `sqlite-vec` behind a `VectorRepository` protocol (see ADR-001) |
+| Graph | NetworkX, built only from explicit links |
+| Excel | OpenPyXL |
+| Knowledge vault | Obsidian-compatible Markdown with YAML frontmatter |
+
+**Resolved spec decisions (do not revert without an ADR):**
+- `llama3.2:8b` does not exist (Llama 3.2 text models are 1B and 3B only). Default generation model is `llama3.1:8b`.
+- ADR-001: `sqlite-vec` is the default vector store: single file, no server process, no telemetry, packages cleanly with PyInstaller. ChromaDB remains a swappable implementation behind the same interface.
+- Confidence bands are defined in Section 8.4 and have no gaps.
+
+---
+
+## 5. Repository map
+
+```
+grc-second-brain/
+  CLAUDE.md
+  .claude/settings.json        Agent permissions (committed)
+  apps/desktop/                Tauri v2 application
+    src/                       React + TypeScript frontend
+    src-tauri/                 Rust host
+  sidecar/                     Python intelligence sidecar
+    pyproject.toml
+    .venv/                     Local virtualenv (gitignored)
+    src/grc_sidecar/
+      main.py                  App factory + startup handshake
+      config.py                Typed settings (pydantic-settings)
+      security/                auth.py, paths.py, net.py
+      api/                     FastAPI routers (thin; no business logic)
+      llm/                     Ollama client, prompt builders, schemas
+      vault/                   Markdown parsing, chunking, indexer
+      retrieval/               Vector search + graph expansion
+      repositories/            VectorRepository protocol + implementations
+      questionnaire/           Excel engine
+      remediation/             Policy-to-code engine
+    tests/
+  vault-sample/                Synthetic Obsidian vault (fictional company)
+  fixtures/                    Synthetic questionnaires and test files
+  docs/
+    adr/                       Architecture Decision Records
+    threat-model.md
+```
+
+---
+
+## 6. Verification commands
+
+Run from the directory shown. On Windows, call the venv Python directly (no activation needed).
+
+**Python** (from `sidecar/`):
+```
+.venv/Scripts/python -m ruff check .
+.venv/Scripts/python -m ruff format --check .
+.venv/Scripts/python -m mypy --strict src
+.venv/Scripts/python -m pytest
+```
+
+**Rust** (from `apps/desktop/src-tauri/`):
+```
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
+
+**Frontend** (from `apps/desktop/`):
+```
+pnpm lint
+pnpm typecheck
+pnpm test
+```
+
+**Definition of done for any chunk:** all commands above pass for the touched areas, new behavior has tests (including at least one negative/security test), and Mike has seen the output.
+
+---
+
+## 7. Code standards
+
+**Python**
+- Python 3.11+, `mypy --strict` clean, `ruff` clean.
+- Pydantic v2 models at every boundary (HTTP, LLM output, file parsing).
+- FastAPI dependency injection (`Depends`) for settings, repositories, and clients. Routers stay thin.
+- No bare `except`. Define typed domain exceptions and map them to HTTP errors in one place.
+- Logs go to a local file only. Never log the auth token, and never log document or questionnaire content above DEBUG.
+
+**TypeScript**
+- `strict: true`, `noImplicitAny: true`, `noUncheckedIndexedAccess: true`. Never use `any`.
+- Every payload crossing the Tauri IPC boundary is parsed with Zod before use.
+
+**Rust**
+- Zero clippy warnings with `-D warnings`.
+- `Result` with `thiserror` for recoverable errors. No `unwrap()`/`expect()` on anything derived from user input, paths, or IPC.
+- Tauri capabilities follow least privilege: grant only the specific commands and scopes each window needs.
+
+---
+
+## 8. Subsystem contracts
+
+### 8.1 Knowledge vault and indexing
+- Markdown files are the single source of truth. The vector index is disposable derived state and can be rebuilt at any time.
+- Frontmatter fields: `doc_id`, `type`, `control_mappings` (list), `links` (optional list).
+- Chunk ID is deterministic: hash of `(source_path, doc_id, sha256(file), start_line, end_line)`.
+- When a source file changes: delete all chunks for that source, re-chunk, re-embed, upsert. Stale vectors are a bug.
+- Never convert Markdown into proprietary database objects.
+
+### 8.2 Graph RAG
+- Graph edges come only from explicit `[[wikilinks]]` and frontmatter `links`. Never from semantic similarity.
+- Retrieval flow: vector search returns seed chunks, graph expansion follows explicit links (bounded depth, default 1), the combined context is passed to the LLM.
+- Every chunk in context keeps its `source_path` and line range so citations can be verified.
+
+### 8.3 Structured output
+- Every generation request passes a JSON schema via Ollama's `format` parameter.
+- Responses are parsed strictly with Pydantic.
+- Bounded retries: maximum 2 attempts. On attempt 2, include the exact `ValidationError` text in the prompt. After 2 failures, return `NEEDS_REVIEW`. Never loop indefinitely.
+
+### 8.4 Questionnaire engine
+- Load with `openpyxl.load_workbook(path, read_only=False, data_only=False)` (add `keep_vba=True` for `.xlsm`).
+- Never modify original question cells. Write answers to a new appended column titled `GRC Answer` (plus `Confidence`, `Status`, `Evidence` columns). Save as a new file; never overwrite the input.
+- Known limitation: OpenPyXL can drop images and charts on save. Detect these on load, warn the user, and document it.
+- LLM output schema includes `answer`, `cited_source_path`, `exact_quote`, `model_confidence`.
+- **Grounding check:** the backend verifies `exact_quote` appears verbatim as a substring of the cited chunk (after whitespace normalization only). Failure triggers the retry path.
+- **Final status is computed by the backend, not trusted from the model:**
+  - Quote verification failed after retries: `NEEDS_REVIEW` (regardless of model confidence).
+  - Verified, confidence ≥ 0.90: `SUPPORTED`.
+  - Verified, 0.40 ≤ confidence < 0.90: `PARTIAL` (answer includes noted limitations).
+  - Confidence < 0.40: `NEEDS_REVIEW`. Never write a compliance claim.
+- Progress streams to the UI via Server-Sent Events, proxied through the Rust host (e.g. `Question 37/150 completed`).
+
+### 8.5 Policy-to-code engine
+- Pipeline: Control Requirement, Policy Gap, Evidence, Remediation Objective, structured plan (Ollama), Terraform/Docker patch, static validation, **human approval**.
+- Static validation only: `terraform init -backend=false` with a pre-seeded local provider mirror, then `terraform validate`; `docker build --network=none`. All via argument arrays, never a shell.
+- Every proposal carries `requires_human_approval: true`. There is no code path to `terraform apply`, `docker push`, or any deployment. Output is a patch file for a human to review.
+
+### 8.6 Prompt-injection defense
+- Vault content, vendor documents, and questionnaire text are untrusted data. Wrap them in clearly labeled delimiters and instruct the model to treat them as data only.
+- The model has no tools. It can only return schema-validated JSON. All file writes and process execution are performed by backend code acting on validated fields, never on free text.
+- Include adversarial test fixtures (instructions hidden in vault notes and questionnaire cells) in the test suite.
+
+---
+
+## 9. Milestones
+
+| ID | Chunk | Done when |
+|---|---|---|
+| M0 | Repo bootstrap and tooling | Structure exists, Tauri template runs, first commit made |
+| M0.5 | Local security scaffolding | Semgrep rules, pre-commit secret scanning, Cursor rule file, Dependabot config committed |
+| M1 | Sidecar bootstrap | Typed config, loopback server on port 0, ready handshake, auth middleware, path guard, egress guard test, authenticated `/health` |
+| M1.5 | CI pipeline | Semgrep, Bandit, lint/type/test jobs green; sidecar tests pass inside a `--network none` container; network canary proves isolation |
+| M2 | Tauri host | Token generation, sidecar spawn, handshake with timeout, typed proxy command, least-privilege capabilities |
+| M3 | Vault indexer | Frontmatter parsing, deterministic chunking, `sqlite-vec` repository, change-driven re-index |
+| M4 | Retrieval | Vector search plus explicit-link graph expansion with citations |
+| M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, SSE progress |
+| M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view |
+| M7 | Policy-to-code | Structured plan, patch generation, static validation, approval gate |
+| M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README |
+| M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets |
+
+**Current milestone: M0.5, then M1.**
+
+---
+
+## 10. Multi-tool policy and DevSecOps
+
+**Single source of truth.** This file is the canonical policy. Every other AI tool reads it or mirrors it:
+
+| Tool | How it gets the rules |
+|---|---|
+| Claude Code | Reads this file directly |
+| Cursor | `.cursor/rules/grc-security.mdc` (`alwaysApply: true`) mirrors Sections 3, 7, and 11 |
+| CodeRabbit | `knowledge_base.code_guidelines` reads this file and the Cursor rule; `path_instructions` encode Section 3 per directory |
+| Claude Desktop Project | This file is uploaded as project knowledge and supersedes older architecture docs |
+
+When a MUST rule changes, update this file first, then the Cursor rule and `.coderabbit.yaml` in the same PR. CI will fail if the Cursor rule drifts (M1.5).
+
+**Rules are enforced by machines, not just by prompts.** AI instructions are advisory. The blocking controls are:
+
+| Control | Where | Blocks merge |
+|---|---|---|
+| Custom air-gap rules | `.semgrep/grc-airgap.yml` | Yes |
+| Python SAST | Bandit | Yes |
+| Rust / TS SAST | Semgrep registry rulesets, `clippy -D warnings`, ESLint `no-explicit-any` | Yes |
+| Secrets | gitleaks pre-commit hook (local), GitHub push protection (server), gitleaks in CI | Yes |
+| Dependencies | Dependabot (pip, npm, cargo, github-actions), `cargo deny`, `pip-audit` | Yes for known vulns |
+| Air-gap proof | Sidecar tests run in a container with `--network none`, plus a canary that must fail to connect out | Yes |
+| AI review | CodeRabbit | Advisory |
+
+**CI rules for any workflow you write:** pin every action to a full commit SHA, set `permissions: contents: read` at the top, never use `pull_request_target`, never pipe `curl` into a shell.
+
+---
+
+## 11. Never do
+
+- Call any non-loopback network address from application code.
+- Bind any server to `0.0.0.0` or `::`.
+- Use `shell=True`, `eval`, `exec`, or spawn a shell.
+- Overwrite a user's input file.
+- Mark an answer `SUPPORTED` without a verified verbatim quote.
+- Pull, download, or update models from inside the app.
+- Add a deployment path for generated infrastructure code.
+- Add dependencies without approval.
+- Commit real company data, secrets, or `.env` files. All sample data is synthetic.

@@ -1,0 +1,175 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit configuration for GRC Second Brain.
+# CodeRabbit is an advisory reviewer. The blocking gates are the CI jobs in
+# .github/workflows/ (Semgrep, Bandit, tests in a network-less container).
+
+language: en-US
+tone_instructions: "Direct and specific. Cite the CLAUDE.md section a finding violates. No praise, no filler."
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: false
+  sequence_diagrams: false
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/target/**"
+    - "!**/dist/**"
+    - "!**/.venv/**"
+    - "!**/pnpm-lock.yaml"
+    - "!**/Cargo.lock"
+    - "!**/uv.lock"
+    - "!apps/desktop/src-tauri/gen/**"
+    - "!apps/desktop/src-tauri/icons/**"
+
+  path_instructions:
+    # ---------------- Python sidecar ----------------
+    - path: "sidecar/src/**/*.py"
+      instructions: |
+        This is the Python 3.11 FastAPI sidecar of an air-gapped desktop app. Enforce CLAUDE.md strictly.
+        Flag as a blocking issue:
+        - Any `shell=True`, `os.system`, `os.popen`, `eval`, `exec`, or spawning cmd/powershell/bash.
+          Subprocesses must use an argument list, `shell=False`, a timeout, and an explicit env that excludes GRC_AUTH_TOKEN.
+        - Any filesystem path from a request, the frontend, or a document that is used without
+          `Path.resolve(strict=True)` followed by `is_relative_to(approved_root)`. String prefix checks do not count.
+        - Any HTTP client created outside `grc_sidecar/security/net.py`, any client without `trust_env=False`,
+          or any URL that is not 127.0.0.1 / localhost / ::1. Any import of openai, anthropic, google genai,
+          pinecone, requests, boto3, or other hosted-service SDKs.
+        - Any server bind other than 127.0.0.1 or ::1.
+        - Any call to Ollama `/api/pull`.
+        - Request bodies, LLM outputs, or parsed file data that are not validated by a Pydantic v2 model.
+        - Use of `typing.Any`, `dict[str, Any]` at a boundary, untyped functions, `# type: ignore` without a reason,
+          or anything that would fail `mypy --strict`.
+        - Auth: `X-GRC-Auth` compared with `==` instead of `hmac.compare_digest`, any unauthenticated route,
+          or logging of the token.
+        - Bare `except:` or `except Exception: pass`.
+        - LLM retry loops without the max-2-attempt bound.
+        Also check that FastAPI routers stay thin and receive dependencies via `Depends`.
+
+    - path: "sidecar/src/**/questionnaire/**/*.py"
+      instructions: |
+        Questionnaire engine (CLAUDE.md 8.4). Flag: writing to original question cells, overwriting the input
+        workbook, `data_only=True`, missing `keep_vba=True` handling for .xlsm, and any path that marks an answer
+        SUPPORTED without a verified verbatim `exact_quote` substring check. Status must be computed by backend
+        logic, never copied from model confidence alone. Confidence below 0.40 must yield NEEDS_REVIEW.
+
+    - path: "sidecar/src/**/remediation/**/*.py"
+      instructions: |
+        Policy-to-code engine (CLAUDE.md 8.5). Flag any code path that could run `terraform apply`, `terraform plan`
+        against real state, `docker push`, `docker run` with network, or otherwise deploy. Every proposal object
+        must carry `requires_human_approval: true`. Docker builds must use `--network=none`. Terraform must use
+        `-backend=false` and a local provider mirror.
+
+    - path: "sidecar/src/**/vault/**/*.py"
+      instructions: |
+        Vault indexer (CLAUDE.md 8.1, 8.2). Chunk IDs must be deterministic from source path, doc_id, file SHA-256,
+        and line range. On change, old chunks for the source must be deleted before upsert. Graph edges must come
+        only from explicit wikilinks or frontmatter links, never from embedding similarity.
+
+    - path: "sidecar/src/**/llm/**/*.py"
+      instructions: |
+        Prompt construction. Untrusted content (vault notes, vendor docs, questionnaire cells) must be wrapped in
+        labeled delimiters and never concatenated into system instructions. The model must not be given tools.
+        Every generation must pass a JSON schema via Ollama `format` and be validated with Pydantic.
+
+    - path: "sidecar/tests/**/*.py"
+      instructions: |
+        Tests. Every security control needs a negative test (bad token, path traversal, symlink escape,
+        non-loopback URL, prompt-injection fixture). Tests must not reach the network: Ollama is faked on
+        loopback. Flag tests that disable the egress guard fixture or that sleep for timing.
+
+    # ---------------- Rust host ----------------
+    - path: "apps/desktop/src-tauri/src/**/*.rs"
+      instructions: |
+        Tauri v2 Rust host. Flag as blocking:
+        - `unwrap()`, `expect()`, or indexing that can panic on anything derived from user input, paths, IPC, or
+          sidecar output. Use `Result` with `thiserror`.
+        - `Command::new` on a shell (cmd, powershell, sh, bash) or building a command from a single string.
+        - Paths forwarded to the sidecar without `canonicalize` plus `starts_with(approved_root)`.
+        - Auth token not generated from a CSPRNG, token written to logs or disk, or token passed on the command line.
+        - Any reqwest client without `.no_proxy()` or targeting a non-loopback host.
+        - Missing timeout on the sidecar ready handshake, or a sidecar process that is not killed on app exit.
+        Code must pass `cargo clippy --all-targets --all-features -- -D warnings`.
+
+    - path: "apps/desktop/src-tauri/{tauri.conf.json,capabilities/**}"
+      instructions: |
+        Tauri configuration and capabilities. Flag any widened permission (fs, shell, http, process) beyond what a
+        specific command needs, any remote URL in capabilities, enabling the updater plugin, or a CSP that allows
+        anything beyond 'self', ipc:, and http://ipc.localhost.
+
+    # ---------------- Frontend ----------------
+    - path: "apps/desktop/src/**/*.{ts,tsx}"
+      instructions: |
+        React + TypeScript (strict). Flag as blocking:
+        - `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `document.write`, or rendering unsanitized Markdown as HTML.
+        - `any`, `as any`, `as unknown as`, non-null assertions on IPC data, or `@ts-ignore`.
+        - IPC responses or SSE events used without a Zod `parse`/`safeParse`.
+        - `fetch`, `XMLHttpRequest`, WebSocket, or imports that load remote URLs, fonts, or scripts.
+        - Use of localStorage/sessionStorage for compliance data or anything token-like.
+
+    # ---------------- Supply chain and pipeline ----------------
+    - path: "**/{pyproject.toml,package.json,Cargo.toml}"
+      instructions: |
+        Dependency change. For every added or upgraded package, state its purpose and flag any that bundle
+        telemetry, auto-update, network calls at import time, or post-install scripts. Versions must be pinned
+        or locked. Flag unexplained new dependencies.
+
+    - path: ".github/workflows/**"
+      instructions: |
+        CI security. Flag: actions not pinned to a full commit SHA, `pull_request_target`, workflow-level
+        `permissions` broader than `contents: read`, secrets exposed to fork PRs, `curl | sh` installs, and any
+        change that removes the network-isolated test job or makes security jobs non-blocking.
+
+    - path: "{CLAUDE.md,.cursor/rules/**,.coderabbit.yaml,.semgrep/**}"
+      instructions: |
+        These files define the project's security policy for humans and AI tools. Treat any weakening of a MUST
+        rule, any removed Semgrep rule, or any drift between CLAUDE.md and the Cursor rules as a blocking issue
+        that requires an explicit justification in the PR description.
+
+    - path: "{vault-sample,fixtures}/**"
+      instructions: |
+        Sample data must be synthetic. Flag anything resembling real company names, real people, email addresses,
+        credentials, API keys, or internal URLs.
+
+  tools:
+    ruff:
+      enabled: true
+    semgrep:
+      enabled: true
+      config_file: ".semgrep/grc-airgap.yml"
+    gitleaks:
+      enabled: true
+    eslint:
+      enabled: true
+    clippy:
+      enabled: true
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    hadolint:
+      enabled: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CLAUDE.md"
+      - ".cursor/rules/*.mdc"
+
+chat:
+  auto_reply: true
