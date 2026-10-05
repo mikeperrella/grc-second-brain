@@ -26,10 +26,4 @@ updates:
       cargo-minor-patch:
         update-types: [minor, patch]
 
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "chore(ci)"
+  # github-actions returns at M1.5, when the first workflow exists.
