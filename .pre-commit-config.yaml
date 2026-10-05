@@ -1,0 +1,8 @@
+# Local secret scanning (CLAUDE.md Section 10). Runs gitleaks on staged changes.
+# The hook is built from source by pre-commit, so Go must be installed.
+# Setup steps: docs/dev-setup.md
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

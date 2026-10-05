@@ -1,0 +1,60 @@
+---
+description: GRC Second Brain air-gap, code-standard, and never-do rules (mirror of CLAUDE.md Sections 3, 7, 11)
+alwaysApply: true
+---
+
+# GRC Second Brain: security rules
+
+Canonical source is `CLAUDE.md`. This file mirrors Sections 3, 7, and 11. When a MUST rule changes, update `CLAUDE.md` first, then this file and `.coderabbit.yaml` in the same PR. Keep headings and numbering identical to `CLAUDE.md`.
+
+## 3. Air-gap protocol (MUST)
+
+**Scope:** these rules govern the shipped application at runtime. Development tools (pnpm, cargo, pip, Claude Code) use the network to install packages; that is expected. The product itself never does.
+
+1. **No cloud AI or SaaS SDKs.** The only LLM endpoint is `http://127.0.0.1:11434` (Ollama). Never import or call OpenAI, Anthropic, Google, AWS, Pinecone, LangSmith, or any hosted service.
+2. **No external network.**
+   - Python: every HTTP client is created by the single factory in `grc_sidecar/security/net.py`, which sets `trust_env=False` and rejects any non-loopback `base_url`. No other module constructs `httpx` clients (enforced by Semgrep).
+   - Rust: every `reqwest` client uses `.no_proxy()` and a loopback URL.
+   - No telemetry, analytics, crash reporters, remote feature flags, or update checkers. Never add the Tauri updater plugin.
+   - Frontend: no CDNs or remote fonts. Bundle all assets. Content Security Policy: `default-src 'self'`; `connect-src` limited to `ipc:` and `http://ipc.localhost`.
+   - Any library with optional telemetry (e.g. ChromaDB) must have it explicitly disabled in code and covered by a test.
+3. **Loopback only.** Uvicorn binds `host="127.0.0.1"`, `port=0` (OS-assigned). Never `0.0.0.0` or `::`.
+4. **Zero-trust IPC.**
+   - Rust generates a 32-byte token from a CSPRNG at startup, hex-encodes it, and passes it to the sidecar as env var `GRC_AUTH_TOKEN`.
+   - The sidecar reads the token once at startup, then deletes it from `os.environ`.
+   - Every HTTP request (including `/health`) must carry header `X-GRC-Auth`, verified with `hmac.compare_digest`. Failure returns `401` with no detail.
+   - Port handshake: after binding, the sidecar prints exactly one JSON line to stdout, `{"event":"ready","port":<int>}`. Rust reads it with a timeout and kills the sidecar if it never arrives.
+5. **No shell execution.** Never use `shell=True`, `os.system`, `eval`, `exec`, or invoke `cmd.exe`, `powershell`, or `bash` from app code. Use `subprocess.run([...], shell=False, timeout=..., env=<explicit minimal env>)`. The child env must NOT contain `GRC_AUTH_TOKEN`. In Rust, use `std::process::Command` with explicit args or the Tauri sidecar API with a scoped capability.
+6. **Safe filesystem.** Every path from the user or the frontend is canonicalized with `Path.resolve(strict=True)` and checked with `candidate.is_relative_to(approved_root)`. Reject anything that escapes, including via `..` or symlinks. Rust performs the same check (`canonicalize` + `starts_with`) before forwarding. Defense in depth: both layers check.
+7. **Models are provisioned by a human.** At startup the sidecar calls Ollama `GET /api/tags` and fails closed with a clear error if a required model is missing. The app never calls `/api/pull`.
+8. **Egress guard test.** A session-wide pytest fixture patches `socket.socket.connect` to raise on any non-loopback address. The full suite must pass with it enabled.
+
+## 7. Code standards
+
+**Python**
+- Python 3.11+, `mypy --strict` clean, `ruff` clean.
+- Pydantic v2 models at every boundary (HTTP, LLM output, file parsing).
+- FastAPI dependency injection (`Depends`) for settings, repositories, and clients. Routers stay thin.
+- No bare `except`. Define typed domain exceptions and map them to HTTP errors in one place.
+- Logs go to a local file only. Never log the auth token, and never log document or questionnaire content above DEBUG.
+
+**TypeScript**
+- `strict: true`, `noImplicitAny: true`, `noUncheckedIndexedAccess: true`. Never use `any`.
+- Every payload crossing the Tauri IPC boundary is parsed with Zod before use.
+
+**Rust**
+- Zero clippy warnings with `-D warnings`.
+- `Result` with `thiserror` for recoverable errors. No `unwrap()`/`expect()` on anything derived from user input, paths, or IPC.
+- Tauri capabilities follow least privilege: grant only the specific commands and scopes each window needs.
+
+## 11. Never do
+
+- Call any non-loopback network address from application code.
+- Bind any server to `0.0.0.0` or `::`.
+- Use `shell=True`, `eval`, `exec`, or spawn a shell.
+- Overwrite a user's input file.
+- Mark an answer `SUPPORTED` without a verified verbatim quote.
+- Pull, download, or update models from inside the app.
+- Add a deployment path for generated infrastructure code.
+- Add dependencies without approval.
+- Commit real company data, secrets, or `.env` files. All sample data is synthetic.
