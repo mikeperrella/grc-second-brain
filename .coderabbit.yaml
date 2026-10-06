@@ -2,7 +2,10 @@
 #
 # CodeRabbit configuration for GRC Second Brain.
 # CodeRabbit is an advisory reviewer. The blocking gates are the CI jobs in
-# .github/workflows/ (Semgrep, Bandit, tests in a network-less container).
+# .github/workflows/ (required to merge from M9): gitleaks, Cursor-rule policy drift,
+# Python lint/type/test, Windows tests, Semgrep, Bandit, tests in a network-less container,
+# Rust checks and cargo-deny, and the frontend checks. Dependency audits also run weekly.
+# CodeRabbit itself is configured here and enabled at M9.
 
 language: en-US
 tone_instructions: "Direct and specific. Cite the CLAUDE.md section a finding violates. No praise, no filler."

@@ -61,7 +61,7 @@ If a real secret is ever flagged, remove it and rotate the credential. Don't byp
 
 ## Continuous integration (CI)
 
-Eight GitHub Actions workflows in `.github/workflows/` run on every pull request and on every push to `main`. They are the blocking controls described in CLAUDE.md Section 10: AI instructions are advisory, these are not. Every workflow has `permissions: contents: read` at the top, pins each action to a full commit SHA, and uses no secrets. Until branch protection exists (M9) the checks run and report on pull requests but do not yet stop a merge.
+Nine GitHub Actions workflows live in `.github/workflows/`. Eight run on every pull request and on every push to `main`; the ninth, `audit.yml`, runs weekly and on demand. They are the blocking controls described in CLAUDE.md Section 10: AI instructions are advisory, these are not. Every workflow has `permissions: contents: read` at the top, pins each action to a full commit SHA, and uses no secrets. Until branch protection exists (M9) the checks run and report on pull requests but do not yet stop a merge.
 
 ### Workflows at a glance
 
@@ -77,8 +77,9 @@ Eight GitHub Actions workflows in `.github/workflows/` run on every pull request
 | `rust.yml` | `rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (no Rust tests exist yet). | Windows | about 7 min on the first run (nothing is cached) | Yes |
 | `rust.yml` | `deny` | `cargo deny`: advisories, licenses, bans, sources (Windows dependency graph). | Linux | about 45 s | Yes |
 | `frontend.yml` | `frontend` | ESLint (`no-explicit-any` is an error), `tsc`, vitest (no frontend tests exist yet), `pnpm audit`. | Linux | about 25 s | Yes |
+| `audit.yml` | `audit-pip`, `audit-pnpm`, `audit-cargo` | Weekly (Mondays 05:23 UTC) and on demand: `pip-audit`, `pnpm audit`, `cargo deny check advisories`, so a new advisory against an unchanged dependency shows up without a pull request. | Linux | not measured yet (first run is on the pull request that adds it) | No: it is scheduled, so it reports new advisories instead of gating a change |
 
-Not built yet: a weekly scheduled run of the dependency audits (pip-audit, `pnpm audit`, `cargo deny check advisories`). Today advisories are only checked when a pull request or push runs.
+**`audit.yml` is first exercised after the merge.** GitHub only runs scheduled and manually dispatched workflows from the default branch, so before the merge the only run is the one triggered by a pull request that edits `audit.yml` itself (the file has a `pull_request` trigger limited to its own path, so it does not run on other pull requests). After the merge, start the first scheduled-style run by hand from the **Actions** tab (select `audit`, then **Run workflow**) or with `gh workflow run audit.yml`, and check that it passes. A failed scheduled run is reported through GitHub's notifications to the repository owner.
 
 Windows runners are billed at twice the Linux rate on a private repository, and the `rust` job is the long one. The run times above were read from real runs and will drift.
 
@@ -96,6 +97,7 @@ Run commands from the repo root in PowerShell unless a directory is given. Each 
 | airgap | The Docker commands under [Air-gap proof](#air-gap-proof-the-sidecar-tests-with-no-network). |
 | rust, deny | From `apps/desktop/src-tauri/`: `cargo fmt --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `cargo test --locked`, `cargo deny check`. See [Rust checks](#rust-checks-and-cargo-deny). |
 | frontend | From `apps/desktop/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm audit --audit-level high`. See [Frontend checks](#frontend-checks-lint-typecheck-test-audit). |
+| audit (weekly) | The same audits the pull request jobs already run: `pip-audit` (see `python.yml`), `pnpm audit --audit-level high` from `apps/desktop/`, and `cargo deny check advisories` from `apps/desktop/src-tauri/`. |
 
 ### Reading a failed job on GitHub
 
@@ -115,6 +117,7 @@ What a failure usually means:
 | `Test the custom Semgrep rules` | A rule stopped matching a line marked `ruleid:`, or started matching a line marked `ok:` (the log says "incorrect lines" with the line number). |
 | `Scan with Semgrep` / `Scan with Bandit` | A finding. Fix it, or follow the suppression rules under [Static analysis](#static-analysis-sast-semgrep-and-bandit). |
 | `cargo deny` (`deny` job) | A new advisory, a license outside the allowlist, a yanked crate, or a non-crates.io source. The log names the crate and shows who depends on it. |
+| `audit-pip`, `audit-pnpm` or `audit-cargo` (weekly `audit` run) | A new advisory against a dependency nobody changed. Update the dependency. If that is not possible, decide on an exception and record it (an ADR, or a reasoned `ignore` entry in `deny.toml`); never ignore it silently. |
 
 ### Dependabot
 
@@ -220,8 +223,8 @@ Known template code that no rule flags yet and that is deliberately left alone: 
 | Decision | Where it is recorded |
 |---|---|
 | `cargo deny` checks only the Windows dependency graph, with `unsound` and `unmaintained` set to `all`. Revisit when any non-Windows build is planned. | [ADR-003](adr/003-cargo-deny-windows-target.md), plus comments in `apps/desktop/src-tauri/deny.toml` |
-| Hash-locked Python dependencies (uv or pip-tools) are deferred to M8, where the exact PyInstaller artifacts matter most. Until then the sidecar has exact `==` pins in `constraints.txt`, `pip-audit`, Dependabot and digest-pinned images. | Only here and in the working plan (`M15_PLAN.md`, not committed). CLAUDE.md's M8 row does not mention it yet and there is no ADR; add one of the two if a durable record is wanted. |
-| The Semgrep registry rulesets use the Semgrep Rules License (fine for internal CI, restrictive for redistribution). Revisit before the public release and for the BizAI commercial version. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (license note). CLAUDE.md's M9 row does not mention it yet; add it there if it should be on the M9 checklist. |
+| Hash-locked Python dependencies (uv or pip-tools) are deferred to M8, where the exact PyInstaller artifacts matter most. Until then the sidecar has exact `==` pins in `constraints.txt`, `pip-audit`, Dependabot and digest-pinned images. | The M8 row in CLAUDE.md Section 9, and the header comment in `sidecar/constraints.txt`. |
+| The Semgrep registry rulesets use the Semgrep Rules License (fine for internal CI, restrictive for redistribution). Revisit before the public release and for the BizAI commercial version. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (license note), and the M9 row in CLAUDE.md Section 9. |
 | Tests are not scanned by Semgrep or Bandit. Ruff's `S` rules and gitleaks cover them. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (scope decision) |
 | There are no frontend tests and no Rust tests until M2/M6. The `frontend` and `rust` jobs pass with zero tests, and the frontend job prints the count. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) and [Rust checks](#rust-checks-and-cargo-deny) |
 | Template code with `as HTMLElement` and an unvalidated `invoke(...)` result stays until Zod arrives with the IPC layer in M2. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) (last paragraph) |
