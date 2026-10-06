@@ -1,0 +1,8 @@
+# Keep the build context small and free of local state (the image installs from constraints.txt).
+.venv
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.git

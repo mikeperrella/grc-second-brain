@@ -1,0 +1,70 @@
+name: python
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: sidecar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      # The same versions every developer uses: constraints.txt pins the whole tree.
+      - name: Install the sidecar and dev tools
+        run: python -m pip install --disable-pip-version-check -c constraints.txt -e ".[dev]"
+
+      # The checks below are independent, so each runs even if an earlier one failed.
+      # That shows every problem in one run instead of one per push.
+      - name: Dependency consistency (pip check)
+        if: ${{ !cancelled() }}
+        run: python -m pip check
+
+      - name: Lint (ruff check)
+        if: ${{ !cancelled() }}
+        run: python -m ruff check .
+
+      - name: Formatting (ruff format --check)
+        if: ${{ !cancelled() }}
+        run: python -m ruff format --check .
+
+      - name: Types (mypy --strict)
+        if: ${{ !cancelled() }}
+        run: python -m mypy --strict src
+
+      - name: Tests
+        if: ${{ !cancelled() }}
+        run: python -m pytest -rs -p no:cacheprovider --junitxml="$RUNNER_TEMP/junit.xml"
+
+      # On Linux the only acceptable skips are the Windows-only path tests. The Windows
+      # job (windows.yml) allows none, so those tests really run there.
+      - name: Skipped tests are only the Windows-only ones
+        if: ${{ !cancelled() }}
+        run: python ../.github/scripts/check_junit_skips.py "$RUNNER_TEMP/junit.xml" --allow "Windows-only path behavior"
+
+      # pip-audit lives in its own virtualenv so it never touches the app's environment.
+      # It sends only the pinned package names and versions to the PyPI vulnerability API.
+      - name: Known-vulnerability scan (pip-audit)
+        if: ${{ !cancelled() }}
+        run: |
+          python -m venv "$RUNNER_TEMP/audit-venv"
+          "$RUNNER_TEMP/audit-venv/bin/python" -m pip install --disable-pip-version-check pip-audit==2.10.1
+          "$RUNNER_TEMP/audit-venv/bin/pip-audit" --strict --no-deps --disable-pip --progress-spinner off -r constraints.txt

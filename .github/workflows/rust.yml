@@ -1,0 +1,65 @@
+name: rust
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rust:
+    # Windows is the shipping platform, and M2's Windows-only code (Job Object, cfg(windows))
+    # would be invisible to clippy on Linux. It also needs no apt packages (GTK, webkit2gtk).
+    # Windows minutes are billed at twice the Linux rate on a private repository.
+    # rust-toolchain.toml pins 1.99.0, so rustup installs exactly that toolchain, with rustfmt
+    # and clippy, on the first cargo call.
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/desktop/src-tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The checks are independent, so each runs even if an earlier one failed.
+      - name: Formatting (cargo fmt --check)
+        run: cargo fmt --check
+
+      - name: Lint (cargo clippy -D warnings)
+        if: ${{ !cancelled() }}
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+      # The Tauri template has no Rust tests yet, so this reports "0 passed" until real tests
+      # arrive with the host code in M2. A green job here does not mean tests exist.
+      - name: Tests (cargo test)
+        if: ${{ !cancelled() }}
+        run: cargo test --locked
+
+  deny:
+    # cargo-deny only reads Cargo.lock and the advisory database, so nothing is compiled and
+    # Linux is enough. The checked dependency graph is the Windows one (deny.toml, ADR-003).
+    # The action's image bundles cargo-deny 0.20.2 (verified at the pinned SHA).
+    # It fetches the RustSec advisory database from GitHub; no login or token is used.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          manifest-path: apps/desktop/src-tauri/Cargo.toml
+          # The action's default is "--all-features"; this keeps the CI check identical to the
+          # local `cargo deny check` (default features, deny.toml next to Cargo.toml).
+          arguments: --config apps/desktop/src-tauri/deny.toml

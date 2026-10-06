@@ -1,0 +1,65 @@
+# cargo-deny policy for the desktop (Tauri) crate. Run from this directory: `cargo deny check`.
+# CI: .github/workflows/rust.yml (job `deny`). Local setup and how to read failures:
+# docs/dev-setup.md. Every choice below that is not obvious has a reason next to it.
+
+[graph]
+# Windows is the only shipping platform, so only the Windows dependency graph is checked.
+# Linux and macOS crates (for example the GTK stack and glib) are out of scope on purpose.
+# Decision, evidence and the trigger for revisiting it: docs/adr/003-cargo-deny-windows-target.md
+targets = ["x86_64-pc-windows-msvc"]
+
+[advisories]
+version = 2
+# A yanked version was withdrawn by its author, so it fails.
+yanked = "deny"
+# Both default to a narrower scope that hides problems in transitive crates (for example the
+# glib unsoundness advisory, which only showed up with unsound = "all"). Check everything.
+unmaintained = "all"
+unsound = "all"
+# No advisory is ignored. If one ever has to be, add { id = "...", reason = "..." } here and
+# record the decision in an ADR.
+ignore = []
+
+[licenses]
+version = 2
+# Base list, plus two permissive licenses that Tauri's dependencies use:
+#   Unicode-3.0: the ICU family (icu_*, zerovec, yoke, ...) and unicode-ident
+#   Zlib:        foldhash
+allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
+confidence-threshold = 0.9
+# BSD-2-Clause and ISC are allowed on purpose even though no crate in the Windows graph uses
+# them today. Do not warn about that.
+unused-allowed-license = "allow"
+
+# MPL-2.0 is weak, file-level copyleft, so it is allowed per crate and never globally: a new
+# MPL-2.0 crate fails CI until someone looks at it. We use these unmodified, from crates.io.
+# Versions are not pinned, so a Tauri patch update does not break CI.
+# Third-party license notices must ship with the installer (M8 in CLAUDE.md).
+exceptions = [
+    # cssparser, cssparser-macros, selectors, dtoa-short: tauri -> tauri-utils -> dom_query
+    { allow = ["MPL-2.0"], crate = "cssparser" },
+    { allow = ["MPL-2.0"], crate = "cssparser-macros" },
+    { allow = ["MPL-2.0"], crate = "selectors" },
+    { allow = ["MPL-2.0"], crate = "dtoa-short" },
+    # option-ext: tauri-build -> dirs -> dirs-sys
+    { allow = ["MPL-2.0"], crate = "option-ext" },
+]
+
+[licenses.private]
+# The `desktop` crate itself has no license field: the project license is decided at M9.
+ignore = true
+
+[bans]
+# Tauri's own tree contains duplicate versions (base64, syn, windows-sys, ...). We cannot fix
+# those, so they are reported but do not fail the build.
+multiple-versions = "warn"
+# A "*" version requirement would accept any release of that crate.
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+# Only crates.io. No other registry and no git dependencies.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -5,6 +5,7 @@ import json
 import queue
 import secrets
 import socket
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -73,13 +74,54 @@ def test_ready_line_has_the_exact_shape_and_health_works(tmp_path: Path, token: 
         assert response.json() == {"status": "ok"}
 
 
+PORT_CLOSE_DEADLINE_SECONDS = 10.0
+PORT_POLL_FIRST_SECONDS = 0.005
+PORT_POLL_MAX_SECONDS = 0.25
+
+
+def _wait_until_port_refuses(port: int, deadline_seconds: float) -> str | None:
+    """Poll until a connection to the loopback port fails (the listener is really gone).
+
+    Returns None as soon as a connect attempt raises OSError. If the port is still accepting
+    connections when the deadline passes, returns a description of the last accepted one.
+
+    Why this is polled: when `Popen.wait()` returns for a killed process, Windows may not have
+    closed that process's listening socket yet, so a connect right after the kill can still be
+    accepted for a few milliseconds (measured: about 1 kill in 10 under CPU load). The wait is on
+    the condition itself and bounded by a deadline, so a listener that is never released (a leaked
+    socket, a surviving child) still fails.
+
+    The poll interval doubles up to a cap, which keeps the number of connects under a few dozen
+    in the whole deadline. That matters: connections to a listener that never calls accept()
+    pile up in its backlog (2048 for the sidecar), and a full backlog also refuses connects.
+    """
+    deadline = time.monotonic() + deadline_seconds
+    interval = PORT_POLL_FIRST_SECONDS
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=2) as connection:
+                accepted = f"accepted a connection from local address {connection.getsockname()}"
+        except OSError:
+            return None
+        if time.monotonic() >= deadline:
+            return accepted
+        time.sleep(interval)
+        interval = min(interval * 2, PORT_POLL_MAX_SECONDS)
+
+
 def test_exactly_one_line_is_ever_written_to_stdout(tmp_path: Path, token: str) -> None:  # [NEG]
     with _sidecar(tmp_path, token) as (line, port, out):
         _get_health(port, {"X-GRC-Auth": token})
         _get_health(port)  # an unauthenticated request must not print anything either
-    assert out.lines == [line]
-    with pytest.raises(OSError):  # the killed sidecar no longer accepts connections
-        socket.create_connection(("127.0.0.1", port), timeout=2).close()
+    assert out.lines == [line], (
+        f"stdout must hold exactly the ready line {line!r}, "
+        f"but it held {len(out.lines)} line(s): {out.lines!r}"
+    )
+    still_open = _wait_until_port_refuses(port, PORT_CLOSE_DEADLINE_SECONDS)
+    assert still_open is None, (
+        f"the killed sidecar's port {port} still accepted connections "
+        f"{PORT_CLOSE_DEADLINE_SECONDS}s after it was killed ({still_open})"
+    )
 
 
 def test_real_server_rejects_missing_and_wrong_tokens(tmp_path: Path, token: str) -> None:  # [NEG]

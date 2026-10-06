@@ -219,10 +219,10 @@ pnpm test
 | M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, SSE progress |
 | M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view |
 | M7 | Policy-to-code | Structured plan, patch generation, static validation, approval gate |
-| M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README |
-| M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version) |
+| M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5 |
+| M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
 
-**Current milestone: M1.5.**
+**Current milestone: M2.**
 
 ---
 
@@ -241,15 +241,15 @@ When a MUST rule changes, update this file first, then the Cursor rule and `.cod
 
 **Rules are enforced by machines, not just by prompts.** AI instructions are advisory. The blocking controls are:
 
-| Control | Where | Blocks merge |
+| Control | Where | Gate (required to merge from M9) |
 |---|---|---|
-| Custom air-gap rules | `.semgrep/grc-airgap.yml` | Yes |
-| Python SAST | Bandit | Yes |
+| Custom air-gap rules | `.semgrep/grc-airgap.yml`, with `semgrep --test` fixtures in `.semgrep/fixtures/` | Yes |
+| Python SAST | Bandit on `sidecar/src`, `sidecar/ci` and `.github/scripts`. Semgrep and Bandit do not scan tests; ruff `S` rules and gitleaks cover them | Yes |
 | Rust / TS SAST | Semgrep registry rulesets, `clippy -D warnings`, ESLint `no-explicit-any` | Yes |
-| Secrets | gitleaks pre-commit hook (local), GitHub push protection (server), gitleaks in CI | Yes |
-| Dependencies | Dependabot (pip, npm, cargo, github-actions), `cargo deny`, `pip-audit` | Yes for known vulns |
-| Air-gap proof | Sidecar tests run in a container with `--network none`, plus a canary that must fail to connect out | Yes |
-| AI review | CodeRabbit | Advisory |
+| Secrets | gitleaks pre-commit hook (local), GitHub push protection (server; enable at M9), gitleaks in CI | Yes |
+| Dependencies | Dependabot (pip, npm, cargo, docker, github-actions), `cargo deny`, `pip-audit`, `pnpm audit`; also run weekly (`audit.yml`) | Yes for known vulns |
+| Air-gap proof | Sidecar tests run in a container with `--network none`, plus a canary that proves loopback works and outbound and DNS fail | Yes |
+| AI review | CodeRabbit (configured; enabled at M9) | Advisory |
 
 **CI rules for any workflow you write:** pin every action to a full commit SHA, set `permissions: contents: read` at the top, never use `pull_request_target`, never pipe `curl` into a shell.
 
