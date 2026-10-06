@@ -34,4 +34,15 @@ updates:
       cargo-minor-patch:
         update-types: [minor, patch]
 
-  # github-actions returns at M1.5, when the first workflow exists.
+  # Workflow actions are pinned to full commit SHAs; Dependabot updates the SHA and the
+  # version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
