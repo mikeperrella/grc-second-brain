@@ -1,6 +1,5 @@
 import os
 import sys
-import traceback
 from pathlib import Path
 
 import pytest
@@ -13,24 +12,11 @@ from grc_sidecar.errors import (
 )
 from grc_sidecar.security.paths import resolve_within
 
+from .leakcheck import assert_no_leak
+
 # Skipped off Windows (so Linux CI reports them as skipped, never as silent passes).
 # On the Windows dev machine they must run: `pytest -rs` has to show zero skips.
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows-only path behavior")
-
-
-def assert_no_path_leak(exc: GrcError, *secrets: str) -> None:
-    """The error must expose none of the secrets anywhere, including via chaining."""
-    assert exc.__cause__ is None
-    assert exc.__context__ is None
-    exposed = [
-        str(exc),
-        repr(exc),
-        repr(exc.args),
-        "".join(traceback.format_exception(exc)),
-    ]
-    for secret in secrets:
-        for text in exposed:
-            assert secret not in text
 
 
 @pytest.fixture
@@ -137,10 +123,10 @@ def test_missing_root_or_file_root_rejected(layout: dict[str, Path]) -> None:  #
     missing_root = layout["tmp"] / "no-such-root-sekrit"
     with pytest.raises(ConfigurationError) as missing:
         resolve_within("a/note.md", missing_root)
-    assert_no_path_leak(missing.value, str(missing_root), "no-such-root-sekrit")
+    assert_no_leak(missing.value, str(missing_root), "no-such-root-sekrit")
     with pytest.raises(ConfigurationError) as file_root:
         resolve_within("x", layout["note"])
-    assert_no_path_leak(file_root.value, str(layout["note"]), "note.md")
+    assert_no_leak(file_root.value, str(layout["note"]), "note.md")
 
 
 def test_errors_never_expose_candidate_or_resolved_target(
@@ -170,7 +156,7 @@ def test_errors_never_expose_candidate_or_resolved_target(
             resolved_target = str(joined)
         with pytest.raises(error) as info:
             resolve_within(candidate, root)
-        assert_no_path_leak(
+        assert_no_leak(
             info.value,
             candidate,
             resolved_target,

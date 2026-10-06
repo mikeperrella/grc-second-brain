@@ -28,6 +28,18 @@ class NonLoopbackURLError(GrcError, ValueError):
     default_message = "URL must be http and point at a loopback IP address"
 
 
+class MissingAuthTokenError(GrcError):
+    """The auth token environment variable is absent or empty."""
+
+    default_message = "Authentication token is missing"
+
+
+class InvalidAuthTokenError(GrcError):
+    """The auth token is not exactly 64 lowercase hex characters."""
+
+    default_message = "Authentication token is invalid"
+
+
 class PathNotAllowedError(GrcError):
     """A path is outside the approved root or is not acceptable input."""
 

@@ -61,4 +61,37 @@ If a real secret is ever flagged, remove it and rotate the credential. Don't byp
 
 ## Dependabot
 
-`.github/dependabot.yml` covers npm (`apps/desktop`), cargo (`apps/desktop/src-tauri`), and github-actions, all weekly. The pip entry for `sidecar/` is added at M1, once `sidecar/pyproject.toml` exists. The repo is not on GitHub yet, so Dependabot does nothing until the first push.
+`.github/dependabot.yml` covers pip (`sidecar`), npm (`apps/desktop`), and cargo (`apps/desktop/src-tauri`), all weekly. The github-actions entry returns at M1.5, when the first workflow exists. Dependabot errors on an entry whose manifest is missing, so entries are added only once their manifest exists.
+
+## Run the sidecar by hand (and check it only listens on loopback)
+
+You need two PowerShell windows. The auth token exists only inside the sidecar's own process (it deletes it from its environment after reading it), so terminal 2 needs the printed token pasted in.
+
+**Terminal 1**, from `sidecar/`: generate a token into a variable, print it, then start the sidecar.
+
+```
+$token = (.venv\Scripts\python -c "import secrets; print(secrets.token_hex(32))")
+$token
+$env:GRC_AUTH_TOKEN = $token
+.venv\Scripts\python -m grc_sidecar
+```
+
+Success looks like exactly one line, `{"event":"ready","port":NNNNN}`, and the window stays busy because the server is running. Copy the printed token and the port number.
+
+**Terminal 2**, any directory: paste the token into `$t`, then replace `NNNNN` with the port.
+
+```
+$t = "<paste the token printed in terminal 1>"
+netstat -ano -p tcp | findstr "LISTENING" | findstr ":NNNNN"
+Get-NetTCPConnection -State Listen -LocalPort NNNNN | Select-Object LocalAddress, LocalPort, OwningProcess
+Invoke-WebRequest http://127.0.0.1:NNNNN/health -Headers @{"X-GRC-Auth"=$t} -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:NNNNN/health -UseBasicParsing
+```
+
+Success looks like:
+
+- The listening address is `127.0.0.1:NNNNN`. It must never be `0.0.0.0:NNNNN` or `[::]:NNNNN`, which would mean the server is reachable from other machines.
+- The first `Invoke-WebRequest` (with the header) returns status 200 and content `{"status":"ok"}`.
+- The second (no header) fails with a 401 error.
+
+Clean up: press Ctrl+C in terminal 1, then run `Remove-Item Env:GRC_AUTH_TOKEN` there. In terminal 2 run `Remove-Variable t` or just close the window.

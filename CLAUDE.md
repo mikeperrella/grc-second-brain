@@ -222,7 +222,7 @@ pnpm test
 | M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version) |
 
-**Current milestone: M1.**
+**Current milestone: M1.5.**
 
 ---
 
