@@ -10,6 +10,11 @@ updates:
     groups:
       pip-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # pydantic-core only updates together with pydantic, which pins the exact version it
+      # needs, so a pull request that bumps pydantic-core alone cannot work. The real fix is
+      # lock files at milestone M8.
+      - dependency-name: pydantic-core
 
   # pnpm projects use the "npm" ecosystem; Dependabot reads pnpm-lock.yaml.
   - package-ecosystem: npm
