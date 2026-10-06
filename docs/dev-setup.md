@@ -59,11 +59,68 @@ Run these from PowerShell.
 
 If a real secret is ever flagged, remove it and rotate the credential. Don't bypass the hook with `--no-verify`.
 
-## Dependabot
+## Continuous integration (CI)
 
-`.github/dependabot.yml` covers pip (`sidecar`), npm (`apps/desktop`), and cargo (`apps/desktop/src-tauri`), all weekly. The github-actions entry returns at M1.5, when the first workflow exists. Dependabot errors on an entry whose manifest is missing, so entries are added only once their manifest exists.
+Eight GitHub Actions workflows in `.github/workflows/` run on every pull request and on every push to `main`. They are the blocking controls described in CLAUDE.md Section 10: AI instructions are advisory, these are not. Every workflow has `permissions: contents: read` at the top, pins each action to a full commit SHA, and uses no secrets. Until branch protection exists (M9) the checks run and report on pull requests but do not yet stop a merge.
 
-## Static analysis (SAST): Semgrep and Bandit
+### Workflows at a glance
+
+| Workflow (file) | Job (name to require at M9) | What it gates | Runner | Typical run time (observed, not guaranteed) | Required at M9 |
+|---|---|---|---|---|---|
+| `secrets.yml` | `gitleaks` | The scanner can detect a fake secret and stay quiet on clean input (self-test), then no secret anywhere in the full git history. | Linux | about 50 s | Yes |
+| `policy.yml` | `policy-drift` | The Cursor rule mirrors CLAUDE.md Sections 3, 7 and 11. | Linux | about 10 s | Yes |
+| `python.yml` | `quality` | `pip check`, ruff lint and format, `mypy --strict`, pytest (only the Windows-only skips are allowed on Linux), `pip-audit`. | Linux | about 40 s | Yes |
+| `windows.yml` | `windows-tests` | `mypy --strict` including the Windows-only code, and the full sidecar suite with zero skips. | Windows | about 1 to 2 min | Yes |
+| `sast.yml` | `semgrep` | Our air-gap rules and their own tests, plus registry rulesets for Python, TypeScript and Rust. | Linux | about 40 s | Yes |
+| `sast.yml` | `bandit` | Python security lint (medium and above). | Linux | about 10 s | Yes |
+| `airgap.yml` | `airgap` | The sidecar test suite passes in a hardened container with no network, and the canary proves the container really is isolated. | Linux | about 45 s | Yes |
+| `rust.yml` | `rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (no Rust tests exist yet). | Windows | about 7 min on the first run (nothing is cached) | Yes |
+| `rust.yml` | `deny` | `cargo deny`: advisories, licenses, bans, sources (Windows dependency graph). | Linux | about 45 s | Yes |
+| `frontend.yml` | `frontend` | ESLint (`no-explicit-any` is an error), `tsc`, vitest (no frontend tests exist yet), `pnpm audit`. | Linux | about 25 s | Yes |
+
+Not built yet: a weekly scheduled run of the dependency audits (pip-audit, `pnpm audit`, `cargo deny check advisories`). Today advisories are only checked when a pull request or push runs.
+
+Windows runners are billed at twice the Linux rate on a private repository, and the `rust` job is the long one. The run times above were read from real runs and will drift.
+
+### Run each check locally
+
+Run commands from the repo root in PowerShell unless a directory is given. Each deep-dive subsection below has the exact commands for its area and what success looks like.
+
+| Check | Locally |
+|---|---|
+| gitleaks | `python -m pre_commit run gitleaks --all-files`. The CI self-test is `python .github/scripts/gitleaks_selftest.py` (add `--gitleaks <path to gitleaks.exe>` if `gitleaks` is not on PATH). Setup is in "Secret scanning with pre-commit and gitleaks" above. |
+| policy-drift | `python .github/scripts/check_policy_drift.py`, then `python -m unittest discover -s .github/scripts -p "test_*.py"`. |
+| quality | From `sidecar/`: `.venv/Scripts/python -m ruff check .`, `-m ruff format --check .`, `-m mypy --strict src`, `-m pytest` (CLAUDE.md Section 6). CI also runs `pip check` and `pip-audit`. |
+| windows-tests | The same commands on this Windows machine. Here the Windows-only tests run for real, so `pytest` must report no skips (`174 passed`). |
+| semgrep, bandit | The Docker commands under [Static analysis](#static-analysis-sast-semgrep-and-bandit). |
+| airgap | The Docker commands under [Air-gap proof](#air-gap-proof-the-sidecar-tests-with-no-network). |
+| rust, deny | From `apps/desktop/src-tauri/`: `cargo fmt --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `cargo test --locked`, `cargo deny check`. See [Rust checks](#rust-checks-and-cargo-deny). |
+| frontend | From `apps/desktop/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm audit --audit-level high`. See [Frontend checks](#frontend-checks-lint-typecheck-test-audit). |
+
+### Reading a failed job on GitHub
+
+1. Open the pull request and select the **Checks** tab (or click the red **x** next to a check in the pull request's check list). Each check is one job from the table above.
+2. Click the red job and expand the step that has the red **x**. The log shows the tool's own output.
+3. **Scroll for more than one failure.** Within a job the independent steps are written with `if: ${{ !cancelled() }}`, so a failing step does not hide the ones after it. Lint, type and test failures all show in one run.
+4. The job's **Summary** page shows extra output the job wrote for people. For `frontend` it is the number of tests that ran.
+5. Fix the cause and push. To re-run without a new commit, use **Re-run failed jobs** (top right of the run page). From PowerShell, `gh run list --branch <branch>` and `gh run view <run-id> --log-failed` print the same logs.
+
+What a failure usually means:
+
+| Failing step | Usual cause |
+|---|---|
+| `Scanner self-test` (gitleaks) | gitleaks could not detect the generated fake token, or flagged clean input: the scanner is broken or its config changed. This is not a finding in our code. |
+| `Skipped tests are only the Windows-only ones` / `No test was skipped` | A test was skipped. The log names the test and the reason. |
+| `Canary (no network)` exit 1 | The container can reach the network: the `--network none` flag is missing or ignored. Exit 2 means the canary could not even connect to loopback, so it proves nothing. |
+| `Test the custom Semgrep rules` | A rule stopped matching a line marked `ruleid:`, or started matching a line marked `ok:` (the log says "incorrect lines" with the line number). |
+| `Scan with Semgrep` / `Scan with Bandit` | A finding. Fix it, or follow the suppression rules under [Static analysis](#static-analysis-sast-semgrep-and-bandit). |
+| `cargo deny` (`deny` job) | A new advisory, a license outside the allowlist, a yanked crate, or a non-crates.io source. The log names the crate and shows who depends on it. |
+
+### Dependabot
+
+`.github/dependabot.yml` covers pip (`sidecar`), npm (`apps/desktop`), cargo (`apps/desktop/src-tauri`), github-actions (`/`) and docker (`sidecar`, for the digest-pinned base image of the air-gap test), all weekly. The docker entry ignores minor and major `python` updates on purpose: the sidecar targets Python 3.11. Action updates change the commit SHA and the version comment together. Dependabot errors on an entry whose manifest is missing, so entries are added only once their manifest exists.
+
+### Static analysis (SAST): Semgrep and Bandit
 
 `.github/workflows/sast.yml` runs two jobs on every pull request and on pushes to `main`.
 
@@ -85,7 +142,7 @@ foreach ($ext in "py","rs","tsx") { docker run --rm -v "${PWD}:/src:ro" -w /src 
 # Main scan: success ends with "Findings: 0 (0 blocking)".
 docker run --rm -v "${PWD}:/src:ro" -w /src $semgrep semgrep scan --config .semgrep/ --config p/python --config p/typescript --config p/rust --exclude .semgrep/fixtures --error --metrics=off --disable-version-check
 # Bandit, from a throwaway container: success is exit code 0 and "No issues identified".
-docker run --rm -v "${PWD}:/src:ro" -w /src python:3.11.9-slim bash -c 'pip install -q --root-user-action=ignore bandit==1.9.4 && bandit -r sidecar/src .github/scripts -ll --exclude "**/__pycache__"'
+docker run --rm -v "${PWD}:/src:ro" -w /src python:3.11.9-slim bash -c 'pip install -q --root-user-action=ignore bandit==1.9.4 && bandit -r sidecar/src sidecar/ci .github/scripts -ll --exclude "**/__pycache__"'
 ```
 
 Semgrep only scans files git knows about, so a new, untracked file is not scanned until you `git add` it (rule fixtures included).
@@ -94,7 +151,7 @@ Semgrep only scans files git knows about, so a new, untracked file is not scanne
 
 **License note for M9.** The Semgrep registry rulesets are under the Semgrep Rules License (fine for internal CI use, restrictive for redistribution). Revisit before the public release and for the BizAI commercial version.
 
-## Air-gap proof: the sidecar tests with no network
+### Air-gap proof: the sidecar tests with no network
 
 `.github/workflows/airgap.yml` builds `sidecar/Dockerfile.airgap` (network allowed, because pip needs it), then runs two things with **no network** and a hardened container: the canary, and the whole pytest suite.
 
@@ -115,7 +172,7 @@ To see the canary fail, run it without `--network none` (keep the other flags). 
 
 The base image is pinned by digest. Dependabot's `docker` entry proposes digest and patch updates only; minor and major Python bumps are ignored on purpose, since the sidecar targets Python 3.11.
 
-## Rust checks and cargo-deny
+### Rust checks and cargo-deny
 
 `.github/workflows/rust.yml` has two jobs. The Rust code is still the Tauri template, which has **no Rust tests yet**: `cargo test` reports "0 passed" until real tests arrive with the host code in M2, so a green `rust` job does not mean tests exist.
 
@@ -137,7 +194,7 @@ cargo deny check
 
 **Duplicate crate versions** are a warning, not a failure: Tauri's own tree contains duplicates (for example `syn`, `base64`, `windows-sys`) that we cannot fix.
 
-## Frontend checks (lint, typecheck, test, audit)
+### Frontend checks (lint, typecheck, test, audit)
 
 `.github/workflows/frontend.yml` runs these from `apps/desktop/` on every pull request and push to `main`, with the pnpm version taken from `packageManager` in `package.json`. Run them yourself the same way (PowerShell; success is exit code 0 for each):
 
@@ -157,6 +214,20 @@ pnpm audit --audit-level high
 - **Install scripts:** pnpm does not run dependency install scripts unless they are approved, and none are approved here. If `pnpm install` ever reports ignored build scripts, treat it as something to review, not to approve by reflex.
 
 Known template code that no rule flags yet and that is deliberately left alone: `src/main.tsx` uses `document.getElementById("root") as HTMLElement`, and `src/App.tsx` uses the result of `invoke(...)` without validating it. CLAUDE.md requires every payload that crosses the Tauri IPC boundary to be parsed with Zod; that arrives with the IPC layer in M2 (Zod is not installed yet).
+
+### Decisions and where each is recorded
+
+| Decision | Where it is recorded |
+|---|---|
+| `cargo deny` checks only the Windows dependency graph, with `unsound` and `unmaintained` set to `all`. Revisit when any non-Windows build is planned. | [ADR-003](adr/003-cargo-deny-windows-target.md), plus comments in `apps/desktop/src-tauri/deny.toml` |
+| Hash-locked Python dependencies (uv or pip-tools) are deferred to M8, where the exact PyInstaller artifacts matter most. Until then the sidecar has exact `==` pins in `constraints.txt`, `pip-audit`, Dependabot and digest-pinned images. | Only here and in the working plan (`M15_PLAN.md`, not committed). CLAUDE.md's M8 row does not mention it yet and there is no ADR; add one of the two if a durable record is wanted. |
+| The Semgrep registry rulesets use the Semgrep Rules License (fine for internal CI, restrictive for redistribution). Revisit before the public release and for the BizAI commercial version. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (license note). CLAUDE.md's M9 row does not mention it yet; add it there if it should be on the M9 checklist. |
+| Tests are not scanned by Semgrep or Bandit. Ruff's `S` rules and gitleaks cover them. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (scope decision) |
+| There are no frontend tests and no Rust tests until M2/M6. The `frontend` and `rust` jobs pass with zero tests, and the frontend job prints the count. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) and [Rust checks](#rust-checks-and-cargo-deny) |
+| Template code with `as HTMLElement` and an unvalidated `invoke(...)` result stays until Zod arrives with the IPC layer in M2. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) (last paragraph) |
+| Air-gap job: a hardened container with `--network none`, and `-p no:cacheprovider` as the only adjustment the flags needed. | [Air-gap proof](#air-gap-proof-the-sidecar-tests-with-no-network) |
+| MPL-2.0 is allowed per crate, never globally. The `desktop` crate is `publish = false` so `cargo deny` skips its missing license. Duplicate crate versions only warn. | [Rust checks](#rust-checks-and-cargo-deny) and `apps/desktop/src-tauri/deny.toml` |
+| No dependency cache in CI (no `actions/cache`, no setup-node cache): one less thing to poison, and the installs are small. | A comment in `frontend.yml`. The other workflows install without any cache action too. |
 
 ## Run the sidecar by hand (and check it only listens on loopback)
 
