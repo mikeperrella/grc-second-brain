@@ -1,0 +1,27 @@
+# Air-gap test image (CLAUDE.md Section 3, M1.5). Built WITH network access (pip needs it),
+# then run with `--network none` so the sidecar tests prove nothing needs the network.
+# Build context is sidecar/:  docker build -f sidecar/Dockerfile.airgap -t grc-airgap sidecar
+# Same base image (pinned by digest) as the Python 3.11.9 dev environment; Dependabot's
+# docker ecosystem proposes digest updates.
+FROM python:3.11.9-slim@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+
+# No .pyc writes (the runtime filesystem is read-only), unbuffered output for CI logs.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore
+
+WORKDIR /app
+
+# Dependencies first, so the layer is cached until constraints.txt or pyproject.toml change.
+COPY constraints.txt pyproject.toml ./
+COPY src ./src
+RUN pip install --no-cache-dir -c constraints.txt -e ".[dev]"
+
+COPY tests ./tests
+COPY ci ./ci
+
+# Unprivileged runtime user. The app tree stays owned by root, so at runtime it is read-only
+# for this user even before `docker run --read-only` is applied.
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin grc
+USER 10001

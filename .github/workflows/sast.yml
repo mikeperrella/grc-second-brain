@@ -82,6 +82,6 @@ jobs:
 
       # Medium severity and above fail the job. The sidecar tests are out of scope (ruff's S rules
       # and gitleaks cover them); the CI scripts are in scope because they run subprocesses.
-      # sidecar/ci/ joins this list when it is created (M1.5 step 5).
+      # sidecar/ci holds the air-gap canary, which opens sockets on purpose.
       - name: Scan with Bandit
-        run: bandit -r sidecar/src .github/scripts -ll --exclude "**/__pycache__"
+        run: bandit -r sidecar/src sidecar/ci .github/scripts -ll --exclude "**/__pycache__"

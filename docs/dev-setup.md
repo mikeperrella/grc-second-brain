@@ -70,7 +70,7 @@ If a real secret is ever flagged, remove it and rotate the credential. Don't byp
 | Job | What it checks | Scope |
 |---|---|---|
 | `semgrep` | Our air-gap rules in `.semgrep/grc-airgap.yml` plus the registry rulesets `p/python`, `p/typescript` and `p/rust`. Fails on any finding. | Files tracked by git, except the rule fixtures. |
-| `bandit` | Python security lint, fails on medium severity and above. | `sidecar/src` and `.github/scripts` (CI scripts run subprocesses, so they are part of the supply chain). `sidecar/ci/` is added when it exists (M1.5 step 5). |
+| `bandit` | Python security lint, fails on medium severity and above. | `sidecar/src`, `sidecar/ci` (the air-gap canary) and `.github/scripts` (CI scripts run subprocesses, so they are part of the supply chain). |
 
 **Scope decision: tests are not scanned by Semgrep or Bandit.** Semgrep skips every `tests/` directory by built-in default (the repo has no `.semgrepignore`, on purpose: a custom one replaces those defaults), our own rule `grc-py-httpx-client-outside-factory` also excludes `**/tests/**`, and Bandit is not pointed at `sidecar/tests`. Test code is covered instead by ruff's `S` (flake8-bandit) rules, which run on `sidecar/tests` because `ruff check .` covers the whole sidecar, and by gitleaks for secrets. The `.github/scripts/test_*.py` files are the exception: Bandit reads them along with the rest of `.github/scripts`.
 
@@ -93,6 +93,27 @@ Semgrep only scans files git knows about, so a new, untracked file is not scanne
 **Suppressions.** A finding is fixed unless it is a documented false positive or an accepted risk. Then it gets a line-specific comment that names the rule and says why: `# nosec B314` for Bandit, `# nosemgrep: <full-rule-id>` for Semgrep, with the reason in the comment above. No blanket path excludes and no disabled rules without a decision recorded here or in an ADR. The current suppressions are all in `.github/scripts` (the junit XML parse is pytest's own report; the gitleaks self-test runs a fixed command list with `shell=False`).
 
 **License note for M9.** The Semgrep registry rulesets are under the Semgrep Rules License (fine for internal CI use, restrictive for redistribution). Revisit before the public release and for the BizAI commercial version.
+
+## Air-gap proof: the sidecar tests with no network
+
+`.github/workflows/airgap.yml` builds `sidecar/Dockerfile.airgap` (network allowed, because pip needs it), then runs two things with **no network** and a hardened container: the canary, and the whole pytest suite.
+
+- **Canary** (`sidecar/ci/airgap_canary.py`) checks three things: a connection to loopback succeeds, a connection to a public address fails, and a DNS lookup fails. If loopback itself fails, the canary exits 2 ("broken canary") instead of passing, because a check that cannot connect proves nothing. Exit codes: 0 isolated, 1 the network is reachable, 2 broken canary.
+- **Hardened flags:** `--network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp`, running as an unprivileged user (uid 10001). The app files are owned by root, so they are read-only for that user. The pytest egress guard also stays on, so the network is blocked twice. The only adjustment the flags needed is `-p no:cacheprovider`, because pytest cannot write `.pytest_cache` on a read-only filesystem.
+- **Skipped tests:** the same rule as `python.yml`. The junit file is written to `/tmp` and the skip check (mounted read-only from `.github/scripts`) runs in the same container, because `/tmp` disappears when it exits.
+
+Run it locally from the repo root (Docker Desktop running; PowerShell). Success is `RESULT: ISOLATED` and `165 passed, 9 skipped`:
+
+```powershell
+docker build -f sidecar/Dockerfile.airgap -t grc-airgap sidecar
+$hardened = "--network","none","--cap-drop","ALL","--security-opt","no-new-privileges","--read-only","--tmpfs","/tmp"
+docker run --rm @hardened grc-airgap python ci/airgap_canary.py
+docker run --rm @hardened grc-airgap python -m pytest -rs -p no:cacheprovider
+```
+
+To see the canary fail, run it without `--network none` (keep the other flags). It must print `FAIL` for outbound and DNS, `RESULT: NOT ISOLATED`, and exit 1.
+
+The base image is pinned by digest. Dependabot's `docker` entry proposes digest and patch updates only; minor and major Python bumps are ignored on purpose, since the sidecar targets Python 3.11.
 
 ## Run the sidecar by hand (and check it only listens on loopback)
 

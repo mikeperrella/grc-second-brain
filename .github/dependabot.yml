@@ -46,3 +46,18 @@ updates:
     groups:
       actions-minor-patch:
         update-types: [minor, patch]
+
+  # The air-gap test image pins its base image by digest (sidecar/Dockerfile.airgap).
+  # Dependabot proposes digest and patch updates. Minor and major bumps are ignored because
+  # the sidecar targets Python 3.11 (requires-python = ">=3.11,<3.12"); changing it is a
+  # decision for an ADR, not an automatic PR.
+  - package-ecosystem: docker
+    directory: /sidecar
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
