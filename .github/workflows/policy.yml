@@ -1,0 +1,30 @@
+name: policy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: policy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  policy-drift:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Unit tests for the drift checker
+        run: python3 -m unittest discover -s .github/scripts -p "test_*.py" -v
+
+      # CLAUDE.md is canonical (Section 10). Fails if the Cursor rule no longer
+      # mirrors Sections 3, 7 and 11.
+      - name: Check the Cursor rule mirrors CLAUDE.md
+        run: python3 .github/scripts/check_policy_drift.py
