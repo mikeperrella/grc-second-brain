@@ -9,7 +9,7 @@ Canonical source is `CLAUDE.md`. This file mirrors Sections 3, 7, and 11. When a
 
 ## 3. Air-gap protocol (MUST)
 
-**Scope:** these rules govern the shipped application at runtime. Development tools (pnpm, cargo, pip, Claude Code) use the network to install packages; that is expected. The product itself never does.
+**Scope:** these rules govern the shipped application at runtime. Development tools (pnpm, cargo, pip, Claude Code) use the network to install packages; that is permitted. The product itself never does.
 
 1. **No cloud AI or SaaS SDKs.** The only LLM endpoint is `http://127.0.0.1:11434` (Ollama). Never import or call OpenAI, Anthropic, Google, AWS, Pinecone, LangSmith, or any hosted service.
 2. **No external network.**
