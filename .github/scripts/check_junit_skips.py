@@ -21,14 +21,16 @@ Exit codes: 0 all skips allowed, 1 a disallowed skip, 2 report missing or invali
 
 import argparse
 import sys
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405 -- import side of the B314 call below; same accepted risk
 from pathlib import Path
 
 
 def collect(report: Path) -> tuple[int, list[tuple[str, str]]]:
     """Return (number of tests, [(test id, skip reason), ...]) from a junit XML file."""
-    # S314 targets untrusted XML; this is pytest's own report, written on this runner.
-    root = ET.parse(report).getroot()  # noqa: S314
+    # Accepted risk (S314, Bandit B314, Semgrep use-defused-xml-parse): input is pytest's own
+    # report; anyone who controls it already runs code on the runner; job has contents: read
+    # and no secrets.
+    root = ET.parse(report).getroot()  # noqa: S314  # nosec B314  # nosemgrep: python.lang.security.use-defused-xml-parse.use-defused-xml-parse
     total = 0
     skips: list[tuple[str, str]] = []
     for case in root.iter("testcase"):

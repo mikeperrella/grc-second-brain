@@ -21,7 +21,7 @@ import os
 import secrets
 import shutil
 import string
-import subprocess
+import subprocess  # nosec B404 -- the self-test must run gitleaks; arguments are a fixed list
 import sys
 import tempfile
 from collections import Counter
@@ -49,7 +49,7 @@ def make_fake_token() -> str:
 
 def scan(command: list[str], directory: Path, report: Path) -> tuple[int, list[dict[str, object]]]:
     """Run `gitleaks dir` and return (exit code, parsed findings)."""
-    result = subprocess.run(  # noqa: S603  (fixed argument list, shell=False)
+    result = subprocess.run(  # noqa: S603  # nosec B603 -- fixed argument list, shell=False, no user input
         [
             *command,
             "dir",

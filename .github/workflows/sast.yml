@@ -1,0 +1,87 @@
+name: sast
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sast-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Semgrep CE 1.179.0, pinned by digest so the tool cannot change under us.
+  SEMGREP_IMAGE: semgrep/semgrep:1.179.0@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Tests for our own rules. Each fixture under .semgrep/fixtures/ marks the lines that must
+      # match ("ruleid:") and near-misses that must not ("ok:"). A rule that stops matching, or
+      # starts matching safe code, turns this step red.
+      # `semgrep --test` cannot read a rule directory whose name starts with a dot, so it runs
+      # once per fixture file. It also exits 0 when it finds no tests, so each run must print
+      # "All tests passed" or the step fails.
+      - name: Test the custom Semgrep rules
+        run: |
+          set -u
+          for fixture in py rs tsx; do
+            echo "::group::semgrep --test grc-airgap.${fixture}"
+            output="$(docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" -w /src "$SEMGREP_IMAGE" \
+              semgrep --test --config .semgrep/grc-airgap.yml ".semgrep/fixtures/grc-airgap.${fixture}" \
+              --metrics=off --disable-version-check 2>&1)" || { echo "$output"; echo "::endgroup::"; exit 1; }
+            echo "$output"
+            echo "::endgroup::"
+            echo "$output" | grep -q "All tests passed" || { echo "no passing tests reported for ${fixture}"; exit 1; }
+          done
+
+      # semgrep --test only checks rules that have annotations; this check fails if a rule has none.
+      - name: Every custom rule has a test
+        run: python3 .github/scripts/check_semgrep_rule_coverage.py .semgrep .semgrep/fixtures
+
+      # Registry rulesets are fetched from semgrep.dev (no login, no token). Metrics and the
+      # version check are off, so nothing else leaves the runner.
+      # The single exclusion is the fixtures directory: it violates the rules on purpose.
+      # Semgrep's built-in defaults still skip tests/ and node_modules/ (scope decision:
+      # docs/dev-setup.md, "Static analysis"). GIT_CONFIG_* marks /src as a safe git directory,
+      # because the container user differs from the runner user that owns the checkout.
+      - name: Scan with Semgrep
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" -w /src \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src \
+            "$SEMGREP_IMAGE" \
+            semgrep scan \
+            --config .semgrep/ --config p/python --config p/typescript --config p/rust \
+            --exclude .semgrep/fixtures \
+            --error --metrics=off --disable-version-check
+
+  bandit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      # Bandit is installed on its own, not into the sidecar environment or constraints.txt.
+      - name: Install Bandit
+        run: python -m pip install --disable-pip-version-check bandit==1.9.4
+
+      # Medium severity and above fail the job. The sidecar tests are out of scope (ruff's S rules
+      # and gitleaks cover them); the CI scripts are in scope because they run subprocesses.
+      # sidecar/ci/ joins this list when it is created (M1.5 step 5).
+      - name: Scan with Bandit
+        run: bandit -r sidecar/src .github/scripts -ll --exclude "**/__pycache__"
