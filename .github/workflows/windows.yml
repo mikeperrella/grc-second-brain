@@ -1,0 +1,55 @@
+name: windows
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows-tests:
+    # Windows is the shipping platform. This job exists because the Linux jobs cannot run the
+    # Windows-only tests (junctions, UNC and device paths, reserved names) and because mypy
+    # skips code behind `sys.platform == "win32"` when it runs on Linux.
+    # Windows minutes are billed at twice the Linux rate on a private repository, so this job
+    # runs only the checks that need Windows. Lint, formatting and pip-audit stay in python.yml.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: sidecar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install the sidecar and dev tools
+        run: python -m pip install --disable-pip-version-check -c constraints.txt -e ".[dev]"
+
+      # The checks below are independent, so each runs even if an earlier one failed.
+      - name: Types (mypy --strict, including the Windows-only code)
+        if: ${{ !cancelled() }}
+        run: python -m mypy --strict src
+
+      # -v prints one PASSED/FAILED line per test, so the log shows that the Windows-only tests
+      # (junction, UNC, reserved names) really ran. -rs lists any skip with its reason.
+      - name: Tests
+        if: ${{ !cancelled() }}
+        run: python -m pytest -v -rs -p no:cacheprovider --junitxml="$RUNNER_TEMP/junit.xml"
+
+      # No --allow: on Windows nothing may be skipped. A Windows-only or symlink test that
+      # skipped would otherwise look like a pass. A missing or empty report also fails.
+      - name: No test was skipped
+        if: ${{ !cancelled() }}
+        run: python ../.github/scripts/check_junit_skips.py "$RUNNER_TEMP/junit.xml"
