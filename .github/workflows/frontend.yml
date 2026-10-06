@@ -1,0 +1,79 @@
+name: frontend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The pnpm version comes from "packageManager" in apps/desktop/package.json, so CI uses the
+      # same pnpm as local development.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+
+      # No dependency cache: the install is small, and a cache is one more thing that can be poisoned.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      # --frozen-lockfile fails if package.json and pnpm-lock.yaml disagree. pnpm blocks
+      # dependency install scripts by default; none are approved in this repository.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The checks below are independent, so each runs even if an earlier one failed.
+      - name: Lint (ESLint, no-explicit-any is an error)
+        if: ${{ !cancelled() }}
+        run: pnpm lint
+
+      - name: Types (tsc, strict + noUncheckedIndexedAccess)
+        if: ${{ !cancelled() }}
+        run: pnpm typecheck
+
+      # `vitest run --passWithNoTests` exits 0 when there are no test files, because the Tauri
+      # template has none yet. The JSON report lets the next step say how many tests really ran.
+      - name: Tests (vitest)
+        if: ${{ !cancelled() }}
+        run: pnpm test --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest.json"
+
+      # Reports the number of tests that ran in the job summary. A missing or unreadable report
+      # fails this step, so a crashed test run can never look like "0 tests, fine".
+      - name: Report the number of frontend tests
+        if: ${{ !cancelled() }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const total = report.numTotalTests;
+            const skipped = report.numPendingTests + report.numTodoTests;
+            const line = `Frontend tests run: ${total} (passed ${report.numPassedTests}, failed ${report.numFailedTests}, skipped ${skipped})`;
+            const note = total === 0
+              ? "\n\nThere are no frontend tests yet (planned for M2/M6). A green job here does not mean any frontend behavior was tested."
+              : "";
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Frontend tests\n\n${line}${note}\n`);
+            console.log(line);
+          ' "$RUNNER_TEMP/vitest.json"
+
+      # Sends the package names and versions in pnpm-lock.yaml to the npm audit endpoint.
+      - name: Known-vulnerability scan (pnpm audit)
+        if: ${{ !cancelled() }}
+        run: pnpm audit --audit-level high

@@ -137,6 +137,27 @@ cargo deny check
 
 **Duplicate crate versions** are a warning, not a failure: Tauri's own tree contains duplicates (for example `syn`, `base64`, `windows-sys`) that we cannot fix.
 
+## Frontend checks (lint, typecheck, test, audit)
+
+`.github/workflows/frontend.yml` runs these from `apps/desktop/` on every pull request and push to `main`, with the pnpm version taken from `packageManager` in `package.json`. Run them yourself the same way (PowerShell; success is exit code 0 for each):
+
+```powershell
+cd apps\desktop
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm audit --audit-level high
+```
+
+- **`pnpm lint`** runs ESLint with `@eslint/js` and `typescript-eslint` recommended rules. `@typescript-eslint/no-explicit-any` is an error. No rule is switched off and nothing is excluded: the script names the files to check (`src`, `vite.config.ts`, `eslint.config.js`).
+- **`pnpm typecheck`** is `tsc --noEmit`. `tsconfig.json` has `strict`, `noImplicitAny` and `noUncheckedIndexedAccess` (CLAUDE.md Section 7), so reading `list[i]` gives `T | undefined` and has to be checked, never silenced with `!` or `as`.
+- **There are no frontend tests until M2/M6.** `pnpm test` is `vitest run --passWithNoTests`, which exits 0 when there are no test files, as with the Tauri template today. The CI job writes the number of tests that ran into its summary, so "0" is visible rather than hidden; real tests arrive with the IPC layer (M2) and the UI (M6).
+- **`pnpm audit`** sends the package names and versions in `pnpm-lock.yaml` to the npm audit endpoint and fails on high or critical advisories.
+- **Install scripts:** pnpm does not run dependency install scripts unless they are approved, and none are approved here. If `pnpm install` ever reports ignored build scripts, treat it as something to review, not to approve by reflex.
+
+Known template code that no rule flags yet and that is deliberately left alone: `src/main.tsx` uses `document.getElementById("root") as HTMLElement`, and `src/App.tsx` uses the result of `invoke(...)` without validating it. CLAUDE.md requires every payload that crosses the Tauri IPC boundary to be parsed with Zod; that arrives with the IPC layer in M2 (Zod is not installed yet).
+
 ## Run the sidecar by hand (and check it only listens on loopback)
 
 You need two PowerShell windows. The auth token exists only inside the sidecar's own process (it deletes it from its environment after reading it), so terminal 2 needs the printed token pasted in.
