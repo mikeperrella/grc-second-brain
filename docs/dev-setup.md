@@ -115,6 +115,28 @@ To see the canary fail, run it without `--network none` (keep the other flags). 
 
 The base image is pinned by digest. Dependabot's `docker` entry proposes digest and patch updates only; minor and major Python bumps are ignored on purpose, since the sidecar targets Python 3.11.
 
+## Rust checks and cargo-deny
+
+`.github/workflows/rust.yml` has two jobs. The Rust code is still the Tauri template, which has **no Rust tests yet**: `cargo test` reports "0 passed" until real tests arrive with the host code in M2, so a green `rust` job does not mean tests exist.
+
+| Job | Runner | What it does |
+|---|---|---|
+| `rust` | Windows | `cargo fmt --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `cargo test --locked`, with the compiler pinned to 1.99.0 by `apps/desktop/src-tauri/rust-toolchain.toml` (bump it by hand, in its own commit). |
+| `deny` | Linux | `cargo deny check` with `apps/desktop/src-tauri/deny.toml`: advisories, licenses, bans, sources. Nothing is compiled. |
+
+**Run `cargo deny` locally** (from `apps/desktop/src-tauri/`). The first command installs the tool on your machine and takes a few minutes; success is `advisories ok, bans ok, licenses ok, sources ok` (duplicate-version warnings are expected):
+
+```powershell
+cargo install cargo-deny --version 0.20.2 --locked
+cargo deny check
+```
+
+**Windows only.** `deny.toml` checks the Windows dependency graph only, because Windows is the only platform we ship. Linux's GTK stack carries a glib unsoundness advisory (RUSTSEC-2024-0429) and an unmaintained crate (RUSTSEC-2024-0370) that never reach a Windows build. The reasoning, the `cargo tree` evidence, and the trigger for revisiting it (any non-Windows build being planned) are in [ADR-003](adr/003-cargo-deny-windows-target.md). GitHub's Dependabot alert for glib stays open because Dependabot does not know about this scope.
+
+**Licenses.** The allowlist is MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, plus Unicode-3.0 and Zlib (permissive licenses used by Tauri's dependencies). MPL-2.0 is allowed per crate only (five crates listed in `deny.toml`, used unmodified), so a new MPL-2.0 crate fails CI until someone reviews it. The `desktop` crate has no license yet (the project license is decided at M9) and is marked `publish = false` so `cargo deny` skips it. Third-party license notices must ship with the installer (M8).
+
+**Duplicate crate versions** are a warning, not a failure: Tauri's own tree contains duplicates (for example `syn`, `base64`, `windows-sys`) that we cannot fix.
+
 ## Run the sidecar by hand (and check it only listens on loopback)
 
 You need two PowerShell windows. The auth token exists only inside the sidecar's own process (it deletes it from its environment after reading it), so terminal 2 needs the printed token pasted in.

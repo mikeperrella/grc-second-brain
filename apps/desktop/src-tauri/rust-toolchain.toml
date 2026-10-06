@@ -1,0 +1,6 @@
+# Pins the compiler so local builds and CI lint with the same Rust. Bump it by hand, in its own
+# commit, and let CI show whether clippy or rustfmt changed their verdicts.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
