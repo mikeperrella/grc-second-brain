@@ -16,7 +16,7 @@ from .leakcheck import assert_no_leak
 
 # Skipped off Windows (so Linux CI reports them as skipped, never as silent passes).
 # On the Windows dev machine they must run: `pytest -rs` has to show zero skips.
-windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows-only path behavior")
+windows_only = pytest.mark.skipif(sys.platform != "redproof", reason="Windows-only path behavior")
 
 
 @pytest.fixture

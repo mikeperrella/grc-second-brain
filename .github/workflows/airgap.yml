@@ -39,7 +39,7 @@ jobs:
       # Loopback must connect, a public address and DNS must fail. A canary that cannot connect
       # to loopback exits 2 ("broken canary") instead of passing.
       - name: Canary (no network)
-        run: docker run --rm $HARDENED grc-airgap python ci/airgap_canary.py
+        run: docker run --rm --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp grc-airgap python ci/airgap_canary.py
 
       # The full suite, still with no network. Its own egress guard stays on as a second layer.
       # -p no:cacheprovider: the root filesystem is read-only, so pytest cannot write .pytest_cache.
