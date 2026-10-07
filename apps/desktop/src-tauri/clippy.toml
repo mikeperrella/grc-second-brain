@@ -1,0 +1,6 @@
+# unwrap_used and expect_used are denied crate-wide (Cargo.toml [lints.clippy]).
+# Tests may use them: a failed unwrap there is a failed test, which is what we want.
+# This covers #[test] functions and #[cfg(test)] modules, not free helper functions in tests/
+# files: those return Result and use `?` instead.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
