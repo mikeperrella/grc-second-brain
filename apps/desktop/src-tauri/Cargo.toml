@@ -25,6 +25,23 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Exact pins (M2 plan section 11). Both are already in the Windows dependency graph through tauri.
+getrandom = "=0.3.4"
+thiserror = "=2.0.21"
+
+# Crate-wide lints (M2 plan section 2). They apply to every target: lib, bins, tests, build script.
+[lints.rust]
+# `deny`, not `forbid`: the modules that really need Win32 calls (M2b: sidecar/job.rs and
+# sidecar/spawn.rs) opt in with a module-level allow. Nothing else may use unsafe.
+unsafe_code = "deny"
+
+[lints.clippy]
+# Every unsafe block must carry a `// SAFETY:` comment explaining why it is sound.
+undocumented_unsafe_blocks = "deny"
+# CLAUDE.md Section 7: no unwrap/expect on anything derived from user input, paths or IPC.
+# clippy.toml allows both inside tests.
+unwrap_used = "deny"
+expect_used = "deny"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
