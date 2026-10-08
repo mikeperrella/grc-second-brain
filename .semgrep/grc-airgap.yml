@@ -144,11 +144,65 @@ rules:
     message: "dbg! Debug-prints arbitrary values and can leak the auth token; use a log macro with explicit, non-secret fields (ADR-004 review rule)."
     pattern: dbg!(...)
 
+  # The string forms ("0.0.0.0:80", "[::]:80") and the typed forms (Ipv4Addr::UNSPECIFIED,
+  # Ipv4Addr::new(0, 0, 0, 0), Ipv6Addr::UNSPECIFIED, a [0, 0, 0, 0] socket address), each bare and
+  # with the std::net:: prefix. `IpAddr::V4(Ipv4Addr::UNSPECIFIED)` contains the typed form.
   - id: grc-rs-bind-all-interfaces
     languages: [rust]
     severity: ERROR
     message: "Bind to 127.0.0.1 only (CLAUDE.md 3.3)."
-    pattern-regex: '"(0\.0\.0\.0|\[::\]|::)(:\d+)?"'
+    pattern-either:
+      - pattern-regex: '"(0\.0\.0\.0|\[::\]|::)(:\d+)?"'
+      - pattern: Ipv4Addr::UNSPECIFIED
+      - pattern: std::net::Ipv4Addr::UNSPECIFIED
+      - pattern: Ipv4Addr::new(0, 0, 0, 0)
+      - pattern: std::net::Ipv4Addr::new(0, 0, 0, 0)
+      - pattern: Ipv6Addr::UNSPECIFIED
+      - pattern: std::net::Ipv6Addr::UNSPECIFIED
+      - pattern: SocketAddr::from(([0, 0, 0, 0], $PORT))
+      - pattern: std::net::SocketAddr::from(([0, 0, 0, 0], $PORT))
+
+  # Every reqwest client must be built with `.no_proxy()` so proxy environment variables cannot
+  # redirect traffic (CLAUDE.md 3.2). The only client in the host is built in health.rs. The
+  # convenience constructors build a default client (which reads the proxy environment) and give no
+  # place for `.no_proxy()`, so they are forbidden outright, as is the blocking client.
+  # Known limit: the chain rule needs `reqwest::Client::builder()`/`ClientBuilder::new()` written
+  # out in one expression; a builder stored in a variable and finished elsewhere is not followed.
+  # No type information is available, so a `Client` imported from another crate would match too;
+  # the host has none.
+  - id: grc-rs-reqwest-without-no-proxy
+    languages: [rust]
+    severity: ERROR
+    message: "A reqwest client must be built with `.no_proxy()` in the same builder chain (CLAUDE.md 3.2). `Client::new()`, `Client::default()`, `reqwest::get()` and `reqwest::blocking` are forbidden: they read the proxy environment."
+    patterns:
+      - pattern-either:
+          - pattern: reqwest::Client::builder(). ... .build()
+          - pattern: Client::builder(). ... .build()
+          - pattern: reqwest::ClientBuilder::new(). ... .build()
+          - pattern: ClientBuilder::new(). ... .build()
+          - pattern: reqwest::Client::new()
+          - pattern: reqwest::Client::default()
+          - pattern: reqwest::get(...)
+          - pattern: reqwest::blocking::$TYPE::$FUNCTION(...)
+          - pattern: reqwest::blocking::$FUNCTION(...)
+          - pattern: use reqwest::blocking::$ITEM;
+      - pattern-not: reqwest::Client::builder(). ... .no_proxy(). ... .build()
+      - pattern-not: Client::builder(). ... .no_proxy(). ... .build()
+      - pattern-not: reqwest::ClientBuilder::new(). ... .no_proxy(). ... .build()
+      - pattern-not: ClientBuilder::new(). ... .no_proxy(). ... .build()
+
+  # A string literal that names a network address must name 127.0.0.1 or [::1] (CLAUDE.md 3.2 and
+  # 11). `localhost` is flagged too: it is a name that has to be resolved. Only http, https, ws and
+  # wss URLs are looked at. This sees string literals, not computed URLs, and not comments.
+  - id: grc-rs-non-loopback-url
+    languages: [rust]
+    severity: ERROR
+    message: "Application code may only contact 127.0.0.1 or [::1] (CLAUDE.md 3.2). Use LoopbackEndpoint (health.rs) instead of writing a URL."
+    patterns:
+      - pattern: '"$URL"'
+      - metavariable-regex:
+          metavariable: $URL
+          regex: ^(https?|wss?)://(?!(127\.0\.0\.1|\[::1\])([:/]|$))
 
   # ---------- TypeScript / React ----------
   - id: grc-ts-dangerously-set-inner-html

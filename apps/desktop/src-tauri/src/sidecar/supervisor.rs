@@ -38,7 +38,7 @@ use super::resolve::ResolveError;
 use super::spawn::{spawn_in_job, StartError};
 
 /// How long the sidecar has to print its ready line (M2 plan section 6: approved constant).
-pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Exit code the sidecar uses for a startup error it detected itself (`GrcError`, exit 2).
 const STARTUP_REJECTED_EXIT_CODE: i32 = 2;
@@ -115,8 +115,10 @@ pub enum SidecarState {
 }
 
 /// Why the sidecar failed. `Copy` with unit variants plus one integer exit code: nothing here can
-/// carry text, a path or the token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// carry text, a path or the token. `Serialize` because the health command reports it to the
+/// window as `{"kind":"timeout"}` (snake_case names, integers only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FailureKind {
     Timeout,
     EofBeforeReady,
@@ -141,6 +143,16 @@ pub enum FailureKind {
     JobFailed,
     JobAssignFailed,
     UnexpectedThreadState,
+    /// The host could not create the log directory the sidecar writes to.
+    LogDirUnavailable,
+    /// The host could not ask the operating system for the Windows directory.
+    SystemRootUnavailable,
+    /// The operating system gave no random bytes for the auth token.
+    RandomUnavailable,
+    /// The child environment could not be built (a path was not absolute or not valid text).
+    EnvRejected,
+    /// The host's HTTP client could not be built.
+    HttpClientFailed,
     Internal,
 }
 
@@ -933,6 +945,11 @@ mod tests {
                 | FailureKind::JobFailed
                 | FailureKind::JobAssignFailed
                 | FailureKind::UnexpectedThreadState
+                | FailureKind::LogDirUnavailable
+                | FailureKind::SystemRootUnavailable
+                | FailureKind::RandomUnavailable
+                | FailureKind::EnvRejected
+                | FailureKind::HttpClientFailed
                 | FailureKind::Internal => {}
             }
         }
@@ -955,6 +972,11 @@ mod tests {
             FailureKind::JobFailed,
             FailureKind::JobAssignFailed,
             FailureKind::UnexpectedThreadState,
+            FailureKind::LogDirUnavailable,
+            FailureKind::SystemRootUnavailable,
+            FailureKind::RandomUnavailable,
+            FailureKind::EnvRejected,
+            FailureKind::HttpClientFailed,
             FailureKind::Internal,
         ];
         for kind in &all {

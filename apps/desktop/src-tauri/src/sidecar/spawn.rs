@@ -63,7 +63,7 @@ pub enum StartError {
 /// The suspend counts reported by `ResumeThread` broke the rule in [`check_resume_counts`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("the sidecar's threads were not in the expected suspended state")]
-pub struct UnexpectedThreadState;
+pub(crate) struct UnexpectedThreadState;
 
 /// `ResumeThread` returns this when it fails. It is also what this module reports for a thread that
 /// could not be opened or that does not belong to the child.
@@ -98,7 +98,7 @@ pub fn system_windows_directory() -> Result<PathBuf, SpawnError> {
 /// security product may inject a thread that is already running, count 0), and at least one must be
 /// exactly 1 (the thread this host created suspended). No threads, an error value, a count of 2 or
 /// more, or "nobody was suspended" all fail.
-pub fn check_resume_counts(counts: &[u32]) -> Result<(), UnexpectedThreadState> {
+pub(crate) fn check_resume_counts(counts: &[u32]) -> Result<(), UnexpectedThreadState> {
     let all_plausible = counts.iter().all(|count| *count <= 1);
     let one_was_suspended = counts.contains(&1);
     if all_plausible && one_was_suspended {
@@ -112,7 +112,7 @@ pub fn check_resume_counts(counts: &[u32]) -> Result<(), UnexpectedThreadState> 
 /// suspend count, and only then apply [`check_resume_counts`]. `resume` returns the previous count,
 /// or `u32::MAX` on failure. Generic so tests can inject a fake and prove that every thread was
 /// resumed.
-pub fn resume_threads_with(
+pub(crate) fn resume_threads_with(
     ids: &[u32],
     mut resume: impl FnMut(u32) -> u32,
 ) -> Result<(), UnexpectedThreadState> {

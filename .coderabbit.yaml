@@ -110,7 +110,9 @@ reviews:
       instructions: |
         Tauri configuration and capabilities. Flag any widened permission (fs, shell, http, process) beyond what a
         specific command needs, any remote URL in capabilities, enabling the updater plugin, or a CSP that allows
-        anything beyond 'self', ipc:, and http://ipc.localhost.
+        anything beyond 'self', ipc:, and http://ipc.localhost. Also flag a `devCsp` key: `pnpm tauri dev` serves the
+        UI from the Vite dev server, where Tauri injects no CSP, so it would have no effect; the shipped `csp` is
+        verified in a debug build of the bundled app (tests/security_config.rs asserts devCsp is absent).
 
     # ---------------- Frontend ----------------
     - path: "apps/desktop/src/**/*.{ts,tsx}"

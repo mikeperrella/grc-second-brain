@@ -20,11 +20,12 @@ use std::path::Path;
 
 use crate::token::AuthToken;
 
-pub const ENV_SYSTEM_ROOT: &str = "SYSTEMROOT";
-pub const ENV_AUTH_TOKEN: &str = "GRC_AUTH_TOKEN";
-pub const ENV_LOG_DIR: &str = "GRC_LOG_DIR";
+pub(crate) const ENV_SYSTEM_ROOT: &str = "SYSTEMROOT";
+pub(crate) const ENV_AUTH_TOKEN: &str = "GRC_AUTH_TOKEN";
+pub(crate) const ENV_LOG_DIR: &str = "GRC_LOG_DIR";
 
-/// The complete allowlist. [`build_child_env`] produces exactly these keys and no others.
+/// The complete allowlist. [`build_child_env`] produces exactly these keys and no others. `pub`
+/// because tests/supervisor_handshake.rs compares the fake sidecar's reported variable names to it.
 pub const ALLOWED_ENV_KEYS: [&str; 3] = [ENV_SYSTEM_ROOT, ENV_AUTH_TOKEN, ENV_LOG_DIR];
 
 /// Why the environment could not be built. Unit variants: nothing here echoes a path or a value.
@@ -48,14 +49,15 @@ pub struct ChildEnv {
 
 impl ChildEnv {
     /// The variables in key order, for `Command::env` (M2b).
-    pub fn iter(&self) -> impl Iterator<Item = (&'static str, &OsStr)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&'static str, &OsStr)> {
         self.entries
             .iter()
             .map(|(key, value)| (*key, value.as_os_str()))
     }
 
     /// The key names only. Safe to log and to compare against [`ALLOWED_ENV_KEYS`].
-    pub fn keys(&self) -> impl Iterator<Item = &'static str> + '_ {
+    #[cfg(test)]
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.entries.keys().copied()
     }
 

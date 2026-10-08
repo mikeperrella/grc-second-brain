@@ -43,6 +43,7 @@ The owner (Mike) must be able to explain every design decision and every line of
    - Rust: every `reqwest` client uses `.no_proxy()` and a loopback URL.
    - No telemetry, analytics, crash reporters, remote feature flags, or update checkers. Never add the Tauri updater plugin.
    - Frontend: no CDNs or remote fonts. Bundle all assets. Content Security Policy: `default-src 'self'`; `connect-src` limited to `ipc:` and `http://ipc.localhost`.
+   - `pnpm tauri dev` serves the UI from the Vite dev server, where Tauri injects no CSP; the shipped `csp` in `tauri.conf.json` is verified in a debug build of the bundled app.
    - Any library with optional telemetry (e.g. ChromaDB) must have it explicitly disabled in code and covered by a test.
 3. **Loopback only.** Uvicorn binds `host="127.0.0.1"`, `port=0` (OS-assigned). Never `0.0.0.0` or `::`.
 4. **Zero-trust IPC.**

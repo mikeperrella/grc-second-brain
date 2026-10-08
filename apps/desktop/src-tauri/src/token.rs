@@ -12,9 +12,9 @@
 use std::fmt;
 
 /// Number of random bytes in a token.
-pub const TOKEN_BYTES: usize = 32;
+pub(crate) const TOKEN_BYTES: usize = 32;
 /// Length of the hex encoding: two characters per byte.
-pub const TOKEN_HEX_LEN: usize = TOKEN_BYTES * 2;
+pub(crate) const TOKEN_HEX_LEN: usize = TOKEN_BYTES * 2;
 
 /// Lowercase hex digits. Writing the table by hand (instead of `format!("{:02x}")` or a crate)
 /// makes "lowercase only" true by construction and keeps the dependency list short.
@@ -70,7 +70,8 @@ impl fmt::Display for AuthToken {
 
 /// True if `text` has the exact shape the sidecar accepts: 64 characters, each `0-9` or `a-f`.
 /// This mirrors `_TOKEN_PATTERN = [0-9a-f]{64}` in `sidecar/src/grc_sidecar/security/auth.py`.
-pub fn is_valid_token_shape(text: &str) -> bool {
+#[cfg(test)]
+pub(crate) fn is_valid_token_shape(text: &str) -> bool {
     text.len() == TOKEN_HEX_LEN && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
