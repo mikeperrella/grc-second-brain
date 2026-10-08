@@ -19,7 +19,11 @@ jobs:
     # skips code behind `sys.platform == "win32"` when it runs on Linux.
     # Windows minutes are billed at twice the Linux rate on a private repository, so this job
     # runs only the checks that need Windows. Lint, formatting and pip-audit stay in python.yml.
-    runs-on: windows-latest
+    # Pinned to the OS-versioned label, like ubuntu-24.04, so the runner changes only when we change
+    # this line. Since the June 2026 migration `windows-2025` serves Windows Server 2025 with VS 2026
+    # (run log 2026-10-08: "Image: windows-2025-vs2026"). `windows-2025-vs2026` itself is a validation
+    # label for that migration and could be retired, which would leave the job queued with no runner.
+    runs-on: windows-2025
     timeout-minutes: 20
     defaults:
       run:
