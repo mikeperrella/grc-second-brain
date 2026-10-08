@@ -8,9 +8,12 @@
 
 mod common;
 
+use std::cell::Cell;
+use std::time::{Duration, Instant};
+
 use common::{
-    check_venv_sidecar_shape, fake_spec, Reaper, Scratch, ShapeError, TestResult, SETTLE_SLACK,
-    TEST_HANDSHAKE,
+    check_venv_sidecar_shape, fake_spec, wait_for_venv_sidecar_shape, Reaper, Scratch, ShapeError,
+    ShapeWaitError, TestResult, SETTLE_SLACK, TEST_HANDSHAKE,
 };
 use desktop_lib::sidecar::job::{describe_processes, ProcessInfo};
 use desktop_lib::sidecar::supervisor::{SidecarState, Supervisor};
@@ -241,4 +244,152 @@ fn a_real_job_with_an_unexpected_extra_process_is_rejected() -> TestResult {
     );
     supervisor.shutdown()?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// The bounded retry (`wait_for_venv_sidecar_shape`). The process lists below are the ones seen on
+// the first CI run: the launcher, a console host and the interpreter, plus a `cmd.exe` that is a
+// child of the INTERPRETER (the `ver` command that the standard library's `platform` module runs).
+// ---------------------------------------------------------------------------------------------
+
+const INTERPRETER: u32 = 8540;
+
+fn clean_list() -> Vec<ProcessInfo> {
+    vec![
+        process(LAUNCHER, 7696, "python.exe"),
+        process(2688, LAUNCHER, "conhost.exe"),
+        process(INTERPRETER, LAUNCHER, "python.exe"),
+    ]
+}
+
+fn list_with_cmd() -> Vec<ProcessInfo> {
+    let mut list = clean_list();
+    list.push(process(8028, INTERPRETER, "cmd.exe"));
+    list
+}
+
+#[test]
+fn a_clean_job_passes_on_the_first_read() {
+    let reads = Cell::new(0usize);
+    let attempts = wait_for_venv_sidecar_shape(LAUNCHER, Duration::from_secs(5), || {
+        reads.set(reads.get() + 1);
+        Ok(clean_list())
+    });
+    assert!(matches!(attempts, Ok(1)), "{attempts:?}");
+    assert_eq!(reads.get(), 1);
+}
+
+#[test]
+fn a_short_lived_extra_process_is_tolerated_once_it_has_gone() {
+    // The first three reads still see the `cmd.exe`; the fourth does not.
+    let reads = Cell::new(0usize);
+    let attempts = wait_for_venv_sidecar_shape(LAUNCHER, Duration::from_secs(5), || {
+        reads.set(reads.get() + 1);
+        Ok(if reads.get() <= 3 {
+            list_with_cmd()
+        } else {
+            clean_list()
+        })
+    });
+    assert!(matches!(attempts, Ok(4)), "{attempts:?}");
+}
+
+#[test]
+fn an_extra_process_that_never_goes_away_fails_after_the_bound_and_is_reported() {
+    let bound = Duration::from_millis(300);
+    let reads = Cell::new(0usize);
+    let started = Instant::now();
+
+    let result = wait_for_venv_sidecar_shape(LAUNCHER, bound, || {
+        reads.set(reads.get() + 1);
+        Ok(list_with_cmd())
+    });
+
+    // It really waited for the bound, and tried more than once; a single read would not do.
+    assert!(
+        started.elapsed() >= bound,
+        "gave up after {:?}",
+        started.elapsed()
+    );
+    assert!(reads.get() >= 2, "only {} read(s)", reads.get());
+    let Err(error @ ShapeWaitError::NeverSettled { .. }) = result else {
+        panic!("expected NeverSettled, got {result:?}");
+    };
+    let ShapeWaitError::NeverSettled {
+        attempts,
+        last_error,
+        last_processes,
+    } = &error
+    else {
+        panic!("not NeverSettled");
+    };
+    assert_eq!(*attempts, reads.get());
+    assert_eq!(
+        *last_error,
+        ShapeError::NotAChildOfTheLauncher {
+            pid: 8028,
+            parent_pid: INTERPRETER
+        }
+    );
+    assert_eq!(*last_processes, list_with_cmd());
+    // The message names every process with its parent and image name.
+    let message = error.to_string();
+    for expected in [
+        "[pid 8028 cmd.exe parent 8540]",
+        "[pid 8540 python.exe parent 100]",
+        "[pid 2688 conhost.exe parent 100]",
+        "[pid 100 python.exe parent 7696]",
+    ] {
+        assert!(
+            message.contains(expected),
+            "{expected} missing from: {message}"
+        );
+    }
+}
+
+#[test]
+fn a_persistent_wrong_launcher_or_missing_interpreter_also_fails_after_the_bound() {
+    let only_launcher = || Ok(vec![process(LAUNCHER, 7696, "python.exe")]);
+    let result = wait_for_venv_sidecar_shape(LAUNCHER, Duration::from_millis(100), only_launcher);
+    assert!(
+        matches!(
+            result,
+            Err(ShapeWaitError::NeverSettled {
+                last_error: ShapeError::InterpreterMissing,
+                ..
+            })
+        ),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn a_failed_read_is_an_error_at_once_and_is_not_retried() {
+    let reads = Cell::new(0usize);
+    let result = wait_for_venv_sidecar_shape(LAUNCHER, Duration::from_secs(5), || {
+        reads.set(reads.get() + 1);
+        Err("the job could not be queried".into())
+    });
+    assert!(
+        matches!(result, Err(ShapeWaitError::ReadFailed(_))),
+        "{result:?}"
+    );
+    assert_eq!(reads.get(), 1);
+}
+
+#[test]
+fn a_zero_bound_still_reads_once() {
+    let reads = Cell::new(0usize);
+    let result = wait_for_venv_sidecar_shape(LAUNCHER, Duration::ZERO, || {
+        reads.set(reads.get() + 1);
+        Ok(list_with_cmd())
+    });
+    assert!(
+        matches!(
+            result,
+            Err(ShapeWaitError::NeverSettled { attempts: 1, .. })
+        ),
+        "{result:?}"
+    );
+    assert_eq!(reads.get(), 1);
 }

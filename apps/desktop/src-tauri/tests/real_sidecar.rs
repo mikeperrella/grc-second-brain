@@ -14,10 +14,12 @@ use std::net::{SocketAddr, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use common::{assert_exits, check_venv_sidecar_shape, Reaper, Scratch, TestResult};
+use common::{
+    assert_exits, wait_for_venv_sidecar_shape, Reaper, Scratch, TestResult, SHAPE_SETTLE_BOUND,
+};
 use desktop_lib::health::HealthReply;
 use desktop_lib::host::SidecarHost;
-use desktop_lib::sidecar::job::describe_processes;
+use desktop_lib::sidecar::job::{describe_processes, ProcessInfo};
 use desktop_lib::sidecar::supervisor::SidecarState;
 
 /// The sidecar's own handshake bound is 30 s; this adds slack for the wait on the state.
@@ -66,18 +68,37 @@ fn the_real_sidecar_starts_answers_health_and_stops() -> TestResult {
     // 2. The job holds exactly: the launcher (the process the host started), ONE `python.exe` child
     //    of it (the real interpreter) and AT MOST one `conhost.exe` child (the hidden console that
     //    `CREATE_NO_WINDOW` still allocates; allowed, not required). Identity, not a bare count.
-    let in_job = host.supervisor().job_process_ids()?;
-    for pid in &in_job {
-        reaper.add(*pid);
-    }
-    let described = describe_processes(&in_job)?;
-    assert_eq!(
-        described.len(),
-        in_job.len(),
-        "a process in the job is missing from the snapshot: {in_job:?} vs {described:?}"
-    );
-    check_venv_sidecar_shape(host.supervisor().child_pid(), &described)
-        .map_err(|error| format!("unexpected sidecar processes: {error:?} in {described:?}"))?;
+    //
+    //    The job is read repeatedly for up to SHAPE_SETTLE_BOUND: while uvicorn starts, the
+    //    interpreter runs `cmd.exe /c ver` through the standard library's `platform` module
+    //    (ADR-004), and on a slow runner that short-lived child can still be alive when the ready
+    //    line arrives (it was, on the first CI run). Anything still wrong at the end of the bound
+    //    fails, and the failure lists every process with its parent and image name. Every pid seen
+    //    in any read is remembered, so step 5 checks that all of them exited.
+    let launcher = host.supervisor().child_pid();
+    let mut seen: Vec<u32> = Vec::new();
+    wait_for_venv_sidecar_shape(launcher, SHAPE_SETTLE_BOUND, || {
+        let in_job = host.supervisor().job_process_ids()?;
+        for pid in &in_job {
+            if !seen.contains(pid) {
+                seen.push(*pid);
+                reaper.add(*pid);
+            }
+        }
+        let mut described = describe_processes(&in_job)?;
+        // A process that is in the job but missing from the snapshot (it exited between the two
+        // calls) is kept in the list under a placeholder name, so it cannot hide from the check.
+        for pid in &in_job {
+            if !described.iter().any(|process| process.pid == *pid) {
+                described.push(ProcessInfo {
+                    pid: *pid,
+                    parent_pid: 0,
+                    exe: "<not in snapshot>".to_owned(),
+                });
+            }
+        }
+        Ok(described)
+    })?;
 
     // 3. The host's client, with the token it generated, gets a valid health answer.
     let reply = tauri::async_runtime::block_on(host.health())?;
@@ -104,7 +125,7 @@ fn the_real_sidecar_starts_answers_health_and_stops() -> TestResult {
     host.supervisor().shutdown()?;
     assert_eq!(host.supervisor().state()?, SidecarState::Stopped);
     assert_eq!(host.supervisor().job_process_ids()?, Vec::<u32>::new());
-    for pid in &in_job {
+    for pid in &seen {
         assert_exits(*pid, "a sidecar process")?;
     }
     let deadline = Instant::now() + PORT_CLOSED_BOUND;

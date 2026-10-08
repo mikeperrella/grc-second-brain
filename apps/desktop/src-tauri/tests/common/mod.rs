@@ -14,7 +14,8 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use desktop_lib::child_env::build_child_env;
 use desktop_lib::sidecar::job::{
@@ -217,5 +218,90 @@ pub fn check_venv_sidecar_shape(
         (1, 0 | 1) => Ok(()),
         (count, _) if count > 1 => Err(ShapeError::TooManyInterpreters { count }),
         (_, count) => Err(ShapeError::TooManyConsoleHosts { count }),
+    }
+}
+
+/// How long the sidecar's job may take to settle into the expected shape. The real sidecar's
+/// interpreter starts a short-lived `cmd.exe` through the standard library's `platform` module
+/// while uvicorn starts (ADR-004), and a slow runner can still have it alive when the ready line
+/// arrives. A process that is still there after this bound is not transient.
+pub const SHAPE_SETTLE_BOUND: Duration = Duration::from_secs(10);
+
+/// Pause between two reads of the job. This paces a bounded poll on a real condition (there is no
+/// event to wait on for "this child has exited"); it is not a guess about timing.
+const SHAPE_POLL_PAUSE: Duration = Duration::from_millis(25);
+
+/// The sidecar's processes never took the expected shape within the bound.
+#[derive(Debug)]
+pub enum ShapeWaitError {
+    /// The job or the process snapshot could not be read at all. Not retried.
+    ReadFailed(String),
+    /// Still the wrong shape at the end of the bound. Carries the LAST list, with every process's
+    /// id, parent and image name, so a failure can be read without a second run.
+    NeverSettled {
+        attempts: usize,
+        last_error: ShapeError,
+        last_processes: Vec<ProcessInfo>,
+    },
+}
+
+impl std::fmt::Display for ShapeWaitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ReadFailed(reason) => {
+                write!(f, "could not read the sidecar's processes: {reason}")
+            }
+            Self::NeverSettled {
+                attempts,
+                last_error,
+                last_processes,
+            } => {
+                write!(
+                    f,
+                    "the sidecar's processes were not the expected shape after {attempts} reads \
+                     ({last_error:?}); last list:"
+                )?;
+                for process in last_processes {
+                    write!(
+                        f,
+                        " [pid {} {} parent {}]",
+                        process.pid, process.exe, process.parent_pid
+                    )?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::error::Error for ShapeWaitError {}
+
+/// Read the job's processes with `read` until [`check_venv_sidecar_shape`] accepts them or `bound`
+/// has passed, and return how many reads that took. At least one read always happens. A read that
+/// fails is an error at once; a read that gives the wrong shape is retried, so a short-lived extra
+/// process is tolerated, while one that is still there at the end of the bound fails.
+pub fn wait_for_venv_sidecar_shape(
+    launcher_pid: u32,
+    bound: Duration,
+    mut read: impl FnMut() -> Result<Vec<ProcessInfo>, Box<dyn Error>>,
+) -> Result<usize, ShapeWaitError> {
+    let deadline = Instant::now() + bound;
+    let mut attempts = 0;
+    loop {
+        let processes = read().map_err(|error| ShapeWaitError::ReadFailed(error.to_string()))?;
+        attempts += 1;
+        match check_venv_sidecar_shape(launcher_pid, &processes) {
+            Ok(()) => return Ok(attempts),
+            Err(last_error) => {
+                if Instant::now() >= deadline {
+                    return Err(ShapeWaitError::NeverSettled {
+                        attempts,
+                        last_error,
+                        last_processes: processes,
+                    });
+                }
+            }
+        }
+        thread::sleep(SHAPE_POLL_PAUSE);
     }
 }
