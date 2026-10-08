@@ -7,6 +7,9 @@ edition = "2021"
 # Never published to crates.io. cargo-deny (deny.toml, [licenses.private]) relies on this to skip
 # the license check for this crate, whose license is decided at M9.
 publish = false
+# Two binaries live in this package (the app and the test-only fake sidecar). `cargo run` and the
+# Tauri CLI must always start the app. tests/default_run.rs fails if this line is removed (ADR-004).
+default-run = "desktop"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -16,6 +19,13 @@ publish = false
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# Test-only stand-in for the Python sidecar (M2 plan section 12). It speaks the ready-line protocol
+# and misbehaves on request so the supervisor can be tested without Python. It must never ship:
+# M8 checks the installer for it (CLAUDE.md M8 row, ADR-004).
+[[bin]]
+name = "fake_sidecar"
+path = "src/bin/fake_sidecar.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -28,6 +38,23 @@ serde_json = "1"
 # Exact pins (M2 plan section 11). Both are already in the Windows dependency graph through tauri.
 getrandom = "=0.3.4"
 thiserror = "=2.0.21"
+# M2b (M2 plan section 11): logging facade only, no sink. Already in the graph through tauri.
+log = "=0.4.34"
+
+# M2b: Job Object, suspended-spawn thread resume and the system directory (ADR-004). Windows is the
+# only supported target; sidecar/mod.rs refuses to compile elsewhere. Already in the graph through
+# tauri/tao/wry at this exact version.
+[target.'cfg(windows)'.dependencies.windows]
+version = "=0.62.2"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+]
 
 # Crate-wide lints (M2 plan section 2). They apply to every target: lib, bins, tests, build script.
 [lints.rust]
@@ -42,6 +69,9 @@ undocumented_unsafe_blocks = "deny"
 # clippy.toml allows both inside tests.
 unwrap_used = "deny"
 expect_used = "deny"
+# `dbg!` Debug-prints arbitrary values (a Command's environment would include the token). The
+# Semgrep rule grc-rs-dbg-macro says the same thing; clippy enforces it on every build.
+dbg_macro = "deny"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

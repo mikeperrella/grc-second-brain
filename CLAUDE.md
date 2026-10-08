@@ -219,7 +219,7 @@ pnpm test
 | M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, SSE progress |
 | M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view |
 | M7 | Policy-to-code | Structured plan, patch generation, static validation, approval gate |
-| M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5 |
+| M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
 
 **Current milestone: M2.**

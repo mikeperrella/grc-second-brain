@@ -31,6 +31,8 @@ output/
 .env
 .env.*
 .claude/settings.local.json
+# Git worktrees created by background Claude Code jobs (each is a full checkout)
+.claude/worktrees/
 
 # OS / editor
 .DS_Store
