@@ -43,7 +43,8 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::System::IO::{CreateIoCompletionPort, GetQueuedCompletionStatus, OVERLAPPED};
 
-/// How long [`Job::wait_until_empty`] is given by the supervisor after a termination.
+/// How long [`Job::wait_until_empty`] is given by the supervisor after a termination. `pub`:
+/// tests/job_object.rs uses it as the bound for its own waits.
 pub const EMPTY_WAIT_BOUND: Duration = Duration::from_secs(5);
 
 /// Longest single wait on the completion port. The port only wakes the loop early; the
@@ -52,7 +53,7 @@ pub const EMPTY_WAIT_BOUND: Duration = Duration::from_secs(5);
 const PORT_SLICE: Duration = Duration::from_millis(100);
 
 /// Why a job operation failed. Unit variants: no OS error text, no handle values, nothing that
-/// could carry a secret.
+/// could carry a secret. `pub` because it appears in the signatures of the `pub` items below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum JobError {
     #[error("the job object could not be created")]
@@ -109,7 +110,8 @@ fn millis(duration: Duration) -> u32 {
     u32::try_from(duration.as_millis()).unwrap_or(u32::MAX)
 }
 
-/// A Job Object plus the completion port used to wake [`Job::wait_until_empty`] early.
+/// A Job Object plus the completion port used to wake [`Job::wait_until_empty`] early. `pub`:
+/// tests/job_object.rs builds jobs directly; the app only reaches one through the supervisor.
 pub struct Job {
     job: OwnedHandle,
     port: OwnedHandle,
@@ -200,7 +202,8 @@ impl Job {
         result.map_err(|_| JobError::AssignFailed)
     }
 
-    /// Terminate every process in the job (exit code 1). Succeeds on an empty job.
+    /// Terminate every process in the job (exit code 1). Succeeds on an empty job. `pub`:
+    /// tests/job_object.rs terminates a job it built itself.
     pub fn terminate(&self) -> Result<(), JobError> {
         // SAFETY: `self.job` is a valid job handle owned by `self`; the other argument is a plain
         // exit code. No pointer is involved.
@@ -208,7 +211,8 @@ impl Job {
         result.map_err(|_| JobError::TerminateFailed)
     }
 
-    /// Number of processes currently in the job (the authoritative "is it empty" answer).
+    /// Number of processes currently in the job (the authoritative "is it empty" answer). `pub`:
+    /// tests/job_object.rs reads it directly.
     pub fn active_processes(&self) -> Result<u32, JobError> {
         let info: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = self.query()?;
         Ok(info.ActiveProcesses)
@@ -220,7 +224,7 @@ impl Job {
     /// loop waits on the completion port for a message, but never longer than [`PORT_SLICE`] or
     /// the time that remains, and asks again whatever the wait returned: a message, a timeout and
     /// an error all mean "ask again". A lost message therefore costs one slice, never a hang or a
-    /// wrong answer, and there is no `sleep`.
+    /// wrong answer, and there is no `sleep`. `pub`: tests/job_object.rs waits on its own jobs.
     pub fn wait_until_empty(&self, bound: Duration) -> Result<(), JobError> {
         let deadline = Instant::now() + bound;
         loop {
@@ -250,8 +254,8 @@ impl Job {
         let _ = result;
     }
 
-    /// Process ids currently in the job. Used by tests and by M2c's "launcher plus real
-    /// interpreter" check.
+    /// Process ids currently in the job. `pub`: the supervisor exposes it and the tests (fake
+    /// sidecar, and tests/real_sidecar.rs for the "launcher plus real interpreter" check) read it.
     pub fn process_ids(&self) -> Result<Vec<u32>, JobError> {
         // Layout of JOBOBJECT_BASIC_PROCESS_ID_LIST on 64-bit Windows: two u32 counts (8 bytes)
         // followed by the ids as pointer-sized values. A `Vec<usize>` is correctly aligned for it.
@@ -309,7 +313,7 @@ impl Job {
 // process and handle operations they need live here as safe functions.
 // ---------------------------------------------------------------------------------------------
 
-/// Result of [`wait_for_process_exit`].
+/// Result of [`wait_for_process_exit`]. `pub` because that test helper returns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessWait {
     Exited,
