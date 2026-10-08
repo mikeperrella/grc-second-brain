@@ -74,7 +74,7 @@ Nine GitHub Actions workflows live in `.github/workflows/`. Eight run on every p
 | `sast.yml` | `semgrep` | Our air-gap rules and their own tests, plus registry rulesets for Python, TypeScript and Rust. | Linux | about 40 s | Yes |
 | `sast.yml` | `bandit` | Python security lint (medium and above). | Linux | about 10 s | Yes |
 | `airgap.yml` | `airgap` | The sidecar test suite passes in a hardened container with no network, and the canary proves the container really is isolated. | Linux | about 45 s | Yes |
-| `rust.yml` | `rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (no Rust tests exist yet). | Windows | about 7 min on the first run (nothing is cached) | Yes |
+| `rust.yml` | `rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, then the real-sidecar test (`cargo test -- --ignored`) against a venv the job builds. | Windows (`windows-2025`) | about 7 min on the first run before M2c (nothing is cached); not re-measured since the reqwest and real-sidecar steps were added | Yes |
 | `rust.yml` | `deny` | `cargo deny`: advisories, licenses, bans, sources (Windows dependency graph). | Linux | about 45 s | Yes |
 | `frontend.yml` | `frontend` | ESLint (`no-explicit-any` is an error), `tsc`, vitest (no frontend tests exist yet), `pnpm audit`. | Linux | about 25 s | Yes |
 | `audit.yml` | `audit-pip`, `audit-pnpm`, `audit-cargo` | Weekly (Mondays 05:23 UTC) and on demand: `pip-audit`, `pnpm audit`, `cargo deny check advisories`, so a new advisory against an unchanged dependency shows up without a pull request. | Linux | not measured yet (first run is on the pull request that adds it) | No: it is scheduled, so it reports new advisories instead of gating a change |
@@ -179,11 +179,11 @@ The base image is pinned by digest. Dependabot's `docker` entry proposes digest 
 
 ### Rust checks and cargo-deny
 
-`.github/workflows/rust.yml` has two jobs. The Rust code is still the Tauri template, which has **no Rust tests yet**: `cargo test` reports "0 passed" until real tests arrive with the host code in M2, so a green `rust` job does not mean tests exist.
+`.github/workflows/rust.yml` has two jobs. The host code (M2a to M2c) has unit tests, Job Object and supervisor tests against a fake sidecar, security-configuration tests, and one test that starts the real Python sidecar. That last test is `#[ignore]`d, so a plain `cargo test` skips it and shows it as ignored; the `rust` job runs it in its own steps (see below). A green `rust` job therefore means it ran, not that it was skipped: the step requires at least one passed test.
 
 | Job | Runner | What it does |
 |---|---|---|
-| `rust` | Windows | `cargo fmt --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `cargo test --locked`, with the compiler pinned to 1.99.0 by `apps/desktop/src-tauri/rust-toolchain.toml` (bump it by hand, in its own commit). |
+| `rust` | Windows | `cargo fmt --check`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `cargo test --locked`, then `setup-python` 3.11, a venv at `sidecar/.venv` with the runtime dependencies from `constraints.txt`, and `cargo test --locked --test real_sidecar -- --ignored` (with `set -o pipefail` and a check for at least one passed test). The compiler is pinned to 1.99.0 by `apps/desktop/src-tauri/rust-toolchain.toml` (bump it by hand, in its own commit), and the runner to `windows-2025`. |
 | `deny` | Linux | `cargo deny check` with `apps/desktop/src-tauri/deny.toml`: advisories, licenses, bans, sources. Nothing is compiled. |
 
 **Run `cargo deny` locally** (from `apps/desktop/src-tauri/`). The first command installs the tool on your machine and takes a few minutes; success is `advisories ok, bans ok, licenses ok, sources ok` (duplicate-version warnings are expected):
@@ -198,6 +198,14 @@ cargo deny check
 **Licenses.** The allowlist is MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, plus Unicode-3.0 and Zlib (permissive licenses used by Tauri's dependencies). MPL-2.0 is allowed per crate only (five crates listed in `deny.toml`, used unmodified), so a new MPL-2.0 crate fails CI until someone reviews it. The `desktop` crate has no license yet (the project license is decided at M9) and is marked `publish = false` so `cargo deny` skips it. Third-party license notices must ship with the installer (M8).
 
 **Duplicate crate versions** are a warning, not a failure: Tauri's own tree contains duplicates (for example `syn`, `base64`, `windows-sys`) that we cannot fix.
+
+**Run the real-sidecar test locally.** It starts the real Python sidecar through the same code the app uses (`SidecarHost::start_dev`), so it needs the dev venv. From `apps/desktop/src-tauri/`:
+
+```powershell
+cargo test --test real_sidecar -- --ignored
+```
+
+Success looks like `test the_real_sidecar_starts_answers_health_and_stops ... ok` and `test result: ok. 1 passed; 0 failed`, in a few seconds. It checks that the sidecar starts from the venv interpreter, that its job holds exactly the launcher, one `python.exe` child and at most one `conhost.exe` child, that `/health` answers through the host's client, that the same request without the auth header gets `401` with an empty body, and that stopping it leaves no process and a closed port. If it fails with `NotInstalled`, the venv is missing: from `sidecar/` run `python -m venv .venv` (Python 3.11), then `.venv\Scripts\python -m pip install -c constraints.txt -e .`. Without `--ignored` the test is listed as ignored, which is not a pass.
 
 ### Frontend checks (lint, typecheck, test, audit)
 
@@ -214,11 +222,11 @@ pnpm audit --audit-level high
 
 - **`pnpm lint`** runs ESLint with `@eslint/js` and `typescript-eslint` recommended rules. `@typescript-eslint/no-explicit-any` is an error. No rule is switched off and nothing is excluded: the script names the files to check (`src`, `vite.config.ts`, `eslint.config.js`).
 - **`pnpm typecheck`** is `tsc --noEmit`. `tsconfig.json` has `strict`, `noImplicitAny` and `noUncheckedIndexedAccess` (CLAUDE.md Section 7), so reading `list[i]` gives `T | undefined` and has to be checked, never silenced with `!` or `as`.
-- **There are no frontend tests until M2/M6.** `pnpm test` is `vitest run --passWithNoTests`, which exits 0 when there are no test files, as with the Tauri template today. The CI job writes the number of tests that ran into its summary, so "0" is visible rather than hidden; real tests arrive with the IPC layer (M2) and the UI (M6).
+- **There are no frontend tests yet.** `pnpm test` is `vitest run --passWithNoTests`, which exits 0 when there are no test files. The window is a static page until M2d, which adds the Zod schema for the `sidecar_health` payload and the first Vitest tests; the UI tests arrive in M6. The CI job writes the number of tests that ran into its summary, so "0" is visible rather than hidden.
 - **`pnpm audit`** sends the package names and versions in `pnpm-lock.yaml` to the npm audit endpoint and fails on high or critical advisories.
 - **Install scripts:** pnpm does not run dependency install scripts unless they are approved, and none are approved here. If `pnpm install` ever reports ignored build scripts, treat it as something to review, not to approve by reflex.
 
-Known template code that no rule flags yet and that is deliberately left alone: `src/main.tsx` uses `document.getElementById("root") as HTMLElement`, and `src/App.tsx` uses the result of `invoke(...)` without validating it. CLAUDE.md requires every payload that crosses the Tauri IPC boundary to be parsed with Zod; that arrives with the IPC layer in M2 (Zod is not installed yet).
+Known template code that no rule flags yet and that is deliberately left alone: `src/main.tsx` uses `document.getElementById("root") as HTMLElement`. M2d replaces it with a checked `requireRoot`. `src/App.tsx` no longer calls `invoke(...)` (it is a static page), so there is no unvalidated IPC payload today. CLAUDE.md requires every payload that crosses the Tauri IPC boundary to be parsed with Zod; that arrives with the first command the window calls, in M2d.
 
 ### Decisions and where each is recorded
 
@@ -229,10 +237,13 @@ Known template code that no rule flags yet and that is deliberately left alone: 
 | The Semgrep registry rulesets use the Semgrep Rules License (fine for internal CI, restrictive for redistribution). Revisit before the public release and for the BizAI commercial version. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (license note), and the M9 row in CLAUDE.md Section 9. |
 | Tests are not scanned by Semgrep or Bandit. Ruff's `S` rules and gitleaks cover them. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (scope decision) |
 | Bandit runs at `-ll`, so `shell=True` with a literal command (rated Low) is not a Bandit failure. The Semgrep rule `grc-py-subprocess-shell-true` and ruff `S602` gate it instead; both were proven red in step 10. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (Bandit and `shell=True`) |
-| There are no frontend tests and no Rust tests until M2/M6. The `frontend` and `rust` jobs pass with zero tests, and the frontend job prints the count. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) and [Rust checks](#rust-checks-and-cargo-deny) |
-| Template code with `as HTMLElement` and an unvalidated `invoke(...)` result stays until Zod arrives with the IPC layer in M2. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) (last paragraph) |
+| Rust tests exist (unit, fake sidecar, Job Object, security configuration, and the `#[ignore]`d real-sidecar test that CI runs explicitly). There are no frontend tests until M2d; the `frontend` job passes with zero and prints the count. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) and [Rust checks](#rust-checks-and-cargo-deny) |
+| The `as HTMLElement` cast in `src/main.tsx` stays until M2d (`requireRoot`). `src/App.tsx` is static and calls no command, so no IPC payload is unvalidated. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) (last paragraph) |
 | Air-gap job: a hardened container with `--network none`, and `-p no:cacheprovider` as the only adjustment the flags needed. | [Air-gap proof](#air-gap-proof-the-sidecar-tests-with-no-network) |
 | MPL-2.0 is allowed per crate, never globally. The `desktop` crate is `publish = false` so `cargo deny` skips its missing license. Duplicate crate versions only warn. | [Rust checks](#rust-checks-and-cargo-deny) and `apps/desktop/src-tauri/deny.toml` |
+| Windows runners are pinned to `windows-2025` (like the Linux jobs to `ubuntu-24.04`), so the CI environment changes only when we change the label. `windows-2025-vs2026` was not used: it is a validation label for the VS 2026 migration and could be retired. | `rust.yml` and `windows.yml` (comments on `runs-on`) |
+| The webview CSP is the shipped one only: `pnpm tauri dev` serves the UI from the Vite dev server, where Tauri injects no CSP, so there is no `devCsp`. The CSP is verified in a debug build of the bundled app, with probes on port 65000 (port 1 is on Chromium's blocked list and never reaches CSP). One capability, one command. | [ADR-005](adr/005-webview-csp-and-capabilities.md) |
+| The real sidecar's job holds three processes in dev (launcher, interpreter, a `conhost.exe`); the check is on identity, not a count. `DETACHED_PROCESS` was not adopted. | [ADR-004](adr/004-host-sidecar-lifecycle.md) (Job Object) |
 | No dependency cache in CI (no `actions/cache`, no setup-node cache): one less thing to poison, and the installs are small. | A comment in `frontend.yml`. The other workflows install without any cache action too. |
 
 ## Run the sidecar by hand (and check it only listens on loopback)
