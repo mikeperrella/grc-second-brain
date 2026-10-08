@@ -135,6 +135,22 @@ mod tests {
     }
 
     #[test]
+    fn ready_rejects_a_json_array() {
+        // serde fills a struct from a JSON array too (`["ready",5000]` as event and port), so
+        // nothing about the derived struct alone rejects it. The leading `{` and trailing `}`
+        // check in `parse_ready_line` does, and this test pins that.
+        for line in [
+            "[\"ready\",5000]\n",
+            "[\"ready\",5000]\r\n",
+            "[\"ready\",5000,1]\n",
+            "[\"ready\"]\n",
+            "[]\n",
+        ] {
+            assert_eq!(parse(line), Err(ReadyError::NotJson), "{line:?}");
+        }
+    }
+
+    #[test]
     fn ready_accepts_crlf() {
         // The real bytes on a Windows pipe (verified): `...}\r\n`.
         assert_eq!(
