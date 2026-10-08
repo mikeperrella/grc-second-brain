@@ -1,6 +1,8 @@
 // M2a: pure logic for the host/sidecar channel. These modules are `pub` only until M2c wires
 // them into the app; the ones that no integration test needs go back to `pub(crate)` then.
 pub mod child_env;
+// M2c: the loopback health client.
+pub mod health;
 pub mod ready;
 // M2b: process side (Job Object, suspended spawn, supervisor). Also `pub` until M2c wires it in.
 pub mod sidecar;

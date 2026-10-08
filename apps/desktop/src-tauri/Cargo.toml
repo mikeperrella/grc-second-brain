@@ -40,6 +40,11 @@ getrandom = "=0.3.4"
 thiserror = "=2.0.21"
 # M2b (M2 plan section 11): logging facade only, no sink. Already in the graph through tauri.
 log = "=0.4.34"
+# M2c (M2 plan section 7), approved after the cargo tree and cargo deny review: the loopback health
+# client. No default features: no TLS, no `json`, no `stream`, no system-proxy lookup. Its tree is
+# already in the lockfile (Tauri pulls it for other targets); on Windows it adds hyper, tokio, tower
+# and friends, all MIT or Apache-2.0. The client is built only in health.rs, with `.no_proxy()`.
+reqwest = { version = "=0.13.5", default-features = false }
 
 # M2b: Job Object, suspended-spawn thread resume and the system directory (ADR-004). Windows is the
 # only supported target; sidecar/mod.rs refuses to compile elsewhere. Already in the graph through

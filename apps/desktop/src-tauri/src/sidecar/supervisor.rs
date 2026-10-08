@@ -115,8 +115,10 @@ pub enum SidecarState {
 }
 
 /// Why the sidecar failed. `Copy` with unit variants plus one integer exit code: nothing here can
-/// carry text, a path or the token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// carry text, a path or the token. `Serialize` because the health command reports it to the
+/// window as `{"kind":"timeout"}` (snake_case names, integers only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FailureKind {
     Timeout,
     EofBeforeReady,
