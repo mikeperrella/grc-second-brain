@@ -17,6 +17,7 @@
 //! | `exit3`             | exits with code 3                                                  |
 //! | `late-ready`        | waits 1.5 s, then prints the ready line, holds                     |
 //! | `ready`             | prints the ready line, holds                                       |
+//! | `ready-on <port>`   | prints the ready line announcing `<port>`, holds                   |
 //! | `ready-then-output` | prints the ready line, then more stdout, holds                     |
 //! | `oversized`         | prints 2 KiB without a newline, holds                              |
 //! | `two-objects`       | prints two ready objects on one line, holds                        |
@@ -36,7 +37,11 @@ const PORT: u16 = 40123;
 
 /// The real sidecar's line on Windows ends in `\r\n`, so the fake's does too.
 fn ready_line() -> String {
-    format!("{{\"event\":\"ready\",\"port\":{PORT}}}\r\n")
+    ready_line_for(PORT)
+}
+
+fn ready_line_for(port: u16) -> String {
+    format!("{{\"event\":\"ready\",\"port\":{port}}}\r\n")
 }
 
 fn write_stdout(text: &str) -> io::Result<()> {
@@ -71,6 +76,14 @@ fn run(mode: &str, file: Option<&str>) -> io::Result<ExitCode> {
         }
         "ready" => {
             write_stdout(&ready_line())?;
+            hold()
+        }
+        "ready-on" => {
+            // The test picks the port (and decides whether anything listens on it).
+            let port: u16 = file
+                .and_then(|text| text.parse().ok())
+                .ok_or_else(|| io::Error::other("ready-on needs a port"))?;
+            write_stdout(&ready_line_for(port))?;
             hold()
         }
         "ready-then-output" => {

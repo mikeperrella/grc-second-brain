@@ -21,7 +21,7 @@ use std::num::NonZeroU16;
 use serde::Deserialize;
 
 /// Largest accepted ready line, terminator included. The real line is about 32 bytes.
-pub const MAX_READY_LINE: usize = 1024;
+pub(crate) const MAX_READY_LINE: usize = 1024;
 
 /// Why the ready line was rejected. Unit variants only: no raw sidecar output is ever carried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -55,7 +55,8 @@ struct Ready {
 }
 
 /// Read one line (up to and including `\n`) and parse it. At most `MAX_READY_LINE + 1` bytes are
-/// taken from `reader`; anything the reader buffered beyond the line stays in the reader.
+/// taken from `reader`; anything the reader buffered beyond the line stays in the reader. `pub`
+/// because tests/job_object.rs reads the fake sidecar's ready line with it.
 pub fn read_ready_line<R: BufRead>(reader: &mut R) -> Result<NonZeroU16, ReadyError> {
     let limit = u64::try_from(MAX_READY_LINE + 1).unwrap_or(u64::MAX);
     let mut limited = reader.by_ref().take(limit);
@@ -75,7 +76,7 @@ pub fn read_ready_line<R: BufRead>(reader: &mut R) -> Result<NonZeroU16, ReadyEr
 }
 
 /// Parse a ready line that still carries its terminator (`\n` or `\r\n`).
-pub fn parse_ready_line(raw: &[u8]) -> Result<NonZeroU16, ReadyError> {
+pub(crate) fn parse_ready_line(raw: &[u8]) -> Result<NonZeroU16, ReadyError> {
     let payload = raw
         .strip_suffix(b"\r\n")
         .or_else(|| raw.strip_suffix(b"\n"))

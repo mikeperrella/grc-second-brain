@@ -42,7 +42,7 @@ impl LoopbackEndpoint {
         NonZeroU16::new(port).map(Self)
     }
 
-    pub fn from_port(port: NonZeroU16) -> Self {
+    pub(crate) fn from_port(port: NonZeroU16) -> Self {
         Self(port)
     }
 }

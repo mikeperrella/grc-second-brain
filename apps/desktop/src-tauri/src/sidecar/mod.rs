@@ -8,8 +8,9 @@
 //!   allowed to use `unsafe`.
 //! * [`supervisor`]: the handshake, the state machine and shutdown. No `unsafe`, no Tauri types.
 //!
-//! These modules are `pub` only until M2c wires them into the app; the ones that no integration
-//! test needs go back to `pub(crate)` then.
+//! The modules are `pub` because integration tests in `tests/` use them. Inside them, an item is
+//! `pub` only if such a test (or the signature of such an item) needs it; everything else is
+//! `pub(crate)`.
 
 #[cfg(not(windows))]
 compile_error!(

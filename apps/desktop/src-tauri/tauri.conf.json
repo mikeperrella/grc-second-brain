@@ -12,7 +12,8 @@
   "app": {
     "windows": [
       {
-        "title": "desktop",
+        "label": "main",
+        "title": "GRC Second Brain",
         "width": 800,
         "height": 600
       }

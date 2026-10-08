@@ -1,30 +1,75 @@
-// M2a: pure logic for the host/sidecar channel. These modules are `pub` only until M2c wires
-// them into the app; the ones that no integration test needs go back to `pub(crate)` then.
+// The host of the GRC Second Brain desktop app: it starts the Python sidecar, keeps it confined in
+// a Job Object, and answers the window's one question (`sidecar_health`). Windows only
+// (sidecar/mod.rs refuses to compile elsewhere).
+//
+// The modules are `pub` because integration tests in tests/ use them; within them, only the items
+// those tests need are `pub` (each says why), the rest are `pub(crate)`.
+pub mod app_commands;
 pub mod child_env;
-// M2c: the loopback health client.
+mod commands;
 pub mod health;
+pub mod host;
 pub mod ready;
-// M2b: process side (Job Object, suspended spawn, supervisor). Also `pub` until M2c wires it in.
 pub mod sidecar;
 pub mod token;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+use tauri::{Manager, RunEvent, WindowEvent};
+
+use crate::host::{HostState, SidecarHost};
+use crate::sidecar::supervisor::FailureKind;
+
+/// Build and run the app. Returns when the last window is closed.
+///
+/// Sidecar lifecycle: `setup` starts it on a background thread, so the window never waits for it;
+/// closing the window and the app's exit both call `HostState::shutdown`. Behind those two sit
+/// `Drop` of the supervisor and the Job Object's kill-on-close, so the sidecar dies with the host
+/// even if the host is killed (ADR-004).
+pub fn run() -> Result<(), tauri::Error> {
+    let app = tauri::Builder::default()
+        .manage(HostState::default())
+        .invoke_handler(tauri::generate_handler![commands::sidecar_health])
+        .setup(|app| {
+            start_sidecar_in_background(app.handle());
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::Destroyed = event {
+                window.app_handle().state::<HostState>().shutdown();
+            }
+        })
+        .build(tauri::generate_context!())?;
+
+    app.run(|handle, event| {
+        if let RunEvent::Exit = event {
+            handle.state::<HostState>().shutdown();
+        }
+    });
+    Ok(())
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-// `expect`, not `allow`: once M2c removes the `.expect(..)` below, rustc reports an unfulfilled
-// lint expectation (an error under `-D warnings`), so this attribute cannot be left behind.
-#[expect(
-    clippy::expect_used,
-    reason = "template code; M2c replaces run() and removes this attribute"
-)]
-pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+/// Start the sidecar on its own thread and record the outcome in the managed state. Every failure,
+/// including "no log directory" and "could not start a thread", becomes a state the health command
+/// reports; none of them stops the window from opening.
+fn start_sidecar_in_background(handle: &tauri::AppHandle) {
+    let state_handle = handle.clone();
+    let log_dir = match handle.path().app_log_dir() {
+        Ok(dir) => dir,
+        Err(_) => {
+            handle
+                .state::<HostState>()
+                .finish_start(Err(FailureKind::LogDirUnavailable));
+            return;
+        }
+    };
+    let spawned = std::thread::Builder::new()
+        .name("sidecar-start".to_owned())
+        .spawn(move || {
+            let result = SidecarHost::start_dev(&log_dir);
+            state_handle.state::<HostState>().finish_start(result);
+        });
+    if spawned.is_err() {
+        handle
+            .state::<HostState>()
+            .finish_start(Err(FailureKind::Internal));
+    }
 }

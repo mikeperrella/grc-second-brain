@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 /// The arguments the sidecar is started with: isolated mode, run the package as a module.
-pub const SIDECAR_ARGS: [&str; 3] = ["-I", "-m", "grc_sidecar"];
+pub(crate) const SIDECAR_ARGS: [&str; 3] = ["-I", "-m", "grc_sidecar"];
 
 /// Why no program could be chosen. Unit variants: nothing here echoes a path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
