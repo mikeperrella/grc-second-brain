@@ -28,6 +28,9 @@ use windows::core::{BOOL, PCWSTR};
 use windows::Win32::Foundation::{
     ERROR_INVALID_PARAMETER, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob,
     JobObjectAssociateCompletionPortInformation, JobObjectBasicAccountingInformation,
@@ -394,4 +397,91 @@ pub fn current_process_is_in_a_job() -> Result<bool, JobError> {
     let result = unsafe { IsProcessInJob(GetCurrentProcess(), None, &mut in_job) }; // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- IsProcessInJob; SAFETY above, ADR-004
     result.map_err(|_| JobError::QueryFailed)?;
     Ok(in_job.as_bool())
+}
+
+/// What a process snapshot knows about one process. `pub` because [`describe_processes`] returns
+/// it. The image name is the short file name only (`python.exe`), never a path, so it is safe to
+/// print in a test failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub parent_pid: u32,
+    pub exe: String,
+}
+
+/// The text of a null-terminated UTF-16 buffer such as `PROCESSENTRY32W::szExeFile`. Without a
+/// terminator the whole buffer is used.
+fn wide_to_string(units: &[u16]) -> String {
+    let end = units
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(units.len());
+    String::from_utf16_lossy(units.get(..end).unwrap_or(units))
+}
+
+/// Id, parent id and image name of each process in `pids`, from one process snapshot. A process
+/// that is not in the snapshot (it exited, or the enumeration ended early) is simply absent, so a
+/// caller that needs every one compares the lengths. `pub`: tests/real_sidecar.rs and
+/// tests/sidecar_shape.rs use it to check WHICH processes the sidecar's job holds, not only how
+/// many.
+pub fn describe_processes(pids: &[u32]) -> Result<Vec<ProcessInfo>, JobError> {
+    // SAFETY: no pointer is involved; the arguments are a flag and 0 ("all processes"), which is
+    // what TH32CS_SNAPPROCESS requires.
+    let created = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }; // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- CreateToolhelp32Snapshot (processes); SAFETY above, ADR-004
+    let snapshot = created
+        .ok()
+        .and_then(own_handle)
+        .ok_or(JobError::QueryFailed)?;
+    let handle = raw(&snapshot);
+
+    let entry_size =
+        u32::try_from(size_of::<PROCESSENTRY32W>()).map_err(|_| JobError::QueryFailed)?;
+    let mut entry = PROCESSENTRY32W {
+        dwSize: entry_size,
+        ..PROCESSENTRY32W::default()
+    };
+    let mut found = Vec::new();
+
+    // SAFETY: `handle` stays valid while `snapshot` lives (neither moved nor dropped before the end
+    // of this function). `entry` is a live, writable `PROCESSENTRY32W` whose `dwSize` is set to its
+    // size, as the API requires before the first call.
+    let mut more = unsafe { Process32FirstW(handle, &mut entry) }.is_ok(); // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- Process32FirstW; SAFETY above, ADR-004
+    while more {
+        if pids.contains(&entry.th32ProcessID) {
+            found.push(ProcessInfo {
+                pid: entry.th32ProcessID,
+                parent_pid: entry.th32ParentProcessID,
+                exe: wide_to_string(&entry.szExeFile),
+            });
+        }
+        entry.dwSize = entry_size;
+        // SAFETY: same as above; `dwSize` was reset to the structure size for this call.
+        more = unsafe { Process32NextW(handle, &mut entry) }.is_ok(); // nosemgrep: rust.lang.security.unsafe-usage.unsafe-usage -- Process32NextW; SAFETY above, ADR-004
+    }
+    Ok(found)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_wide_buffer_is_read_up_to_its_terminator() {
+        let mut buffer = [0u16; 16];
+        for (slot, unit) in buffer.iter_mut().zip("python.exe".encode_utf16()) {
+            *slot = unit;
+        }
+        assert_eq!(wide_to_string(&buffer), "python.exe");
+        // Text after the first terminator is ignored.
+        buffer[11] = u16::from(b'x');
+        assert_eq!(wide_to_string(&buffer), "python.exe");
+    }
+
+    #[test]
+    fn a_buffer_without_a_terminator_is_read_whole_and_an_empty_one_is_empty() {
+        let units: Vec<u16> = "conhost.exe".encode_utf16().collect();
+        assert_eq!(wide_to_string(&units), "conhost.exe");
+        assert_eq!(wide_to_string(&[]), "");
+        assert_eq!(wide_to_string(&[0, 0x61]), "");
+    }
 }

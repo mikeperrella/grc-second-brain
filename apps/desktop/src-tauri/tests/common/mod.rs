@@ -17,7 +17,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use desktop_lib::child_env::build_child_env;
-use desktop_lib::sidecar::job::{kill_process_by_pid, wait_for_process_exit, ProcessWait};
+use desktop_lib::sidecar::job::{
+    kill_process_by_pid, wait_for_process_exit, ProcessInfo, ProcessWait,
+};
 use desktop_lib::sidecar::spawn::system_windows_directory;
 use desktop_lib::sidecar::supervisor::SidecarSpec;
 use desktop_lib::token::AuthToken;
@@ -141,4 +143,79 @@ pub fn assert_exits(pid: u32, what: &str) -> TestResult {
         "{what} (pid {pid}) is still running"
     );
     Ok(())
+}
+
+/// Why a set of processes is not the shape the dev (venv) sidecar is expected to have.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShapeError {
+    /// The process the host started is not among the processes described.
+    LauncherMissing,
+    /// The process the host started is not `python.exe` (the venv launcher).
+    LauncherNotPython { exe: String },
+    /// A process other than the launcher whose parent is not the launcher.
+    NotAChildOfTheLauncher { pid: u32, parent_pid: u32 },
+    /// A child of the launcher that is neither `python.exe` nor `conhost.exe`.
+    UnexpectedProcess { pid: u32, exe: String },
+    /// No `python.exe` child: the real interpreter is not in the job.
+    InterpreterMissing,
+    /// More than one `python.exe` child.
+    TooManyInterpreters { count: usize },
+    /// More than one `conhost.exe` child.
+    TooManyConsoleHosts { count: usize },
+}
+
+fn is_image(process: &ProcessInfo, name: &str) -> bool {
+    process.exe.eq_ignore_ascii_case(name)
+}
+
+/// The shape of the DEV sidecar's job on Windows (ADR-004): exactly the launcher (`python.exe`, the
+/// process the host started), exactly ONE `python.exe` that is its child (the real interpreter), and
+/// AT MOST one `conhost.exe` that is its child. The console host is allowed but not required: it
+/// appears because `CREATE_NO_WINDOW` still allocates a hidden console, and a different runner may
+/// not start one. Anything else, or a process whose parent is not the launcher, fails.
+///
+/// This describes the venv launcher setup only. The packaged sidecar (M8) has another shape and
+/// gets its own check.
+pub fn check_venv_sidecar_shape(
+    launcher_pid: u32,
+    processes: &[ProcessInfo],
+) -> Result<(), ShapeError> {
+    let launcher = processes
+        .iter()
+        .find(|process| process.pid == launcher_pid)
+        .ok_or(ShapeError::LauncherMissing)?;
+    if !is_image(launcher, "python.exe") {
+        return Err(ShapeError::LauncherNotPython {
+            exe: launcher.exe.clone(),
+        });
+    }
+
+    let (mut interpreters, mut console_hosts) = (0usize, 0usize);
+    for process in processes
+        .iter()
+        .filter(|process| process.pid != launcher_pid)
+    {
+        if process.parent_pid != launcher_pid {
+            return Err(ShapeError::NotAChildOfTheLauncher {
+                pid: process.pid,
+                parent_pid: process.parent_pid,
+            });
+        }
+        if is_image(process, "python.exe") {
+            interpreters += 1;
+        } else if is_image(process, "conhost.exe") {
+            console_hosts += 1;
+        } else {
+            return Err(ShapeError::UnexpectedProcess {
+                pid: process.pid,
+                exe: process.exe.clone(),
+            });
+        }
+    }
+    match (interpreters, console_hosts) {
+        (0, _) => Err(ShapeError::InterpreterMissing),
+        (1, 0 | 1) => Ok(()),
+        (count, _) if count > 1 => Err(ShapeError::TooManyInterpreters { count }),
+        (_, count) => Err(ShapeError::TooManyConsoleHosts { count }),
+    }
 }

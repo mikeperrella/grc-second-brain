@@ -42,11 +42,36 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo clippy --all-targets --all-features --locked -- -D warnings
 
-      # The Tauri template has no Rust tests yet, so this reports "0 passed" until real tests
-      # arrive with the host code in M2. A green job here does not mean tests exist.
+      # Unit and integration tests (the fake-sidecar and Job Object suites). The one #[ignore]d
+      # test, which needs the real Python sidecar, runs in its own steps below.
       - name: Tests (cargo test)
         if: ${{ !cancelled() }}
         run: cargo test --locked
+
+      # The real Python sidecar, started through the same code the app uses (tests/real_sidecar.rs;
+      # ADR-004). It is #[ignore]d because it needs sidecar/.venv, so plain `cargo test` skips it and
+      # these three steps run it. Same interpreter version and pinned constraints as windows.yml.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: ${{ !cancelled() }}
+        with:
+          python-version: "3.11"
+
+      - name: Create the sidecar venv (runtime dependencies only)
+        if: ${{ !cancelled() }}
+        working-directory: sidecar
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python -m pip install --disable-pip-version-check -c constraints.txt -e .
+
+      # `set -o pipefail` makes a failing cargo test fail the step even though its output goes
+      # through tee. The grep then requires at least one passed test, so a run that executed nothing
+      # (a renamed test, a filter that matches none) cannot pass.
+      - name: Real sidecar test (cargo test -- --ignored)
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cargo test --locked --test real_sidecar -- --ignored 2>&1 | tee "$RUNNER_TEMP/real_sidecar.log"
+          grep -E "test result: ok\. [1-9][0-9]* passed" "$RUNNER_TEMP/real_sidecar.log"
 
   deny:
     # cargo-deny only reads Cargo.lock and the advisory database, so nothing is compiled and
