@@ -2,6 +2,8 @@
 // them into the app; the ones that no integration test needs go back to `pub(crate)` then.
 pub mod child_env;
 pub mod ready;
+// M2b: process side (Job Object, suspended spawn, supervisor). Also `pub` until M2c wires it in.
+pub mod sidecar;
 pub mod token;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/

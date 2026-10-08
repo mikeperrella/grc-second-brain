@@ -98,10 +98,51 @@ rules:
     severity: ERROR
     message: "Spawning a shell is forbidden (CLAUDE.md 3.5). Invoke the target binary directly with args."
     patterns:
-      - pattern: Command::new($BIN)
+      - pattern-either:
+          - pattern: Command::new($BIN)
+          - pattern: std::process::Command::new($BIN)
       - metavariable-regex:
           metavariable: $BIN
           regex: (?i)^"(cmd|cmd\.exe|powershell|powershell\.exe|pwsh|sh|bash|zsh)"$
+
+  # The Tauri shell plugin gives the WEBVIEW a way to start processes. The host starts the sidecar
+  # itself with std::process (M2 plan section 5), so the plugin is never needed.
+  - id: grc-rs-tauri-shell-plugin
+    languages: [rust]
+    severity: ERROR
+    message: "tauri_plugin_shell is forbidden: it exposes process execution to the frontend (CLAUDE.md 3.5, least-privilege capabilities). Spawn with std::process::Command from host code."
+    pattern-regex: tauri_plugin_shell
+
+  # A child started without env_clear() inherits the host's whole environment, including proxy
+  # variables and anything the user has exported. The sidecar's environment is an allowlist built by
+  # child_env.rs (CLAUDE.md 3.4/3.5). An `x.env_clear();` statement in the same block as the
+  # Command, or in a block that encloses it (function body, `if`, `match` arm), satisfies the rule;
+  # so does the chained form `Command::new(..).env_clear()`. The fixtures cover each placement.
+  # Known limit: it does not check which Command the call is on, so one env_clear() would excuse a
+  # second Command in the same block; the host builds exactly one Command per function (spawn.rs),
+  # which review keeps true.
+  - id: grc-rs-command-without-env-clear
+    languages: [rust]
+    severity: ERROR
+    message: "A Command must be paired with an .env_clear() call in the same or an enclosing block, so the child gets an explicit allowlist instead of the host's environment (CLAUDE.md 3.4/3.5)."
+    patterns:
+      - pattern-either:
+          - pattern: Command::new(...)
+          - pattern: std::process::Command::new(...)
+      - pattern-not-inside: |
+          {
+            ...
+            $C.env_clear();
+            ...
+          }
+
+  # dbg! prints any value with {:#?}. Debug-printing a Command (or a struct holding one) would print
+  # its environment, including the auth token. clippy's dbg_macro lint says the same on every build.
+  - id: grc-rs-dbg-macro
+    languages: [rust]
+    severity: ERROR
+    message: "dbg! Debug-prints arbitrary values and can leak the auth token; use a log macro with explicit, non-secret fields (ADR-004 review rule)."
+    pattern: dbg!(...)
 
   - id: grc-rs-bind-all-interfaces
     languages: [rust]
