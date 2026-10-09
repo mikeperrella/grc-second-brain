@@ -41,7 +41,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The checks below are independent, so each runs even if an earlier one failed.
-      - name: Lint (ESLint, no-explicit-any is an error)
+      - name: Lint (ESLint, no-explicit-any is an error, Node globals only in scripts/)
         if: ${{ !cancelled() }}
         run: pnpm lint
 
@@ -49,29 +49,23 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm typecheck
 
-      # `vitest run --passWithNoTests` exits 0 when there are no test files, because the Tauri
-      # template has none yet. The JSON report lets the next step say how many tests really ran.
+      # `pnpm test` is plain `vitest run`, which fails when there are no test files. The JSON report
+      # lets the guard below check that tests really ran.
       - name: Tests (vitest)
         if: ${{ !cancelled() }}
         run: pnpm test --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/vitest.json"
 
-      # Reports the number of tests that ran in the job summary. A missing or unreadable report
-      # fails this step, so a crashed test run can never look like "0 tests, fine".
-      - name: Report the number of frontend tests
+      # Proves the zero-test guard can fail (an empty suite, an all-skipped suite, a missing or
+      # malformed report), so the guard below is not itself a hollow check.
+      - name: Self-test the zero-test guard
         if: ${{ !cancelled() }}
-        run: |
-          node -e '
-            const fs = require("node:fs");
-            const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            const total = report.numTotalTests;
-            const skipped = report.numPendingTests + report.numTodoTests;
-            const line = `Frontend tests run: ${total} (passed ${report.numPassedTests}, failed ${report.numFailedTests}, skipped ${skipped})`;
-            const note = total === 0
-              ? "\n\nThere are no frontend tests yet (planned for M2/M6). A green job here does not mean any frontend behavior was tested."
-              : "";
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Frontend tests\n\n${line}${note}\n`);
-            console.log(line);
-          ' "$RUNNER_TEMP/vitest.json"
+        run: node scripts/check-test-count.selftest.mjs
+
+      # Fails if the report is missing or unreadable, or if no test passed or failed (zero tests,
+      # or every test skipped). Writes the counts to the job summary.
+      - name: Guard - at least one frontend test ran
+        if: ${{ !cancelled() }}
+        run: node scripts/check-test-count.mjs "$RUNNER_TEMP/vitest.json"
 
       # Sends the package names and versions in pnpm-lock.yaml to the npm audit endpoint.
       - name: Known-vulnerability scan (pnpm audit)

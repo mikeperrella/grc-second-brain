@@ -15,9 +15,37 @@
   text-align: center;
 }
 
+.status {
+  font-weight: 600;
+}
+
+.status-starting {
+  color: #7a5200;
+}
+
+.status-healthy {
+  color: #14692a;
+}
+
+.status-failed {
+  color: #b00020;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
     background-color: #2f2f2f;
+  }
+
+  .status-starting {
+    color: #ffc857;
+  }
+
+  .status-healthy {
+    color: #6fdc8c;
+  }
+
+  .status-failed {
+    color: #ff8a9b;
   }
 }

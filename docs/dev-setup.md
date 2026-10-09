@@ -74,9 +74,9 @@ Nine GitHub Actions workflows live in `.github/workflows/`. Eight run on every p
 | `sast.yml` | `semgrep` | Our air-gap rules and their own tests, plus registry rulesets for Python, TypeScript and Rust. | Linux | about 40 s | Yes |
 | `sast.yml` | `bandit` | Python security lint (medium and above). | Linux | about 10 s | Yes |
 | `airgap.yml` | `airgap` | The sidecar test suite passes in a hardened container with no network, and the canary proves the container really is isolated. | Linux | about 45 s | Yes |
-| `rust.yml` | `rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, then the real-sidecar test (`cargo test -- --ignored`) against a venv the job builds. | Windows (`windows-2025`) | about 7 min on the first run before M2c (nothing is cached); not re-measured since the reqwest and real-sidecar steps were added | Yes |
+| `rust.yml` | `rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, then the real-sidecar test (`cargo test -- --ignored`) against a venv the job builds. | Windows (`windows-2025`) | 8 to 10 min (nothing is cached). Two measured runs after the reqwest and real-sidecar steps were added (M2c, 2026-10-08): the pull request run took 10 min 7 s and the run on `main` after the merge took 8 min 16 s. The first run before M2c took about 7 min. | Yes |
 | `rust.yml` | `deny` | `cargo deny`: advisories, licenses, bans, sources (Windows dependency graph). | Linux | about 45 s | Yes |
-| `frontend.yml` | `frontend` | ESLint (`no-explicit-any` is an error), `tsc`, vitest (no frontend tests exist yet), `pnpm audit`. | Linux | about 25 s | Yes |
+| `frontend.yml` | `frontend` | ESLint (`no-explicit-any` is an error, Node globals only in `scripts/`), `tsc`, vitest, a guard that fails if no test ran, `pnpm audit`. | Linux | about 25 s before M2d; not re-measured with the guards | Yes |
 | `audit.yml` | `audit-pip`, `audit-pnpm`, `audit-cargo` | Weekly (Mondays 05:23 UTC) and on demand: `pip-audit`, `pnpm audit`, `cargo deny check advisories`, so a new advisory against an unchanged dependency shows up without a pull request. | Linux | not measured yet (first run is on the pull request that adds it) | No: it is scheduled, so it reports new advisories instead of gating a change |
 
 **`audit.yml` is first exercised after the merge.** GitHub only runs scheduled and manually dispatched workflows from the default branch, so before the merge the only run is the one triggered by a pull request that edits `audit.yml` itself (the file has a `pull_request` trigger limited to its own path, so it does not run on other pull requests). After the merge, start the first scheduled-style run by hand from the **Actions** tab (select `audit`, then **Run workflow**) or with `gh workflow run audit.yml`, and check that it passes. A failed scheduled run is reported through GitHub's notifications to the repository owner.
@@ -220,13 +220,80 @@ pnpm test
 pnpm audit --audit-level high
 ```
 
-- **`pnpm lint`** runs ESLint with `@eslint/js` and `typescript-eslint` recommended rules. `@typescript-eslint/no-explicit-any` is an error. No rule is switched off and nothing is excluded: the script names the files to check (`src`, `vite.config.ts`, `eslint.config.js`).
+- **`pnpm lint`** runs ESLint with `@eslint/js` and `typescript-eslint` recommended rules, then `scripts/check-eslint-scope.mjs`. `@typescript-eslint/no-explicit-any` is an error. No rule is switched off and nothing is excluded: the script names the files to check (`src`, `scripts`, `vite.config.ts`, `eslint.config.js`). Node globals (`process`, `require`, ...) are given only to `scripts/**/*.mjs`; the app in `src/` runs in a webview and must not see them. ESLint's own `no-undef` cannot enforce that (typescript-eslint turns it off for TypeScript files), so `check-eslint-scope.mjs` asks ESLint which globals each file gets and fails if any `src` file has a Node one or a script lacks them.
 - **`pnpm typecheck`** is `tsc --noEmit`. `tsconfig.json` has `strict`, `noImplicitAny` and `noUncheckedIndexedAccess` (CLAUDE.md Section 7), so reading `list[i]` gives `T | undefined` and has to be checked, never silenced with `!` or `as`.
-- **There are no frontend tests yet.** `pnpm test` is `vitest run --passWithNoTests`, which exits 0 when there are no test files. The window is a static page until M2d, which adds the Zod schema for the `sidecar_health` payload and the first Vitest tests; the UI tests arrive in M6. The CI job writes the number of tests that ran into its summary, so "0" is visible rather than hidden.
+- **`pnpm test` is plain `vitest run`** and runs real tests since M2d: the Zod schema for the `sidecar_health` payload, the contract fixture, the poller, the status text and `requireRoot` (74 tests at the end of M2d). With no test files it now fails (it used to pass with "No test files found", a green that checked nothing). In CI the `frontend` job adds two steps: `scripts/check-test-count.selftest.mjs` proves the guard can fail (empty suite, all-skipped suite, missing or malformed report), then `scripts/check-test-count.mjs` fails the job if the report is missing or no test passed or failed, and writes the counts to the job summary. Run the guard locally with `pnpm test --reporter=default --reporter=json --outputFile.json=$env:TEMP\vitest.json` then `node scripts/check-test-count.mjs $env:TEMP\vitest.json` (success prints `Frontend tests run: 74 (passed 74, ...)`). No component is rendered in tests (no jsdom, by choice: one dependency less); only the pure logic behind the window is tested, and the rendered window is checked by hand (next section). That gap is recorded in [ADR-006](adr/006-window-status-polling-and-ipc-contract.md).
+- **The IPC contract fixture.** `apps/desktop/src/ipc/health-contract.json` is the JSON Rust serializes for every `HealthReply` and `HealthError`. The Rust test `the_ipc_contract_fixture_matches_what_rust_serializes` compares it with the live serialization, and the Vitest suite parses every entry with the Zod schema and checks that the names equal the schema's. Adding a Rust variant fails to compile until it is listed and then fails the Rust test until the fixture is updated; the Vitest suite then fails until the schema knows it. To regenerate after a deliberate change, from `apps/desktop/src-tauri/` run `$env:GRC_WRITE_HEALTH_CONTRACT = "1"; cargo test --lib the_ipc_contract` (it rewrites the file and still FAILS, so a run that wrote the file never looks like a pass), then `Remove-Item Env:GRC_WRITE_HEALTH_CONTRACT` and run it again.
+- **What the window shows.** `Sidecar: starting`, `Sidecar: healthy`, or `Sidecar: failed (<source>: <code>)`, built only from fixed codes. `source` is `sidecar` (the host's supervisor failed it), `health_check` (the sidecar is believed running but a probe failed), `stopped`, or `ipc`. Two `ipc` codes exist and the CHANNEL decides, never the content: `invalid_response` is a successful `invoke()` whose value did not match the schema; `rejected` is a rejected `invoke()` that was not a valid health error (for example the string Tauri gives a command the capability does not allow).
 - **`pnpm audit`** sends the package names and versions in `pnpm-lock.yaml` to the npm audit endpoint and fails on high or critical advisories.
 - **Install scripts:** pnpm does not run dependency install scripts unless they are approved, and none are approved here. If `pnpm install` ever reports ignored build scripts, treat it as something to review, not to approve by reflex.
 
-Known template code that no rule flags yet and that is deliberately left alone: `src/main.tsx` uses `document.getElementById("root") as HTMLElement`. M2d replaces it with a checked `requireRoot`. `src/App.tsx` no longer calls `invoke(...)` (it is a static page), so there is no unvalidated IPC payload today. CLAUDE.md requires every payload that crosses the Tauri IPC boundary to be parsed with Zod; that arrives with the first command the window calls, in M2d.
+Every payload that crosses the Tauri IPC boundary is parsed with Zod (CLAUDE.md Section 7): `src/App.tsx` calls `invoke<unknown>("sidecar_health")` only through `fetchHealth` in `src/ipc/health.ts`, which never throws and never lets an unparsed value reach the UI. `src/main.tsx` uses the checked `requireRoot` instead of the template's `as HTMLElement` cast.
+
+### Manual check of the running app (M2d)
+
+CI cannot render a webview or watch process trees, so this check is done by hand when the host, the capability, the CSP or the window status change. Use two Cursor (or any PowerShell) terminals. All paths are from `C:\dev\grc-second-brain\apps\desktop`. The last full run is recorded in [ADR-005](adr/005-webview-csp-and-capabilities.md) and [ADR-006](adr/006-window-status-polling-and-ipc-contract.md).
+
+**Two traps.**
+
+- **Mode B is only real right after a fresh build.** `pnpm tauri dev` and `pnpm tauri build --debug --no-bundle` both write `src-tauri\target\debug\desktop.exe`. The dev one loads the UI from `http://localhost:1420` with no CSP; the build loads it from `http://tauri.localhost` with the shipped CSP. Evidence for the production CSP or the capability counts only from a `pnpm tauri build --debug --no-bundle` run immediately before the launch, with `location.origin` showing `http://tauri.localhost`. Do not run `pnpm tauri dev` between the build and the launch.
+- **Close the app before rebuilding.** If `desktop.exe` is still running, the build fails with "Access is denied" (seen on 2026-10-08, with the mutated app still open). Close the window, or `Stop-Process -Name desktop -Force`, and build again.
+
+**1. Prep.** `git status --short`, `pnpm install --frozen-lockfile`, and make sure nothing is left over: `Get-Process desktop, fake_sidecar -ErrorAction SilentlyContinue` prints nothing, and `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*grc_sidecar*' } | Select-Object ProcessId, Name` prints nothing.
+
+**2. A, dev mode.** `pnpm tauri dev`. Expected: the window shows `Sidecar: starting`, then `Sidecar: healthy` within a few seconds. `Get-Process desktop, fake_sidecar -ErrorAction SilentlyContinue` lists `desktop` and not `fake_sidecar` (the right binary launched). Close the window with the X; `pnpm` ends with `ELIFECYCLE` exit -1, which is normal. Both checks from step 1 print nothing again. There are no CSP probes here: dev mode has no CSP (ADR-005).
+
+**3. B, mode B.** `pnpm tauri build --debug --no-bundle`, then `Get-Date` and `Get-Item .\src-tauri\target\debug\desktop.exe | Select-Object LastWriteTime` (the write time must be within a minute or two), then `Start-Process (Resolve-Path .\src-tauri\target\debug\desktop.exe)`. Expected: `Sidecar: healthy`. Press F12 and run in the console, one at a time:
+
+| Console command | Expected |
+|---|---|
+| `location.origin` | `http://tauri.localhost` |
+| `await window.__TAURI_INTERNALS__.invoke('sidecar_health')` | `{status: 'healthy'}` (the capability works with only `allow-sidecar-health`) |
+| `fetch('http://127.0.0.1:65000/').catch(e => console.log(String(e)))` | refused by CSP: `... violates the following Content Security Policy directive: "connect-src ipc: http://ipc.localhost"`, then `TypeError: Failed to fetch`. Port 65000, never port 1 (Chromium blocks port 1 before CSP sees it). |
+| `eval('1')` | `EvalError` naming `unsafe-eval` and `script-src` |
+| `document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content')` | `undefined` (the policy comes as a response header) |
+
+Then open the Network tab, press Ctrl+R, click the `tauri.localhost` document and copy the `content-security-policy` response header: it must be the configured policy plus a `'sha256-...'` source on `script-src` that Tauri adds for the bundled script (the hash changes whenever the frontend bundle changes). DevTools' own request for `/.well-known/appspecific/com.chrome.devtools.json` is blocked by `connect-src`; that is DevTools, not the app.
+
+**4. C, processes and port** (app healthy, run in a terminal you keep open: later steps reuse `$ids` and `$port`):
+
+```powershell
+$desk = Get-CimInstance Win32_Process -Filter "Name='desktop.exe'"
+$desk | Select-Object ProcessId, ParentProcessId, ExecutablePath
+$launcher = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $desk.ProcessId -and $_.Name -eq 'python.exe' }
+$kids = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $launcher.ProcessId }
+@($launcher) + @($kids) | Select-Object ProcessId, ParentProcessId, Name, CommandLine | Format-Table -AutoSize -Wrap
+$ids = @($launcher.ProcessId) + @($kids.ProcessId)
+$pattern = '\s(' + ($ids -join '|') + ')\s*$'
+$v4 = netstat -ano -p TCP | Select-String 'LISTENING' | Select-String $pattern
+$v4 | ForEach-Object { $_.Line.Trim() }
+$port = (($v4 | Select-Object -First 1).Line.Trim() -split '\s+')[1] -split ':' | Select-Object -Last 1
+$port
+netstat -ano -p TCPv6 | Select-String 'LISTENING' | Select-String $pattern
+```
+
+Expected: one `desktop.exe`; a launcher `...\sidecar\.venv\Scripts\python.exe -I -m grc_sidecar` whose parent is `desktop.exe` (its command line may start with `\\?\`, the extended-length form of a canonical path); a `conhost.exe` and one real `...\Python311\python.exe -I -m grc_sidecar`, both with the launcher as parent (a short-lived `cmd.exe` under the interpreter may also show, ADR-004). The `netstat` IPv4 output is exactly one `LISTENING` line, `127.0.0.1:<port>`, never `0.0.0.0` or `[::]`, owned by the interpreter; the IPv6 command prints nothing. **Why `netstat` and not `Get-NetTCPConnection`:** on the development machine `Get-NetTCPConnection -State Listen` reported "No MSFT_NetTCPConnection objects found" for the whole system, so it cannot tell "closed" from "broken"; `netstat -ano` worked.
+
+**5. D, force-close.** `Stop-Process -Name desktop -Force`, then `Get-Process -Id $ids -ErrorAction SilentlyContinue` and `Get-Process desktop -ErrorAction SilentlyContinue` print nothing, and `netstat -ano -p TCP | Select-String ":$port\s" | Select-String 'LISTENING'` prints nothing. `TIME_WAIT` lines for that port owned by PID 0 are normal (closed health connections), not a listener. If a `LISTENING` line remains, wait 5 s and run it again; report both results (Windows can keep a port open briefly after a kill).
+
+**6. Normal close.** `Start-Process (Resolve-Path .\src-tauri\target\debug\desktop.exe)`, wait for `healthy`, re-run step 4 unchanged, close the window with the X, and repeat the three checks of step 5 (without `Stop-Process`). Same expected results.
+
+**7. E, other launch context.** Launch the same exe from a terminal outside your editor (a plain Windows PowerShell or Windows Terminal window) and repeat steps 4 and 5; `desktop.exe`'s parent will be that shell, not your editor. The host may be started inside a Windows job (an IDE terminal or CI runner can be in one), which is why the Job Object code is tested for nesting; this step shows the app works from either launcher, but it cannot tell you which of them is inside a job.
+
+**8. Capability mutation (proves the permission is what lets the call through).** Close the app. Then:
+
+```powershell
+$f = "src-tauri\capabilities\main-window.json"
+(Get-FileHash $f -Algorithm SHA256).Hash
+(Get-Content $f -Raw) -replace '"allow-sidecar-health"', '' | Set-Content $f -NoNewline
+Get-Content $f
+pnpm tauri build --debug --no-bundle
+Start-Process (Resolve-Path .\src-tauri\target\debug\desktop.exe)
+```
+
+The file now says `"permissions": []`. In the F12 console run `window.__TAURI_INTERNALS__.invoke('sidecar_health').catch(e => console.log('REJECTED WITH:', typeof e, String(e)))`. Expected: `REJECTED WITH: string sidecar_health not allowed. Permissions associated with this command: allow-sidecar-health`, and the window line `Sidecar: failed (ipc: rejected)` (the 2026-10-08 run did not record the window line). `cargo test --locked --test security_config` from `src-tauri\` is red while the file is mutated.
+
+**9. Restore and re-prove.** Close the app (see the trap above), `git restore src-tauri/capabilities/main-window.json`, check the hash equals the one from step 8 and that `git status --short` shows no change to the file, then rebuild with `pnpm tauri build --debug --no-bundle`, launch, and expect `Sidecar: healthy` again. Never commit the mutated file.
 
 ### Decisions and where each is recorded
 
@@ -237,8 +304,9 @@ Known template code that no rule flags yet and that is deliberately left alone: 
 | The Semgrep registry rulesets use the Semgrep Rules License (fine for internal CI, restrictive for redistribution). Revisit before the public release and for the BizAI commercial version. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (license note), and the M9 row in CLAUDE.md Section 9. |
 | Tests are not scanned by Semgrep or Bandit. Ruff's `S` rules and gitleaks cover them. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (scope decision) |
 | Bandit runs at `-ll`, so `shell=True` with a literal command (rated Low) is not a Bandit failure. The Semgrep rule `grc-py-subprocess-shell-true` and ruff `S602` gate it instead; both were proven red in step 10. | [Static analysis](#static-analysis-sast-semgrep-and-bandit) (Bandit and `shell=True`) |
-| Rust tests exist (unit, fake sidecar, Job Object, security configuration, and the `#[ignore]`d real-sidecar test that CI runs explicitly). There are no frontend tests until M2d; the `frontend` job passes with zero and prints the count. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) and [Rust checks](#rust-checks-and-cargo-deny) |
-| The `as HTMLElement` cast in `src/main.tsx` stays until M2d (`requireRoot`). `src/App.tsx` is static and calls no command, so no IPC payload is unvalidated. | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) (last paragraph) |
+| Rust tests exist (unit, fake sidecar, Job Object, security configuration, and the `#[ignore]`d real-sidecar test that CI runs explicitly). Frontend tests exist since M2d and the `frontend` job fails if none ran (a self-tested guard). | [Frontend checks](#frontend-checks-lint-typecheck-test-audit) and [Rust checks](#rust-checks-and-cargo-deny) |
+| Every IPC payload is parsed with strict Zod schemas; the channel (resolve or reject) decides `invalid_response` or `rejected`; Rust and TypeScript are kept in step by a committed fixture that both sides test; the window polls every 500 ms while starting and every 5 s afterwards, so a dead sidecar is noticed. `App.tsx` is not rendered in tests (known gap). | [ADR-006](adr/006-window-status-polling-and-ipc-contract.md) |
+| Port checks in the manual check use `netstat -ano`, not `Get-NetTCPConnection`, which returned nothing system-wide on the development machine. | [Manual check](#manual-check-of-the-running-app-m2d) |
 | Air-gap job: a hardened container with `--network none`, and `-p no:cacheprovider` as the only adjustment the flags needed. | [Air-gap proof](#air-gap-proof-the-sidecar-tests-with-no-network) |
 | MPL-2.0 is allowed per crate, never globally. The `desktop` crate is `publish = false` so `cargo deny` skips its missing license. Duplicate crate versions only warn. | [Rust checks](#rust-checks-and-cargo-deny) and `apps/desktop/src-tauri/deny.toml` |
 | Windows runners are pinned to `windows-2025` (like the Linux jobs to `ubuntu-24.04`), so the CI environment changes only when we change the label. `windows-2025-vs2026` was not used: it is a validation label for the VS 2026 migration and could be retired. | `rust.yml` and `windows.yml` (comments on `runs-on`) |

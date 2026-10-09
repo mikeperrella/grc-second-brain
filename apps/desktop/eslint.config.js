@@ -18,4 +18,12 @@ export default defineConfig(
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
+  {
+    // Build and CI scripts run in Node. Node globals are given to these files ONLY: the app in
+    // src/ runs in a webview and must not see them (scripts/check-eslint-scope.mjs enforces it).
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 );

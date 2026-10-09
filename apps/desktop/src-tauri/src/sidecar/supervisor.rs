@@ -647,6 +647,71 @@ fn abort_start(shared: &Shared, mut child: Child) -> StartError {
     StartError::ThreadStartFailed
 }
 
+/// Every failure kind, with an inner match that has no wildcard: a new variant breaks
+/// compilation here until it is listed, and therefore until every test that uses this list
+/// (the conversions test below and the IPC contract test in `health.rs`) covers it.
+#[cfg(test)]
+pub(crate) fn every_failure_kind() -> Vec<FailureKind> {
+    fn exhaustive(kind: FailureKind) {
+        match kind {
+            FailureKind::Timeout
+            | FailureKind::EofBeforeReady
+            | FailureKind::NotJson
+            | FailureKind::WrongFields
+            | FailureKind::PortOutOfRange
+            | FailureKind::LineTooLong
+            | FailureKind::ReadFailed
+            | FailureKind::ExitedBeforeReady { .. }
+            | FailureKind::StartupRejected
+            | FailureKind::ExitedAfterReady
+            | FailureKind::ProtocolViolation
+            | FailureKind::NotInstalled
+            | FailureKind::NotConfigured
+            | FailureKind::OutsideSidecarDir
+            | FailureKind::SpawnFailed
+            | FailureKind::JobFailed
+            | FailureKind::JobAssignFailed
+            | FailureKind::UnexpectedThreadState
+            | FailureKind::LogDirUnavailable
+            | FailureKind::SystemRootUnavailable
+            | FailureKind::RandomUnavailable
+            | FailureKind::EnvRejected
+            | FailureKind::HttpClientFailed
+            | FailureKind::Internal => {}
+        }
+    }
+    let all = vec![
+        FailureKind::Timeout,
+        FailureKind::EofBeforeReady,
+        FailureKind::NotJson,
+        FailureKind::WrongFields,
+        FailureKind::PortOutOfRange,
+        FailureKind::LineTooLong,
+        FailureKind::ReadFailed,
+        FailureKind::ExitedBeforeReady { code: Some(3) },
+        FailureKind::StartupRejected,
+        FailureKind::ExitedAfterReady,
+        FailureKind::ProtocolViolation,
+        FailureKind::NotInstalled,
+        FailureKind::NotConfigured,
+        FailureKind::OutsideSidecarDir,
+        FailureKind::SpawnFailed,
+        FailureKind::JobFailed,
+        FailureKind::JobAssignFailed,
+        FailureKind::UnexpectedThreadState,
+        FailureKind::LogDirUnavailable,
+        FailureKind::SystemRootUnavailable,
+        FailureKind::RandomUnavailable,
+        FailureKind::EnvRejected,
+        FailureKind::HttpClientFailed,
+        FailureKind::Internal,
+    ];
+    for kind in &all {
+        exhaustive(*kind);
+    }
+    all
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -920,69 +985,6 @@ mod tests {
         assert_eq!(tail.contents(), b"23456789");
         tail.push(b"");
         assert_eq!(tail.contents(), b"23456789");
-    }
-
-    /// Every failure kind, with an inner match that has no wildcard: a new variant breaks
-    /// compilation here until it is listed and therefore covered below.
-    fn every_failure_kind() -> Vec<FailureKind> {
-        fn exhaustive(kind: FailureKind) {
-            match kind {
-                FailureKind::Timeout
-                | FailureKind::EofBeforeReady
-                | FailureKind::NotJson
-                | FailureKind::WrongFields
-                | FailureKind::PortOutOfRange
-                | FailureKind::LineTooLong
-                | FailureKind::ReadFailed
-                | FailureKind::ExitedBeforeReady { .. }
-                | FailureKind::StartupRejected
-                | FailureKind::ExitedAfterReady
-                | FailureKind::ProtocolViolation
-                | FailureKind::NotInstalled
-                | FailureKind::NotConfigured
-                | FailureKind::OutsideSidecarDir
-                | FailureKind::SpawnFailed
-                | FailureKind::JobFailed
-                | FailureKind::JobAssignFailed
-                | FailureKind::UnexpectedThreadState
-                | FailureKind::LogDirUnavailable
-                | FailureKind::SystemRootUnavailable
-                | FailureKind::RandomUnavailable
-                | FailureKind::EnvRejected
-                | FailureKind::HttpClientFailed
-                | FailureKind::Internal => {}
-            }
-        }
-        let all = vec![
-            FailureKind::Timeout,
-            FailureKind::EofBeforeReady,
-            FailureKind::NotJson,
-            FailureKind::WrongFields,
-            FailureKind::PortOutOfRange,
-            FailureKind::LineTooLong,
-            FailureKind::ReadFailed,
-            FailureKind::ExitedBeforeReady { code: Some(3) },
-            FailureKind::StartupRejected,
-            FailureKind::ExitedAfterReady,
-            FailureKind::ProtocolViolation,
-            FailureKind::NotInstalled,
-            FailureKind::NotConfigured,
-            FailureKind::OutsideSidecarDir,
-            FailureKind::SpawnFailed,
-            FailureKind::JobFailed,
-            FailureKind::JobAssignFailed,
-            FailureKind::UnexpectedThreadState,
-            FailureKind::LogDirUnavailable,
-            FailureKind::SystemRootUnavailable,
-            FailureKind::RandomUnavailable,
-            FailureKind::EnvRejected,
-            FailureKind::HttpClientFailed,
-            FailureKind::Internal,
-        ];
-        for kind in &all {
-            exhaustive(*kind);
-        }
-        all
     }
 
     #[test]

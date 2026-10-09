@@ -512,6 +512,98 @@ mod tests {
         assert!(std::mem::size_of::<HealthError>() <= 1);
     }
 
+    /// Every reply, with no wildcard match: a new `HealthReply` variant breaks compilation here.
+    /// `Failed` is expanded in `contract_json` over every failure kind.
+    fn every_reply_without_reason() -> Vec<HealthReply> {
+        fn exhaustive(reply: HealthReply) {
+            match reply {
+                HealthReply::Starting
+                | HealthReply::Healthy
+                | HealthReply::NotRunning
+                | HealthReply::Failed { .. } => {}
+            }
+        }
+        let all = vec![
+            HealthReply::Starting,
+            HealthReply::Healthy,
+            HealthReply::NotRunning,
+        ];
+        exhaustive(HealthReply::Healthy);
+        all
+    }
+
+    /// Every error, with no wildcard match.
+    fn every_error() -> Vec<HealthError> {
+        fn exhaustive(error: HealthError) {
+            match error {
+                HealthError::Unauthorized
+                | HealthError::Unreachable
+                | HealthError::Timeout
+                | HealthError::BadResponse
+                | HealthError::Internal => {}
+            }
+        }
+        let all = vec![
+            HealthError::Unauthorized,
+            HealthError::Unreachable,
+            HealthError::Timeout,
+            HealthError::BadResponse,
+            HealthError::Internal,
+        ];
+        exhaustive(HealthError::Internal);
+        all
+    }
+
+    /// The JSON the window can receive, for every variant: what `src/ipc/health-contract.json`
+    /// must contain. The Vitest suite parses every entry with the Zod schema and checks that the
+    /// set of names equals the schema's, so a variant added on only one side fails a test.
+    fn contract_json() -> serde_json::Value {
+        let mut replies: Vec<HealthReply> = every_reply_without_reason();
+        for reason in crate::sidecar::supervisor::every_failure_kind() {
+            replies.push(HealthReply::Failed { reason });
+        }
+        // The exit code is the one payload: cover absent, negative and the i32 extremes.
+        for code in [None, Some(i32::MIN), Some(i32::MAX)] {
+            replies.push(HealthReply::Failed {
+                reason: FailureKind::ExitedBeforeReady { code },
+            });
+        }
+        serde_json::json!({
+            "replies": replies,
+            "errors": every_error(),
+        })
+    }
+
+    const CONTRACT_FILE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../src/ipc/health-contract.json"
+    );
+
+    /// Compares the committed fixture with what Rust serializes today. Compared as parsed JSON
+    /// values, so line endings and formatting cannot matter. To regenerate after a deliberate
+    /// change, run with `GRC_WRITE_HEALTH_CONTRACT=1`: it rewrites the file and still FAILS, so a
+    /// run that wrote the file can never look like a pass (an unconditional write would make drift
+    /// invisible, because nothing would compare).
+    #[test]
+    fn the_ipc_contract_fixture_matches_what_rust_serializes() {
+        let expected = contract_json();
+        if std::env::var_os("GRC_WRITE_HEALTH_CONTRACT").is_some() {
+            let mut text = serde_json::to_string_pretty(&expected).unwrap();
+            text.push('\n');
+            std::fs::write(CONTRACT_FILE, text).unwrap();
+            panic!("wrote {CONTRACT_FILE}; unset GRC_WRITE_HEALTH_CONTRACT and run again");
+        }
+        let committed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(CONTRACT_FILE).unwrap()).unwrap();
+        assert_eq!(
+            committed,
+            expected,
+            "src/ipc/health-contract.json is out of date; regenerate it with \
+             GRC_WRITE_HEALTH_CONTRACT=1 and update src/ipc/health.ts. Expected:\n{}",
+            serde_json::to_string_pretty(&expected).unwrap()
+        );
+    }
+
     #[test]
     fn the_client_debug_output_shows_no_token() {
         let token = AuthToken::generate().unwrap();
