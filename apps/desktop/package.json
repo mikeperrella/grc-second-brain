@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "lint": "eslint src vite.config.ts eslint.config.js",
+    "lint": "eslint src scripts vite.config.ts eslint.config.js && node scripts/check-eslint-scope.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
