@@ -19,7 +19,13 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 def _default_log_dir() -> Path:
-    return Path.home() / ".grc-second-brain" / "logs"
+    try:
+        home = Path.home()
+    except RuntimeError:
+        # Raised when neither USERPROFILE (or HOMEDRIVE+HOMEPATH) nor HOME/the user database
+        # gives a home directory. Setting GRC_LOG_DIR avoids this lookup entirely.
+        raise ConfigurationError("Home directory is not available; set GRC_LOG_DIR") from None
+    return home / ".grc-second-brain" / "logs"
 
 
 class Settings(BaseSettings):

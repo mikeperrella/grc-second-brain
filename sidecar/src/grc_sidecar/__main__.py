@@ -3,9 +3,9 @@
 import sys
 
 from grc_sidecar.config import load_settings
-from grc_sidecar.errors import GrcError
+from grc_sidecar.errors import ConfigurationError, GrcError
 from grc_sidecar.logging_config import configure_logging
-from grc_sidecar.main import serve
+from grc_sidecar.main import bind_loopback_socket, serve
 from grc_sidecar.security.auth import read_auth_token
 from grc_sidecar.security.process_guard import install_process_guard
 
@@ -21,12 +21,17 @@ def main() -> int:
         install_process_guard()
         settings = load_settings()
         configure_logging(settings)
+        try:
+            sock = bind_loopback_socket()
+        except OSError:
+            # For example a missing SYSTEMROOT, which Winsock needs on Windows.
+            raise ConfigurationError("Loopback socket could not be bound") from None
     except GrcError as exc:
         # Every GrcError message is a fixed string: no token, URL, or path can appear.
         sys.stderr.write(f"grc-sidecar: {exc}\n")
         return EXIT_STARTUP_ERROR
     try:
-        serve(token, settings)
+        serve(token, settings, sock)
     except KeyboardInterrupt:
         # uvicorn finishes its graceful shutdown, then re-raises Ctrl+C. Exit quietly.
         return EXIT_INTERRUPTED

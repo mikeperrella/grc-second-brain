@@ -68,7 +68,8 @@ class ReadySignalServer(uvicorn.Server):
         stream.flush()
 
 
-def serve(token: str, settings: Settings) -> None:
+def serve(token: str, settings: Settings, sock: socket.socket) -> None:
+    """Serve on an already bound loopback socket and close it afterwards."""
     config = uvicorn.Config(
         create_app(token),
         host=LOOPBACK_HOST,
@@ -81,7 +82,6 @@ def serve(token: str, settings: Settings) -> None:
         ws="none",
         proxy_headers=False,
     )
-    sock = bind_loopback_socket()
     try:
         ReadySignalServer(config).run(sockets=[sock])
     finally:

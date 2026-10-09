@@ -82,7 +82,7 @@ def test_main_removes_the_token_before_serving(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv(AUTH_TOKEN_ENV_VAR, VALID)
     seen: dict[str, Any] = {}
 
-    def fake_serve(token: str, settings: object) -> None:
+    def fake_serve(token: str, settings: object, sock: object) -> None:
         seen["token"] = token
         seen["still_in_environ"] = AUTH_TOKEN_ENV_VAR in os.environ
 
@@ -97,7 +97,7 @@ def test_ctrl_c_exits_130_quietly(
 ) -> None:
     monkeypatch.setenv(AUTH_TOKEN_ENV_VAR, VALID)
 
-    def interrupted(token: str, settings: object) -> None:
+    def interrupted(token: str, settings: object, sock: object) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(entry, "serve", interrupted)

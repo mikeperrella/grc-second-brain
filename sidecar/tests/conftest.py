@@ -1,6 +1,7 @@
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +39,12 @@ def _process_guard_never_installed_in_pytest() -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _no_real_process_guard_in_main(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sidecar_entry, "install_process_guard", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_bind_in_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    # In-process tests of main() replace serve(); a real bound socket would only leak.
+    monkeypatch.setattr(sidecar_entry, "bind_loopback_socket", lambda: SimpleNamespace(close=int))
 
 
 @pytest.fixture
