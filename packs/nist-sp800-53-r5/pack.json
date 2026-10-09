@@ -1,0 +1,16 @@
+{
+  "content_kind": "full_text",
+  "content_sha256": "6531c20e7919a1c81f665681522741a81773842a3434a12b1a212aa4c41212cb",
+  "converter_version": "1",
+  "id_list_verified_against": "source file sha256 matched the pinned hash; control counts (active and withdrawn) compared with the OSCAL source at conversion time",
+  "license": "US-Gov-PD (17 USC 105); CC0-1.0 (usnistgov/oscal-content LICENSE.md)",
+  "origin": "converted_public_domain",
+  "pack_id": "nist-sp800-53-r5",
+  "redistributable": true,
+  "retrieved_on": "2026-10-09",
+  "source_sha256": "01f37cf90ea99d92242c936cbfbdebcc338eef1f71454e2acac36cc56e9bc062",
+  "source_url": "https://github.com/usnistgov/oscal-content/blob/78650f02ad9321bb7b817846f8fbd4f2bcd620de/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+  "title": "NIST SP 800-53 Rev 5",
+  "upstream_license": "US Government work (NIST), public domain in the United States; worldwide CC0 waiver stated in usnistgov/oscal-content LICENSE.md",
+  "version": "rev5"
+}

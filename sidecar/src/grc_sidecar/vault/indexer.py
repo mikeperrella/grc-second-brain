@@ -22,6 +22,7 @@ handler and tests wrap it in `asyncio.run`.
 """
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -114,11 +115,14 @@ class Indexer:
         vault_dir: Path,
         *,
         collection: str = DEFAULT_COLLECTION,
+        collection_of: Callable[[str], str] | None = None,
     ) -> None:
         self._repo = repo
         self._embedder = embedder
         self._vault_dir = vault_dir
-        self._collection = collection
+        # `collection_of(source_path)` labels each document separately (the pack loader uses the
+        # pack folder name); without it every document gets `collection`.
+        self._collection_of = collection_of or (lambda _source_path: collection)
 
     async def sync(self) -> SyncReport:
         """Bring the index up to date with the vault. See the module docstring for the order.
@@ -155,7 +159,10 @@ class Indexer:
                 failed.append(FailedDocument(source_path=item.doc.source_path, code="embedding"))
                 continue
             await self._repo.replace_document(
-                _indexed_document(item.doc, self._collection), item.chunks, vectors, item.links
+                _indexed_document(item.doc, self._collection_of(item.doc.source_path)),
+                item.chunks,
+                vectors,
+                item.links,
             )
             indexed.append(item.doc.source_path)
             chunks_embedded += len(item.chunks)
