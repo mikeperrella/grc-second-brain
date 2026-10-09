@@ -127,3 +127,29 @@ parsed = yaml.parse(text, Loader=yaml.SafeLoader)
 raise yaml.YAMLError
 # ok: grc-py-yaml-unsafe-load
 from yaml import SafeLoader
+
+# ---------- grc-py-sqlite-outside-repositories ----------
+# ruleid: grc-py-sqlite-outside-repositories
+import sqlite3
+# ruleid: grc-py-sqlite-outside-repositories
+import sqlite_vec
+# ruleid: grc-py-sqlite-outside-repositories
+from sqlite3 import connect
+# ruleid: grc-py-sqlite-outside-repositories
+from sqlite_vec import serialize_float32
+# ok: grc-py-sqlite-outside-repositories
+import sqlalchemy
+# ok: grc-py-sqlite-outside-repositories
+from grc_sidecar.repositories.base import VectorRepository
+
+# ---------- grc-py-extension-load-outside-repositories ----------
+# ruleid: grc-py-extension-load-outside-repositories
+connection.load_extension("vec0")
+# ruleid: grc-py-extension-load-outside-repositories
+connection.enable_load_extension(True)
+# ruleid: grc-py-extension-load-outside-repositories
+sqlite_vec.load(connection)
+# ok: grc-py-extension-load-outside-repositories
+connection.execute("select 1")
+# ok: grc-py-extension-load-outside-repositories
+plugin_loader.load(connection)

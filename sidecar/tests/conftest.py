@@ -38,7 +38,7 @@ def _process_guard_never_installed_in_pytest() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _no_real_process_guard_in_main(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sidecar_entry, "install_process_guard", lambda: None)
+    monkeypatch.setattr(sidecar_entry, "install_process_guard", lambda *_args: None)
 
 
 @pytest.fixture(autouse=True)

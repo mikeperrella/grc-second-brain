@@ -57,3 +57,36 @@ The host fails closed on any stdout byte after the ready line (ADR-004), but unt
 - Stray stdout is discarded and not logged, because logging it could put document content into the log (CLAUDE.md Section 7). A seal failure exits 2 with one fixed line.
 - Interaction with uvicorn's logging: the sidecar passes `log_config=None`, so uvicorn installs no handlers; its `uvicorn.error` messages propagate to our rotating file handler and `access_log=False` silences the rest. The only references to `sys.stdout` in uvicorn are its default logging dictionary (`config.py:106`, unused here) and a colour check (`logging.py:42`). Python's `logging.lastResort` and `warnings` write to stderr. So nothing on the serve path touched stdout before, and a handler added by a future dependency would now write to the null device instead of the pipe.
 - Known gap: on this machine (Windows 11, CPython 3.11.9) removing the `SetStdHandle` call leaves the tests green, because the C runtime's `_dup2` already repoints the standard handle for descriptors 0 to 2. The call stays as defence in depth, but there is no mutation proof for it. The `dup2` itself, the closing of the private copy and the fail-closed exit each have one.
+
+## Amendment (M3b): native extension loading is allowlisted to one path
+
+### Context
+
+M3b loads sqlite-vec, a native library, into the sidecar's SQLite connection. The guard above vetoes only the nine process-creation events, so `sqlite3.enable_load_extension` and `sqlite3.load_extension` were allowed, for any path. Loading a native library runs arbitrary code inside the sidecar, with the auth token in its memory and no process boundary. That is worse than starting a process, so the same hook now guards it.
+
+Verified in the M3b spike (Python 3.11.9 on Windows, 3.11.16 in the `--network none` container): `sqlite3.load_extension` raises an audit event **before** the library is opened, with `args = (connection, path)`. `path` is the string the caller passed, unchanged: no normalization and no file suffix (`sqlite_vec.loadable_path()` returns `...\sqlite_vec\vec0`, and SQLite appends `.dll` or `.so` itself). `enable_load_extension` raises its own event `(connection, bool)`. This was checked on CPython 3.11 only; a different CPython minor version must repeat the check.
+
+### Decision
+
+- `install_process_guard(approved_extension)` takes the one allowed path. `__main__` passes `vec_extension_path()` (`repositories/sqlite_vec_repo.py`, the vendored `sqlite_vec.loadable_path()`). The hook compares `args[1]` to it and raises `ExtensionLoadBlockedError` (a `PermissionError`, like `SpawnBlockedError`, with a fixed message) for anything else. With no approved path, every extension load is vetoed.
+- **Comparison.** Both sides go through `os.path.normcase(os.path.normpath(...))`: separators and `.`/`..` segments are collapsed, and case is folded on Windows only. The argument must also be absolute, and a non-string or missing argument is vetoed.
+- **A normalization mismatch always fails closed.** The only way to pass is to equal the approved string after normalization, so two spellings of one file that this cannot reduce to the same string are DENIED, never wrongly allowed. Examples that are denied: a relative path to the same file, a Windows trailing dot (`vec0.`), a short 8.3 name, a symlink or junction spelling, a UNC form. The cost is that a caller must pass the exact path from `loadable_path()`, which is what `sqlite_vec.load()` does.
+- `enable_load_extension` stays allowed. It is only a switch; the vetoed event is the load itself. The repository turns it on only around the one `sqlite_vec.load` call and off again immediately.
+- Semgrep rules `grc-py-sqlite-outside-repositories` and `grc-py-extension-load-outside-repositories` keep every `sqlite3` import and every extension-load call site inside `grc_sidecar/repositories/`.
+
+### Tests
+
+All with the real guard, in child processes (an audit hook cannot be removed, so the pytest process never has it). `tests/test_process_guard.py`: the approved path loads; a **different existing file** (a byte-for-byte copy of the real library in another folder, which would load fine if allowed) is blocked, and the approved path still loads afterwards (`test_foreign_extension_load_is_blocked`); a **relative path** to the real library is blocked; with no approved path everything is blocked; on Windows the **approved path with different letter case is allowed** and the **trailing-dot spelling is blocked**. `tests/test_deps_no_spawn.py` starts the real sidecar and shows that, after the ready line, the vendored extension loads and a foreign copy is refused, so `__main__` really passes the path. `tests/test_extension_loading.py` calls the hook function directly for the argument shapes. The nine original process-event tests are unchanged and still pass.
+
+### Scope statement and known gaps
+
+The hook is **defence in depth, not a sandbox.** PEP 578 says audit hooks are not a security boundary, and native code can bypass them. Specifically:
+
+- **`ctypes.dlopen` (and `ctypes.CDLL`, `WinDLL`).** Native code loaded through `ctypes` bypasses both the process check and the extension check. Blocking it is impractical because our own `security/stdio.py` calls `ctypes.WinDLL("kernel32")`, and `process_guard.py` already recorded that spawning through `ctypes` bypasses the guard. `test_ctypes_dlopen_is_a_known_unguarded_path` pins that the hook does not veto it, so a future change in behaviour is noticed and this ADR is updated on purpose.
+- **Libraries loaded from inside an approved extension.** `vec0.dll` imports `LoadLibraryExW` (found by a string scan of the binary, which is supporting evidence and not a full import-table analysis). Native code inside the extension can therefore load further libraries without any event the Python audit hook can see. This is the same category as the `ctypes` gap: once native code runs in the process, the Python-level hook cannot constrain it. The `vec0.so` scan found no `dlopen`, socket or process-creation strings. The mitigation is supply-chain: the version is pinned, the wheel hash is recorded (ADR-001 addendum), and the library is not audited (ADR-001).
+- The guard cannot stop a process that is already running native code with the sidecar's privileges. The host-side Job Object follow-up above is still the kernel-level answer.
+
+### Consequences for later chunks
+
+- **M7** extends this guard for `terraform` and `docker`. It must not widen the extension allowlist, and it must keep the single approved path.
+- **M8 (PyInstaller)** must keep `loadable_path()` and the approved path the same string in the frozen app: `collect_data_files("sqlite_vec")` (or `collect_dynamic_libs`) puts the library under the frozen `_internal` directory, and `vec_extension_path()` must resolve there.

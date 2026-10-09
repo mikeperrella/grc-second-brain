@@ -283,3 +283,122 @@ def test_the_real_sidecar_blocks_spawns_after_it_is_ready(tmp_path: Path) -> Non
         assert result_file.exists(), "the post-ready probe never reported"
         assert _get_health(port, {"X-GRC-Auth": token}).status_code == 200
     assert json.loads(result_file.read_text(encoding="utf-8")) == {"spawn": "SpawnBlockedError"}
+
+
+# ----- extension loading (ADR-007 amendment) -------------------------------------------------
+#
+# These run in child processes with the REAL guard, because an audit hook cannot be removed.
+# Each child tries to load a SQLite extension through a different spelling of a path.
+
+_EXTENSION_PROBES = r"""
+import json, os, shutil, sqlite3, sys
+from pathlib import Path
+from grc_sidecar.repositories.sqlite_vec_repo import vec_extension_path
+from grc_sidecar.security.process_guard import install_process_guard
+
+tmp = Path(sys.argv[1])
+approved = vec_extension_path()
+install_process_guard(approved if sys.argv[2] == "approved" else None)
+
+suffix = ".dll" if sys.platform == "win32" else ".so"
+real_library = Path(str(approved) + suffix)
+assert real_library.is_file()
+# A different, existing file: a byte-for-byte copy that would load fine if it were allowed.
+foreign_dir = tmp / "elsewhere"
+foreign_dir.mkdir()
+shutil.copyfile(real_library, foreign_dir / ("vec0" + suffix))
+
+
+def attempt(path):
+    con = sqlite3.connect(":memory:")
+    con.enable_load_extension(True)
+    try:
+        con.load_extension(path)
+        return "loaded"
+    except BaseException as exc:
+        return type(exc).__name__
+    finally:
+        con.close()
+
+
+results = {}
+for name, path in json.loads(sys.argv[3]).items():
+    path = path.replace("<APPROVED>", str(approved)).replace("<FOREIGN>", str(foreign_dir / "vec0"))
+    if path == "<RELATIVE>":
+        path = os.path.relpath(approved)
+    elif path == "<UPPER>":
+        path = str(approved).upper()
+    results[name] = attempt(path)
+print(json.dumps(results))
+"""
+
+
+def _probe_extensions(tmp_path: Path, mode: str, cases: dict[str, str]) -> object:
+    return _run_child(tmp_path, _EXTENSION_PROBES, str(tmp_path), mode, json.dumps(cases))
+
+
+def test_the_approved_extension_loads_under_the_guard(tmp_path: Path) -> None:
+    assert _probe_extensions(tmp_path, "approved", {"approved": "<APPROVED>"}) == {
+        "approved": "loaded"
+    }
+
+
+def test_foreign_extension_load_is_blocked(tmp_path: Path) -> None:  # [NEG] mutation row 16
+    results = _probe_extensions(
+        tmp_path, "approved", {"foreign": "<FOREIGN>", "approved_afterwards": "<APPROVED>"}
+    )
+    assert results == {"foreign": "ExtensionLoadBlockedError", "approved_afterwards": "loaded"}
+
+
+def test_a_relative_spelling_of_the_approved_path_is_blocked(tmp_path: Path) -> None:  # [NEG]
+    # Fails closed: only the exact absolute spelling passes, never a path that merely resolves
+    # to the same file.
+    assert _probe_extensions(tmp_path, "approved", {"relative": "<RELATIVE>"}) == {
+        "relative": "ExtensionLoadBlockedError"
+    }
+
+
+def test_without_an_approved_path_every_extension_load_is_blocked(tmp_path: Path) -> None:  # [NEG]
+    assert _probe_extensions(tmp_path, "none", {"real": "<APPROVED>", "foreign": "<FOREIGN>"}) == {
+        "real": "ExtensionLoadBlockedError",
+        "foreign": "ExtensionLoadBlockedError",
+    }
+
+
+def test_the_approved_path_with_different_letter_case_is_allowed_on_windows_only(
+    tmp_path: Path,
+) -> None:
+    # Windows paths are case-insensitive, so the comparison folds case there (and only there).
+    # On Linux a different spelling is a different file and is blocked. Runs on both.
+    expected = "loaded" if sys.platform == "win32" else "ExtensionLoadBlockedError"
+    assert _probe_extensions(tmp_path, "approved", {"upper": "<UPPER>"}) == {"upper": expected}
+
+
+def test_a_spelling_the_normalization_cannot_reduce_fails_closed(tmp_path: Path) -> None:  # [NEG]
+    # Windows ignores a trailing dot, so this names the same file, but the string differs from
+    # the approved one. A normalization mismatch is always DENIED, never wrongly allowed. On
+    # Linux the dotted name is simply another file, and the answer is the same. Runs on both.
+    results = _probe_extensions(tmp_path, "approved", {"trailing_dot": "<APPROVED>."})
+    assert results == {"trailing_dot": "ExtensionLoadBlockedError"}
+
+
+_CTYPES_GAP = r"""
+import ctypes, json, sys
+from pathlib import Path
+from grc_sidecar.repositories.sqlite_vec_repo import vec_extension_path
+from grc_sidecar.security.process_guard import install_process_guard
+
+events = []
+sys.addaudithook(lambda event, args: events.append(event) if event == "ctypes.dlopen" else None)
+install_process_guard()  # no approved extension at all
+library = Path(str(vec_extension_path()) + (".dll" if sys.platform == "win32" else ".so"))
+ctypes.CDLL(str(library))
+print(json.dumps({"loaded": True, "audit_event_raised": "ctypes.dlopen" in events}))
+"""
+
+
+def test_ctypes_dlopen_is_a_known_unguarded_path(tmp_path: Path) -> None:
+    # A KNOWN GAP (ADR-007 amendment), pinned so a behaviour change is noticed and the ADR is
+    # updated on purpose: the guard vetoes sqlite3.load_extension but not ctypes.dlopen, so
+    # native code can still be loaded through ctypes. security/stdio.py itself uses ctypes.
+    assert _run_child(tmp_path, _CTYPES_GAP) == {"loaded": True, "audit_event_raised": True}

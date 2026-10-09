@@ -68,6 +68,16 @@ class SpawnBlockedError(GrcError, PermissionError):
     default_message = "Starting a process is not allowed"
 
 
+class ExtensionLoadBlockedError(GrcError, PermissionError):
+    """Loading a native SQLite extension was refused by the process guard.
+
+    Loading a native library runs arbitrary code inside the sidecar, so only the one vendored
+    sqlite-vec library is allowed (ADR-007 amendment). A PermissionError, like SpawnBlockedError.
+    """
+
+    default_message = "Loading this extension is not allowed"
+
+
 class StdoutSealError(GrcError):
     """Standard output could not be redirected away from the host's pipe."""
 
@@ -148,6 +158,47 @@ class UnsafePathError(VaultError):
 
     default_message = "Path is not safe to index"
     code = "unsafe_path"
+
+
+class IndexStoreError(GrcError):
+    """The vector index (SQLite file) could not be opened, read or written."""
+
+    default_message = "Index store error"
+
+
+class IndexRebuildRequiredError(IndexStoreError):
+    """The index file was made by another schema version, or is not an index at all.
+
+    The index is disposable derived state: the answer is to rebuild it, never to migrate it.
+    """
+
+    default_message = "Index must be rebuilt"
+
+
+class IndexProfileMismatchError(IndexStoreError):
+    """The index was built with a different embedding profile than the one requested.
+
+    `fields` lists the profile field names that differ, never their values. Re-embedding every
+    document is the user's decision, so nothing is changed.
+    """
+
+    default_message = "Index was built with a different embedding profile"
+
+    def __init__(self, fields: tuple[str, ...] = ()) -> None:
+        super().__init__()
+        self.fields = fields
+
+
+class VectorDimensionError(IndexStoreError):
+    """A vector does not have the dimension the index was created with."""
+
+    default_message = "Vector dimension does not match the index"
+
+
+class ExtensionUnavailableError(IndexStoreError):
+    """The sqlite-vec extension could not be loaded into the SQLite connection."""
+
+    default_message = "Vector extension could not be loaded"
 
 
 class PackMetadataError(GrcError):

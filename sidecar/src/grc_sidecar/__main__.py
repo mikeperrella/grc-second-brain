@@ -6,6 +6,7 @@ from grc_sidecar.config import load_settings
 from grc_sidecar.errors import ConfigurationError, GrcError
 from grc_sidecar.logging_config import configure_logging
 from grc_sidecar.main import bind_loopback_socket, serve
+from grc_sidecar.repositories.sqlite_vec_repo import vec_extension_path
 from grc_sidecar.security.auth import read_auth_token
 from grc_sidecar.security.process_guard import install_process_guard
 from grc_sidecar.security.stdio import seal_stdout
@@ -19,7 +20,8 @@ def main() -> int:
         # Read (and delete) the token before anything else can fail or spawn a process.
         token = read_auth_token()
         # Before anything that can start a process (uvicorn's platform check does on Windows).
-        install_process_guard()
+        # The one native library it may load is the vendored sqlite-vec (ADR-007 amendment).
+        install_process_guard(vec_extension_path())
         settings = load_settings()
         configure_logging(settings)
         try:
