@@ -89,8 +89,10 @@ rules:
   - id: grc-py-ollama-pull
     languages: [python]
     severity: ERROR
-    message: "The app must never download models (CLAUDE.md 3.7)."
-    pattern-regex: /api/pull
+    message: "The app must never download models (CLAUDE.md 3.7). The runtime control is the endpoint allowlist in llm/ollama_embeddings.py; this rule catches the spellings a regex can see: with or without the leading slash, any case, doubled slashes, dot segments, a percent-encoded p, and a .pull() call. Computed paths (split strings, f-strings, data) are caught by the AST test in test_dependency_hygiene.py and, ultimately, by the allowlist."
+    pattern-either:
+      - pattern-regex: '(?i)api/+(\./+)*(p|%70)ull\b'
+      - pattern: $CLIENT.pull(...)
 
   # ---------- Python: frontmatter and vault content are untrusted (CLAUDE.md 8.6) ----------
   - id: grc-py-yaml-unsafe-load

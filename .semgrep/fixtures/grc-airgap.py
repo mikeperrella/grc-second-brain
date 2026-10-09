@@ -99,8 +99,28 @@ from pathlib import Path
 # ---------- grc-py-ollama-pull ----------
 # ruleid: grc-py-ollama-pull
 pull_url = "http://127.0.0.1:11434/api/pull"
+# ruleid: grc-py-ollama-pull
+no_slash = urljoin(base, "api/pull")
+# ruleid: grc-py-ollama-pull
+shouting = "/API/Pull"
+# ruleid: grc-py-ollama-pull
+doubled = "/api//pull"
+# ruleid: grc-py-ollama-pull
+dotted = "/api/./pull"
+# ruleid: grc-py-ollama-pull
+encoded = "/api/%70ull"
+# ruleid: grc-py-ollama-pull
+client.pull(model)
+# ruleid: grc-py-ollama-pull
+ollama.pull("llama3.1:8b")
 # ok: grc-py-ollama-pull
 tags_url = "http://127.0.0.1:11434/api/tags"
+# ok: grc-py-ollama-pull
+embed_url = "http://127.0.0.1:11434/api/embed"
+# ok: grc-py-ollama-pull
+unrelated = "/api/pullover-docs"
+# ok: grc-py-ollama-pull
+queue.pop()
 
 # ---------- grc-py-yaml-unsafe-load ----------
 # ruleid: grc-py-yaml-unsafe-load

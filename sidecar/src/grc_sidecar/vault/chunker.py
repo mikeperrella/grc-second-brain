@@ -28,14 +28,21 @@ from grc_sidecar.vault.normalize import sha256_hex
 
 # Bump when anything in this module changes what chunks come out. The indexer re-chunks every
 # document when the stored version differs.
-CHUNKER_VERSION: Final = "1"
+# 2: HARD_MAX_EMBED_CHARS lowered from 6000 to 2300 after the live measurement below, which can
+#    change where long sections are split, and so the chunk IDs.
+CHUNKER_VERSION: Final = "2"
 
 # A section longer than this (in characters of chunk text) is split at blank lines.
 MAX_CHUNK_CHARS: Final = 2000
-# The embedded string (prefix + heading path + text) must stay under this. It is provisional:
-# nomic-embed-text's context is about 2K tokens, and identifier-dense text can approach one
-# token per character. The M3c live test measures it, and the cap is lowered if it fails.
-HARD_MAX_EMBED_CHARS: Final = 6000
+# The embedded string (prefix + heading path + text) must stay under this. Measured against the
+# real model in M3c (`pytest -m ollama`, test_measure_the_longest_dense_string_ollama_accepts):
+# nomic-embed-text through Ollama has a 2048-token context and, with truncation off, refuses
+# anything longer. Identifier-dense text (`AC-2(1) IA-5(1) CC6.1 ...`) was accepted up to 2820
+# characters (2038 tokens, 1.38 characters per token); ordinary prose took 5.55 characters per
+# token (6000 characters = 1081 tokens). The first guess of 6000 was refused for dense text. 2300
+# keeps about 18% headroom under the dense limit and still holds a full 2000-character chunk with
+# its prefix and a normal heading. The model's context is never raised to fit (ADR-009).
+HARD_MAX_EMBED_CHARS: Final = 2300
 EMBED_DOCUMENT_PREFIX: Final = "search_document: "
 
 FLAG_SPLIT_AT_LINE: Final = "split_at_line"

@@ -16,6 +16,13 @@ import httpx
 
 from grc_sidecar.errors import NonLoopbackURLError
 
+# Re-exported so that no other module needs `import httpx` (test_dependency_hygiene enforces that
+# this file is the only one that imports it).
+Timeout = httpx.Timeout
+HTTPError = httpx.HTTPError
+Request = httpx.Request
+AsyncBaseTransport = httpx.AsyncBaseTransport
+
 # Placeholder timeouts in seconds; revisit when retrieval and the questionnaire engine land.
 DEFAULT_TIMEOUT: Final = httpx.Timeout(connect=5.0, read=300.0, write=30.0, pool=5.0)
 
