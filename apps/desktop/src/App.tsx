@@ -21,8 +21,8 @@ function App() {
 
   return (
     <main className="container">
-      <h1>GRC Second Brain</h1>
-      <p>Local-first, air-gapped GRC workspace.</p>
+      <h1>ALIBI</h1>
+      <p>Every compliance answer needs an alibi.</p>
       <p role="status" aria-live="polite" className={viewClass(view)}>
         {describeView(view)}
       </p>

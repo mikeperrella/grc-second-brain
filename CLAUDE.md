@@ -6,6 +6,8 @@ Read this entire file before any task. Rules marked **MUST** are non-negotiable.
 
 ## 1. What this project is
 
+The product is named **ALIBI** (Answers Linked to Immutable, Backed Information), formerly GRC Second Brain. The problem, audience, promise, features and non-goals are in `docs/product-brief.md`.
+
 A local-first, air-gapped desktop GRC (Governance, Risk, and Compliance) application. It uses local LLMs through Ollama to:
 
 - auto-fill security questionnaires (SIG, CAIQ, custom Excel),
@@ -166,7 +168,7 @@ pnpm test
 
 ### 8.1 Knowledge vault and indexing
 - Markdown files are the single source of truth. The vector index is disposable derived state and can be rebuilt at any time.
-- Frontmatter fields: `doc_id`, `type`, `control_mappings` (list), `links` (optional list).
+- Frontmatter fields: `doc_id`, `type`, `owner`, `review_by` (next review date), `control_mappings` (list), `links` (optional list).
 - Chunk ID is deterministic: hash of `(source_path, doc_id, sha256(file), start_line, end_line)`.
 - When a source file changes: delete all chunks for that source, re-chunk, re-embed, upsert. Stale vectors are a bug.
 - Never convert Markdown into proprietary database objects.
@@ -218,6 +220,7 @@ pnpm test
 | M3 | Vault indexer | Frontmatter parsing, deterministic chunking, `sqlite-vec` repository, change-driven re-index |
 | M4 | Retrieval | Vector search plus explicit-link graph expansion with citations |
 | M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, SSE progress |
+| M5.5 | Promise ledger and recall, blast-radius preview, contradiction detector, reality check (offline import of IT exports checked against policy claims) | Each has tests and mutation proofs |
 | M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view |
 | M7 | Policy-to-code | Structured plan, patch generation, static validation, approval gate |
 | M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
