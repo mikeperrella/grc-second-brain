@@ -49,7 +49,13 @@ def test_a_sibling_with_the_same_prefix_is_blocked(approved: str) -> None:  # [N
         process_guard._audit_hook(EVENT, (CONNECTION, approved + "2"))
 
 
-def test_a_relative_path_is_blocked_even_if_it_names_the_same_file(approved: str) -> None:  # [NEG]
+def test_a_relative_path_is_blocked_even_if_it_names_the_same_file(
+    approved: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:  # [NEG]
+    # relpath() needs the working directory on the same drive as the path (the CI runner's
+    # workspace and temp folder are on different drives), so work from the temp folder.
+    monkeypatch.chdir(tmp_path)
+    assert not os.path.isabs(os.path.relpath(approved))
     with pytest.raises(ExtensionLoadBlockedError):
         process_guard._audit_hook(EVENT, (CONNECTION, os.path.relpath(approved)))
 

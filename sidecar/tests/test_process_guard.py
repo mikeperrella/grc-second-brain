@@ -325,7 +325,10 @@ results = {}
 for name, path in json.loads(sys.argv[3]).items():
     path = path.replace("<APPROVED>", str(approved)).replace("<FOREIGN>", str(foreign_dir / "vec0"))
     if path == "<RELATIVE>":
-        path = os.path.relpath(approved)
+        try:
+            path = os.path.relpath(approved)
+        except ValueError:  # Windows: a different drive has no relative form; use a bare name
+            path = "vec0"
     elif path == "<UPPER>":
         path = str(approved).upper()
     results[name] = attempt(path)
