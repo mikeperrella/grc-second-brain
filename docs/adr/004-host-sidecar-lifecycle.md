@@ -73,6 +73,8 @@ Revisit if: a non-Windows build is wanted; M8 packaging changes how the sidecar 
 
 ## Finding: the sidecar starts `cmd.exe` (follow-up for the sidecar PR, not fixed here)
 
+**Resolved by ADR-007 (sidecar hardening PR).** The sidecar now installs a process-creation audit hook before uvicorn starts, so the `ver` attempt is blocked and nothing is started. The text below is the original finding and its evidence, kept as written; its candidate list is evaluated, with source evidence, in ADR-007.
+
 Found in M2c, from the first CI run of the real-sidecar test. The shipped sidecar starts `cmd.exe` through a shell, from library code, every time it starts, on Python 3.11. That is contrary to the spirit of CLAUDE.md 3.5 (no shell execution), although none of it is our code and the command is a constant.
 
 Evidence (2026-10-08):

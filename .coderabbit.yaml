@@ -45,6 +45,7 @@ reviews:
         Flag as a blocking issue:
         - Any `shell=True`, `os.system`, `os.popen`, `eval`, `exec`, or spawning cmd/powershell/bash.
           Subprocesses must use an argument list, `shell=False`, a timeout, and an explicit env that excludes GRC_AUTH_TOKEN.
+          The sidecar enforces this at runtime with a process-creation audit hook (ADR-007); M7 extends its allowlist, never removes it.
         - Any filesystem path from a request, the frontend, or a document that is used without
           `Path.resolve(strict=True)` followed by `is_relative_to(approved_root)`. String prefix checks do not count.
         - Any HTTP client created outside `grc_sidecar/security/net.py`, any client without `trust_env=False`,

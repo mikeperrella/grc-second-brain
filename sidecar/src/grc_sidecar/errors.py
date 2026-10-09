@@ -50,3 +50,19 @@ class PathNotFoundError(GrcError):
     """A path is inside the approved root but does not exist."""
 
     default_message = "Path was not found"
+
+
+class ProcessGuardError(GrcError):
+    """The process-creation guard could not be installed or is not working."""
+
+    default_message = "Process guard could not be installed"
+
+
+class SpawnBlockedError(GrcError, PermissionError):
+    """Starting a process was refused by the process guard.
+
+    It is a PermissionError (an OSError) on purpose: the standard library already treats a
+    failed `ver` lookup on Windows as "unknown" and carries on, but only for OSError.
+    """
+
+    default_message = "Starting a process is not allowed"
