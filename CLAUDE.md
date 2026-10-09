@@ -267,3 +267,4 @@ When a MUST rule changes, update this file first, then the Cursor rule and `.cod
 - Add a deployment path for generated infrastructure code.
 - Add dependencies without approval.
 - Commit real company data, secrets, or `.env` files. All sample data is synthetic.
+- Bypass git hooks (`--no-verify`, `-n`, `core.hooksPath`, `SKIP=`).

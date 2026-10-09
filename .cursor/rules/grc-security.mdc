@@ -59,3 +59,4 @@ Canonical source is `CLAUDE.md`. This file mirrors Sections 3, 7, and 11. When a
 - Add a deployment path for generated infrastructure code.
 - Add dependencies without approval.
 - Commit real company data, secrets, or `.env` files. All sample data is synthetic.
+- Bypass git hooks (`--no-verify`, `-n`, `core.hooksPath`, `SKIP=`).

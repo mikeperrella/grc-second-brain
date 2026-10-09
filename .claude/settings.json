@@ -38,7 +38,19 @@
       "Bash(ollama pull *)",
       "Bash(ollama rm *)",
       "Bash(rm -rf *)",
-      "Bash(git push --force *)"
+      "Bash(git push --force *)",
+      "Bash(git commit *--no-verify*)",
+      "Bash(git push *--no-verify*)",
+      "Bash(git commit -n*)",
+      "Bash(git commit * -n*)",
+      "Bash(git * core.hooksPath*)",
+      "Bash(SKIP=*)",
+      "Bash(env *SKIP=*)",
+      "Bash(export SKIP=*)",
+      "Bash(set SKIP=*)",
+      "Bash($env:SKIP*)",
+      "Bash(*=* git commit*)",
+      "Bash(*=* git push*)"
     ]
   }
 }
