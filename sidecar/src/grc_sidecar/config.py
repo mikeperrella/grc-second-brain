@@ -40,12 +40,16 @@ class Settings(BaseSettings):
     log_dir: Path = Field(default_factory=_default_log_dir)
     log_level: LogLevel = "INFO"
     ollama_base_url: str = "http://127.0.0.1:11434"
+    # The knowledge vault folder. Chosen only here, from the environment: no IPC command or HTTP
+    # route takes a path yet (ADR-009 records why the Rust-side path check is still deferred).
+    # Whether it exists and is a directory is checked when the vault is scanned.
+    vault_dir: Path | None = None
 
-    @field_validator("log_dir")
+    @field_validator("log_dir", "vault_dir")
     @classmethod
-    def _log_dir_must_be_absolute(cls, value: Path) -> Path:
-        if not value.is_absolute():
-            raise ValueError("log_dir must be an absolute path")
+    def _dirs_must_be_absolute(cls, value: Path | None) -> Path | None:
+        if value is not None and not value.is_absolute():
+            raise ValueError("directory settings must be absolute paths")
         return value
 
     @field_validator("log_level", mode="before")

@@ -46,9 +46,16 @@ jobs:
       # The junit file goes to /tmp (in memory); the skip check is mounted read-only from the repo
       # and runs in the same container, because the container and its /tmp are gone afterwards.
       # Linux accepts only the Windows-only path skips, as in python.yml.
+      # The vault tests read the synthetic vault and the adversarial fixtures from the repo root.
+      # In the image the tests live in /app/tests, so "two directories above tests" is "/": the
+      # two mounts below put the data exactly where the tests look for it (read-only).
       - name: Sidecar tests (no network)
         run: |
-          docker run --rm $HARDENED -v "$GITHUB_WORKSPACE/.github/scripts:/ci-scripts:ro" grc-airgap sh -c '
+          docker run --rm $HARDENED \
+            -v "$GITHUB_WORKSPACE/.github/scripts:/ci-scripts:ro" \
+            -v "$GITHUB_WORKSPACE/vault-sample:/vault-sample:ro" \
+            -v "$GITHUB_WORKSPACE/fixtures:/fixtures:ro" \
+            grc-airgap sh -c '
             python -m pytest -rs -p no:cacheprovider --junitxml=/tmp/junit.xml
             pytest_status=$?
             python /ci-scripts/check_junit_skips.py /tmp/junit.xml --allow "Windows-only path behavior"

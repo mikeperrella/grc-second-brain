@@ -126,3 +126,21 @@ def test_explicit_log_dir_needs_no_home_directory(
     _remove_home_directory(monkeypatch)
     monkeypatch.setenv("GRC_LOG_DIR", str(tmp_path))
     assert load_settings().log_dir == tmp_path
+
+
+def test_vault_dir_defaults_to_unset() -> None:
+    assert load_settings().vault_dir is None
+
+
+def test_vault_dir_comes_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GRC_VAULT_DIR", str(tmp_path / "vault"))
+    assert load_settings().vault_dir == tmp_path / "vault"
+
+
+def test_relative_vault_dir_rejected(monkeypatch: pytest.MonkeyPatch) -> None:  # [NEG]
+    monkeypatch.setenv("GRC_VAULT_DIR", "relative/vault")
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings()
+    assert "relative" not in str(caught.value)  # reports the field name, never the value

@@ -92,6 +92,23 @@ rules:
     message: "The app must never download models (CLAUDE.md 3.7)."
     pattern-regex: /api/pull
 
+  # ---------- Python: frontmatter and vault content are untrusted (CLAUDE.md 8.6) ----------
+  - id: grc-py-yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: "yaml.load and the full/unsafe loaders can construct arbitrary Python objects from untrusted text. Use the strict loader in grc_sidecar.vault.frontmatter (a SafeLoader subclass), never yaml.load (CLAUDE.md 8.6)."
+    pattern-either:
+      - patterns:
+          - pattern: yaml.$ATTR
+          - metavariable-regex:
+              metavariable: $ATTR
+              regex: ^(load|load_all|unsafe_load|unsafe_load_all|full_load|full_load_all|Loader|FullLoader|UnsafeLoader|CLoader|CFullLoader|CUnsafeLoader)$
+      - patterns:
+          - pattern: from yaml import $NAME
+          - metavariable-regex:
+              metavariable: $NAME
+              regex: ^(load|load_all|unsafe_load|unsafe_load_all|full_load|full_load_all|Loader|FullLoader|UnsafeLoader|CLoader|CFullLoader|CUnsafeLoader)$
+
   # ---------- Rust: no shell ----------
   - id: grc-rs-shell-command
     languages: [rust]

@@ -1,0 +1,5 @@
+# Vault, fixture and pack files are stored with LF line endings so that chunk IDs and line
+# numbers are identical on Windows and Linux checkouts (ADR-009).
+vault-sample/** text eol=lf
+fixtures/** text eol=lf
+packs/** text eol=lf
