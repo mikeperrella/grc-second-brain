@@ -314,6 +314,18 @@ The file now says `"permissions": []`. In the F12 console run `window.__TAURI_IN
 | The real sidecar's job holds three processes in dev (launcher, interpreter, a `conhost.exe`); the check is on identity, not a count. `DETACHED_PROCESS` was not adopted. | [ADR-004](adr/004-host-sidecar-lifecycle.md) (Job Object) |
 | No dependency cache in CI (no `actions/cache`, no setup-node cache): one less thing to poison, and the installs are small. | A comment in `frontend.yml`. The other workflows install without any cache action too. |
 
+## Live Ollama checks (M3c)
+
+The unit tests use a fake embedder and a fake Ollama, so CI and the air-gap container need no model. A few checks need a real local Ollama. They are marked `ollama` and deselected by default (a deselected test is not a skip, so the CI skip check is unaffected).
+
+Needs `ollama serve` running and `nomic-embed-text` installed (`ollama list` shows `nomic-embed-text:latest`). The checks never pull a model. From `C:\dev\grc-second-brain\sidecar`, in a Cursor integrated terminal:
+
+```
+.venv/Scripts/python -m pytest -m ollama -v -rA
+```
+
+Success: 6 passed. The `-rA` output shows what each check measured: the model digest and 768 dimensions, the vector norm (about 1.0), the sample vault indexing with 0 issues (6 documents), the top 3 results for "multi-factor authentication" (the access-control policy first), an unknown model failing before any database write, the longest identifier-dense string the model accepts (2820 characters, 1.38 characters per token), and the worst-case chunk test at `HARD_MAX_EMBED_CHARS` (dense and prose strings, with Ollama's token counts). If the dense case fails, `HARD_MAX_EMBED_CHARS` has to be lowered (see ADR-009, "Embedding length cap").
+
 ## Run the sidecar by hand (and check it only listens on loopback)
 
 You need two PowerShell windows. The auth token exists only inside the sidecar's own process (it deletes it from its environment after reading it), so terminal 2 needs the printed token pasted in.

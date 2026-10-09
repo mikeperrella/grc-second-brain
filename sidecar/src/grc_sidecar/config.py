@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # Bundled framework packs (ADR-008). Whether it exists is checked when packs are loaded.
     packs_dir: Path | None = None
     embedding_model: str = "nomic-embed-text"
+    # The vector size the model must produce. A probe embed at startup measures the real size and
+    # the run fails closed (before any database write) if it differs from this.
+    embedding_dimension: int = Field(default=768, gt=0, le=8192)
 
     @field_validator("log_dir", "vault_dir", "index_dir", "packs_dir")
     @classmethod

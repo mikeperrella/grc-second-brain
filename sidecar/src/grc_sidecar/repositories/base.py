@@ -96,9 +96,27 @@ class IntegrityReport(_Frozen):
         return not self.problems
 
 
+RepositoryMode = Literal["closed", "deletions_only", "full"]
+
+
 class VectorRepository(Protocol):
+    @property
+    def mode(self) -> RepositoryMode:
+        """`closed`, `deletions_only` (see `open_for_deletions`) or `full`."""
+
     async def open_or_create(self, profile: EmbeddingProfile) -> None:
-        """Open the index, or create it. Fails closed if the file does not match `profile`."""
+        """Open the index, or create it. Fails closed if the file does not match `profile`.
+
+        An index that is open for deletions only is closed and reopened in full mode.
+        """
+
+    async def open_for_deletions(self) -> bool:
+        """Open an EXISTING index with the profile stored in it, for deletions only.
+
+        Returns False, changing nothing, when there is no index file. In this mode `begin_sync`,
+        `remove_document` and the read methods work; `replace_document` and `re_resolve_links`
+        raise. It needs no embedding model, so staleness can be refreshed with Ollama down.
+        """
 
     async def document_states(self) -> dict[str, DocState]: ...
 

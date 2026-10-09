@@ -47,6 +47,7 @@ from grc_sidecar.repositories.base import (
     IndexedDocument,
     IntegrityProblem,
     IntegrityReport,
+    RepositoryMode,
     ScanSnapshot,
     ScoredChunk,
     StaleReport,
@@ -184,6 +185,11 @@ def _pack(vector: Sequence[float]) -> bytes:
     return struct.pack(f"<{len(vector)}f", *vector)
 
 
+_META_KEYS: Final = frozenset(
+    {"embedding_model", "embedding_model_digest", "embedding_dim", "doc_prefix", "query_prefix"}
+)
+
+
 def _meta_for(profile: EmbeddingProfile) -> dict[str, str]:
     return {
         "embedding_model": profile.model,
@@ -254,11 +260,39 @@ def _connect(path: Path) -> sqlite3.Connection:
 class _SqliteStore:
     """The synchronous core. Never call it from outside the worker thread."""
 
-    def __init__(self, con: sqlite3.Connection, dimension: int) -> None:
+    def __init__(
+        self, con: sqlite3.Connection, dimension: int, *, deletions_only: bool = False
+    ) -> None:
         self._con = con
         self._dimension = dimension
+        # An index opened with the profile stored in it (no embedding model involved): it may
+        # delete, but never insert. `replace_document` and `re_resolve_links` check this flag.
+        self.deletions_only = deletions_only
 
     # ----- open / create -------------------------------------------------------------------
+
+    @classmethod
+    def open_for_deletions(cls, path: Path) -> Self | None:
+        """Open an existing index using the profile in its `meta` table; None if there is none.
+
+        A file from another schema version, or with damaged `meta`, is never touched or deleted
+        here: that is IndexRebuildRequiredError, and a human decides.
+        """
+        if path.is_dir():
+            raise IndexStoreError
+        if not path.exists():
+            return None
+        version, tables, stored = _inspect(path)
+        if version == 0 and tables == 0:
+            return None  # an empty file is not an index
+        if version != SCHEMA_VERSION or stored.keys() != _META_KEYS:
+            raise IndexRebuildRequiredError
+        dimension = 0
+        with contextlib.suppress(ValueError):
+            dimension = int(stored["embedding_dim"])
+        if dimension <= 0:
+            raise IndexRebuildRequiredError
+        return cls(_connect(path), dimension, deletions_only=True)
 
     @classmethod
     def open(cls, path: Path, profile: EmbeddingProfile, *, auto_rebuild: bool) -> Self:
@@ -377,6 +411,8 @@ class _SqliteStore:
         vectors: Sequence[Sequence[float]],
         links: Sequence[RawLink],
     ) -> None:
+        if self.deletions_only:
+            raise IndexStoreError("Index is open for deletions only")
         if len(chunks) != len(vectors):
             raise IndexStoreError("Chunk and vector counts differ")
         if any(c.source_path != doc.source_path or c.doc_id != doc.doc_id for c in chunks) or any(
@@ -464,6 +500,8 @@ class _SqliteStore:
             self._con.execute("DELETE FROM documents WHERE source_path = ?", (source_path,))
 
     def re_resolve_links(self, known: ResolutionIndex) -> None:
+        if self.deletions_only:
+            raise IndexStoreError("Index is open for deletions only")
         rows = self._con.execute(
             "SELECT id, source_path, source_line, target, alias, fragment, is_embed, origin "
             "FROM links"
@@ -621,11 +659,28 @@ class SqliteVecRepository:
             raise IndexStoreError("Index is not open")
         return self._core
 
+    @property
+    def mode(self) -> RepositoryMode:
+        if self._core is None:
+            return "closed"
+        return "deletions_only" if self._core.deletions_only else "full"
+
     async def open_or_create(self, profile: EmbeddingProfile) -> None:
         if self._core is not None:
-            raise IndexStoreError("Index is already open")
+            if not self._core.deletions_only:
+                raise IndexStoreError("Index is already open")
+            # Upgrade: close the deletions-only connection (on the DB thread), open a full one.
+            store, self._core = self._core, None
+            await self._run(store.close)
         path, auto = self._path, self._auto_rebuild
         self._core = await self._run(lambda: _SqliteStore.open(path, profile, auto_rebuild=auto))
+
+    async def open_for_deletions(self) -> bool:
+        if self._core is not None:
+            raise IndexStoreError("Index is already open")
+        path = self._path
+        self._core = await self._run(lambda: _SqliteStore.open_for_deletions(path))
+        return self._core is not None
 
     async def document_states(self) -> dict[str, DocState]:
         return await self._run(self._store().document_states)

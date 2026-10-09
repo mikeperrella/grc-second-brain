@@ -53,5 +53,8 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --strict-config"
+# Tests marked `ollama` need a real local Ollama. They are deselected (not skipped, so the CI skip
+# check stays intact) unless asked for: `pytest -m ollama`.
+addopts = "-ra --strict-markers --strict-config -m 'not ollama'"
+markers = ["ollama: needs a running local Ollama with the embedding model installed (live check)"]
 filterwarnings = ["error"]

@@ -3,6 +3,7 @@ import hashlib
 import pytest
 
 from grc_sidecar.vault.chunker import (
+    CHUNKER_VERSION,
     EMBED_DOCUMENT_PREFIX,
     FLAG_EMBEDDING_TRUNCATED,
     FLAG_SPLIT_AT_LINE,
@@ -134,7 +135,8 @@ def test_a_long_section_splits_at_blank_lines_and_keeps_its_heading() -> None:
 
 
 def test_a_fenced_block_is_never_split_while_it_fits() -> None:
-    code = "\n".join(f"line {i:04d}" + "x" * 60 for i in range(40))  # about 2.8k characters
+    # About 2.1k characters: more than MAX_CHUNK_CHARS, but it fits under HARD_MAX_EMBED_CHARS.
+    code = "\n".join(f"line {i:04d}" + "x" * 60 for i in range(30))
     doc = make_doc(f"# Code\n\n```\n{code}\n```")
     chunks = chunk_document(doc)
     assert len(chunks) == 1
@@ -162,6 +164,19 @@ def test_one_enormous_line_keeps_its_full_text_but_a_cut_embedding_input() -> No
     assert FLAG_EMBEDDING_TRUNCATED in chunk.flags
     sent, cut = embedding_input(chunk.heading_path, chunk.text)
     assert cut and len(sent) == HARD_MAX_EMBED_CHARS
+
+
+MEASURED_DENSE_LIMIT = 2820  # characters of identifier-dense text Ollama accepted (M3c, live)
+
+
+def test_the_embedding_cap_keeps_headroom_under_the_measured_limit() -> None:
+    # The live check (`pytest -m ollama`) measured the longest dense string nomic-embed-text
+    # accepts through Ollama with truncation off. The cap must stay well below it, and must still
+    # hold a full-size chunk with its prefix and an ordinary heading.
+    assert HARD_MAX_EMBED_CHARS <= MEASURED_DENSE_LIMIT * 0.85
+    assert MAX_CHUNK_CHARS + len(EMBED_DOCUMENT_PREFIX) + 200 <= HARD_MAX_EMBED_CHARS
+    # Lowering the cap changed where long sections split, so old indexes must be rebuilt.
+    assert CHUNKER_VERSION == "2"
 
 
 def test_embedding_input_never_exceeds_the_hard_cap() -> None:

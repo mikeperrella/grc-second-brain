@@ -201,6 +201,52 @@ class ExtensionUnavailableError(IndexStoreError):
     default_message = "Vector extension could not be loaded"
 
 
+class ModelMissingError(GrcError):
+    """A model the app needs is not installed in Ollama.
+
+    The app never downloads models (CLAUDE.md 3.7): a human installs it with Ollama.
+    """
+
+    default_message = (
+        "Required model is not installed in Ollama; install it yourself (the app never downloads)"
+    )
+
+
+class EmbeddingUnavailableError(GrcError):
+    """Ollama could not be reached, timed out, or answered with a server-side failure.
+
+    A connection-level problem: it aborts an indexing run rather than failing one file.
+    """
+
+    default_message = "Embedding service is unavailable"
+
+
+class EmbeddingResponseError(GrcError):
+    """Ollama answered, but not with usable embeddings (wrong shape, NaN, input too long).
+
+    Affects the text that was sent, so an indexing run records it for that file and goes on.
+    The message never contains the response body or the input text.
+    """
+
+    default_message = "Embedding response was not usable"
+
+
+class EmbeddingDimensionError(GrcError):
+    """The model's vectors do not have the dimension the settings expect."""
+
+    default_message = "Embedding dimension is not the expected one"
+
+
+class EndpointNotAllowedError(GrcError):
+    """A request to an Ollama endpoint other than the two the app uses was refused.
+
+    The client may only call `GET /api/tags` and `POST /api/embed`. This is the runtime control
+    behind "the app never downloads models".
+    """
+
+    default_message = "This Ollama endpoint is not allowed"
+
+
 class PackMetadataError(GrcError):
     """A framework pack's pack.json is missing fields or has invalid values.
 

@@ -229,3 +229,21 @@ def test_missing_home_directory_only_matters_when_the_index_dir_is_needed(
     with pytest.raises(ConfigurationError) as info:
         resolve_index_dir(settings)
     assert str(info.value) == "Home directory is not available; set GRC_INDEX_DIR"
+
+
+def test_embedding_dimension_defaults_to_768_and_comes_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert load_settings().embedding_dimension == 768
+    monkeypatch.setenv("GRC_EMBEDDING_DIMENSION", "384")
+    assert load_settings().embedding_dimension == 384
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "9000", "abc", "768.5"])
+def test_an_invalid_embedding_dimension_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:  # [NEG]
+    monkeypatch.setenv("GRC_EMBEDDING_DIMENSION", value)
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings()
+    assert value not in str(caught.value)  # the field name is reported, never the value
