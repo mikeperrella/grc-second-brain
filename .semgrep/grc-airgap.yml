@@ -109,6 +109,37 @@ rules:
               metavariable: $NAME
               regex: ^(load|load_all|unsafe_load|unsafe_load_all|full_load|full_load_all|Loader|FullLoader|UnsafeLoader|CLoader|CFullLoader|CUnsafeLoader)$
 
+  # ---------- Python: the vector store is the only place that touches SQLite (ADR-001) ----------
+  - id: grc-py-sqlite-outside-repositories
+    languages: [python]
+    severity: ERROR
+    message: "Only grc_sidecar/repositories/ may import sqlite3 or sqlite_vec (ADR-001). Everything else uses the VectorRepository protocol."
+    paths:
+      exclude:
+        - "**/repositories/**"
+        - "**/tests/**"
+    pattern-either:
+      - pattern: import sqlite3
+      - pattern: import sqlite3.$SUB
+      - pattern: from sqlite3 import $X
+      - pattern: import sqlite_vec
+      - pattern: from sqlite_vec import $X
+
+  # Loading a native library runs arbitrary code inside the sidecar. The process guard allows
+  # exactly one extension (ADR-007 amendment); this rule keeps the call sites in one reviewed module.
+  - id: grc-py-extension-load-outside-repositories
+    languages: [python]
+    severity: ERROR
+    message: "Native SQLite extensions are loaded only in grc_sidecar/repositories/ and only the vendored sqlite-vec (ADR-007 amendment)."
+    paths:
+      exclude:
+        - "**/repositories/**"
+        - "**/tests/**"
+    pattern-either:
+      - pattern: $CON.load_extension(...)
+      - pattern: $CON.enable_load_extension(...)
+      - pattern: sqlite_vec.load(...)
+
   # ---------- Rust: no shell ----------
   - id: grc-rs-shell-command
     languages: [rust]

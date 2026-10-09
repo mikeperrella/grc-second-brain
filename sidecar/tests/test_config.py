@@ -7,7 +7,7 @@ from typing import NoReturn
 import pytest
 from pydantic import ValidationError
 
-from grc_sidecar.config import Settings, load_settings
+from grc_sidecar.config import Settings, load_settings, resolve_index_dir
 from grc_sidecar.errors import ConfigurationError
 
 pytestmark = pytest.mark.usefixtures("clean_grc_env")
@@ -144,3 +144,88 @@ def test_relative_vault_dir_rejected(monkeypatch: pytest.MonkeyPatch) -> None:  
     with pytest.raises(ConfigurationError) as caught:
         load_settings()
     assert "relative" not in str(caught.value)  # reports the field name, never the value
+
+
+def test_index_settings_defaults() -> None:
+    settings = load_settings()
+    assert settings.index_dir is None  # the home-based default is worked out on use, not at startup
+    assert settings.packs_dir is None
+    assert settings.embedding_model == "nomic-embed-text"
+    assert resolve_index_dir(settings) == Path.home() / ".grc-second-brain" / "index"
+
+
+def test_index_settings_come_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GRC_INDEX_DIR", str(tmp_path / "index"))
+    monkeypatch.setenv("GRC_PACKS_DIR", str(tmp_path / "packs"))
+    monkeypatch.setenv("GRC_EMBEDDING_MODEL", "other-embed")
+    settings = load_settings()
+    assert resolve_index_dir(settings) == tmp_path / "index"
+    assert settings.packs_dir == tmp_path / "packs"
+    assert settings.embedding_model == "other-embed"
+
+
+@pytest.mark.parametrize("name", ["GRC_INDEX_DIR", "GRC_PACKS_DIR"])
+def test_relative_index_and_packs_dirs_rejected(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:  # [NEG]
+    monkeypatch.setenv(name, "relative/dir")
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings()
+    assert "relative" not in str(caught.value)
+
+
+@pytest.mark.parametrize("inside", ["", "sub/folder", "sub/../other"])
+def test_index_dir_inside_the_vault_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, inside: str
+) -> None:  # [NEG]
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("GRC_VAULT_DIR", str(vault))
+    monkeypatch.setenv("GRC_INDEX_DIR", str(vault / inside))
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings()
+    assert str(caught.value) == "Invalid configuration for: index_dir"
+    assert "vault" not in str(caught.value)
+
+
+def test_letter_case_decides_whether_the_index_dir_is_inside_the_vault_only_on_windows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:  # [NEG]
+    # On Windows "Vault" and "VAULT" are one folder, so this is rejected. On Linux they are two
+    # different folders, so it is allowed. The test runs on both.
+    monkeypatch.setenv("GRC_VAULT_DIR", str(tmp_path / "Vault"))
+    monkeypatch.setenv("GRC_INDEX_DIR", str(tmp_path / "VAULT" / "index"))
+    if sys.platform == "win32":
+        with pytest.raises(ConfigurationError):
+            load_settings()
+    else:
+        assert load_settings().index_dir == tmp_path / "VAULT" / "index"
+
+
+def test_index_dir_beside_the_vault_is_fine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GRC_VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("GRC_INDEX_DIR", str(tmp_path / "vault-index"))  # shares a name prefix only
+    assert load_settings().index_dir == tmp_path / "vault-index"
+
+
+def test_the_default_index_dir_must_also_be_outside_the_vault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # [NEG]
+    monkeypatch.setenv("GRC_VAULT_DIR", str(Path.home() / ".grc-second-brain"))
+    settings = load_settings()  # nothing explicit to reject yet...
+    with pytest.raises(ConfigurationError):  # ...but the default lands inside the vault
+        resolve_index_dir(settings)
+
+
+def test_missing_home_directory_only_matters_when_the_index_dir_is_needed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:  # [NEG]
+    _remove_home_directory(monkeypatch)
+    monkeypatch.setenv("GRC_LOG_DIR", str(tmp_path))
+    settings = load_settings()  # startup must still work: this is how the host starts the sidecar
+    with pytest.raises(ConfigurationError) as info:
+        resolve_index_dir(settings)
+    assert str(info.value) == "Home directory is not available; set GRC_INDEX_DIR"

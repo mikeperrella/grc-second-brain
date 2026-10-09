@@ -6,10 +6,11 @@ deliberately no host, port, or auth-token field: the server always binds
 never stored in settings (M1b).
 """
 
-from pathlib import Path
+import os
+from pathlib import Path, PurePath
 from typing import Literal
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from grc_sidecar.errors import ConfigurationError
@@ -18,14 +19,29 @@ from grc_sidecar.security.net import validate_loopback_url
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
-def _default_log_dir() -> Path:
+def _default_app_dir(folder: str, env_var: str) -> Path:
     try:
         home = Path.home()
     except RuntimeError:
         # Raised when neither USERPROFILE (or HOMEDRIVE+HOMEPATH) nor HOME/the user database
-        # gives a home directory. Setting GRC_LOG_DIR avoids this lookup entirely.
-        raise ConfigurationError("Home directory is not available; set GRC_LOG_DIR") from None
-    return home / ".grc-second-brain" / "logs"
+        # gives a home directory. Setting the environment variable avoids this lookup entirely.
+        raise ConfigurationError(f"Home directory is not available; set {env_var}") from None
+    return home / ".grc-second-brain" / folder
+
+
+def _default_log_dir() -> Path:
+    return _default_app_dir("logs", "GRC_LOG_DIR")
+
+
+def _is_inside(inner: Path, outer: Path) -> bool:
+    """Lexical "is `inner` the same folder as, or below, `outer`", case-folded on Windows.
+
+    Nothing is resolved, because neither folder has to exist yet. A link that fooled this check
+    is caught later, when files are read through the path guard.
+    """
+    inner_key = PurePath(os.path.normcase(os.path.normpath(inner)))
+    outer_key = PurePath(os.path.normcase(os.path.normpath(outer)))
+    return inner_key.is_relative_to(outer_key)
 
 
 class Settings(BaseSettings):
@@ -44,12 +60,32 @@ class Settings(BaseSettings):
     # route takes a path yet (ADR-009 records why the Rust-side path check is still deferred).
     # Whether it exists and is a directory is checked when the vault is scanned.
     vault_dir: Path | None = None
+    # Where the derived search index lives. It must stay OUTSIDE the vault: the vault is the
+    # source of truth and the index is disposable (CLAUDE.md 8.1). Created on demand. Unset means
+    # "~/.grc-second-brain/index", worked out by `resolve_index_dir` when the index is opened and
+    # not at startup: the host starts the sidecar with an allowlisted environment that has no home
+    # directory, and startup must not fail over a setting nothing uses yet (same reasoning as
+    # ADR-009's deviation from CLAUDE.md 3.7).
+    index_dir: Path | None = None
+    # Bundled framework packs (ADR-008). Whether it exists is checked when packs are loaded.
+    packs_dir: Path | None = None
+    embedding_model: str = "nomic-embed-text"
 
-    @field_validator("log_dir", "vault_dir")
+    @field_validator("log_dir", "vault_dir", "index_dir", "packs_dir")
     @classmethod
     def _dirs_must_be_absolute(cls, value: Path | None) -> Path | None:
         if value is not None and not value.is_absolute():
             raise ValueError("directory settings must be absolute paths")
+        return value
+
+    @field_validator("index_dir")
+    @classmethod
+    def _index_dir_must_be_outside_the_vault(
+        cls, value: Path | None, info: ValidationInfo
+    ) -> Path | None:
+        vault_dir = info.data.get("vault_dir")  # declared above, so already validated
+        if value is not None and vault_dir is not None and _is_inside(value, vault_dir):
+            raise ValueError("index_dir must not be inside vault_dir")
         return value
 
     @field_validator("log_level", mode="before")
@@ -61,6 +97,14 @@ class Settings(BaseSettings):
     @classmethod
     def _ollama_url_must_be_loopback(cls, value: str) -> str:
         return validate_loopback_url(value)
+
+
+def resolve_index_dir(settings: Settings) -> Path:
+    """The folder that holds the index: the setting, or the default under the home directory."""
+    index_dir = settings.index_dir or _default_app_dir("index", "GRC_INDEX_DIR")
+    if settings.vault_dir is not None and _is_inside(index_dir, settings.vault_dir):
+        raise ConfigurationError("Invalid configuration for: index_dir")
+    return index_dir
 
 
 def load_settings() -> Settings:

@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings==2.15.0",
     "httpx==0.28.1",
     "PyYAML==6.0.3",
+    "sqlite-vec==0.1.9",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +44,12 @@ strict = true
 python_version = "3.11"
 plugins = ["pydantic.mypy"]
 files = ["src"]
+
+# sqlite-vec ships no type information (no py.typed). Everything else stays strict; the few calls
+# into it are wrapped in typed functions in repositories/sqlite_vec_repo.py.
+[[tool.mypy.overrides]]
+module = "sqlite_vec"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

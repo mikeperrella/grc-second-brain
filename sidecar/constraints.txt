@@ -28,6 +28,7 @@ pytest==9.1.1
 python-dotenv==1.2.4
 PyYAML==6.0.3
 ruff==0.16.10
+sqlite-vec==0.1.9
 starlette==1.7.0
 types-PyYAML==6.0.12.20260906
 typing-inspection==0.4.4
