@@ -47,3 +47,13 @@ Follow-ups (recorded only, not done here):
 
 - Ask uvicorn upstream to compare `sys.platform == "win32"` instead of calling `platform.system()`. Filing it is outward-facing and is Mike's call.
 - A host-side Job Object `ActiveProcessLimit` would enforce the same rule from the kernel, for native code too. It changes the limit-flag test (`0x2000`) and the fake sidecar's grandchild tests in ADR-004.
+
+## Addendum: stdout is sealed before the server starts
+
+The host fails closed on any stdout byte after the ready line (ADR-004), but until now that only held by convention. `security/stdio.py` `seal_stdout()` makes it structural, in the same PR:
+
+- `os.dup(1)` keeps a private copy of the pipe for the ready line. `os.dup2` then points file descriptor 1 at the null device, so `print`, `sys.stdout` and C code writing to fd 1 go nowhere. On Windows `SetStdHandle` points the operating system's standard-output handle at the same device, for native code that calls `GetStdHandle` and `WriteFile`.
+- `main()` seals after the socket is bound and before uvicorn starts. `ReadySignalServer` writes the ready line to the private copy and closes it, so the sidecar holds no handle to the pipe afterwards. The host treats end-of-stream after the ready line as normal (`supervisor.rs`). The venv launcher (and a PyInstaller bootloader) keep their own copy of the pipe, which code in the sidecar process cannot reach.
+- Stray stdout is discarded and not logged, because logging it could put document content into the log (CLAUDE.md Section 7). A seal failure exits 2 with one fixed line.
+- Interaction with uvicorn's logging: the sidecar passes `log_config=None`, so uvicorn installs no handlers; its `uvicorn.error` messages propagate to our rotating file handler and `access_log=False` silences the rest. The only references to `sys.stdout` in uvicorn are its default logging dictionary (`config.py:106`, unused here) and a colour check (`logging.py:42`). Python's `logging.lastResort` and `warnings` write to stderr. So nothing on the serve path touched stdout before, and a handler added by a future dependency would now write to the null device instead of the pipe.
+- Known gap: on this machine (Windows 11, CPython 3.11.9) removing the `SetStdHandle` call leaves the tests green, because the C runtime's `_dup2` already repoints the standard handle for descriptors 0 to 2. The call stays as defence in depth, but there is no mutation proof for it. The `dup2` itself, the closing of the private copy and the fail-closed exit each have one.

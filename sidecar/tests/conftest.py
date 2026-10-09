@@ -47,6 +47,12 @@ def _no_real_bind_in_main(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sidecar_entry, "bind_loopback_socket", lambda: SimpleNamespace(close=int))
 
 
+@pytest.fixture(autouse=True)
+def _no_real_stdout_seal_in_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Sealing redirects file descriptor 1 of the pytest process itself and cannot be undone.
+    monkeypatch.setattr(sidecar_entry, "seal_stdout", lambda: SimpleNamespace(close=int))
+
+
 @pytest.fixture
 def clean_grc_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in [n for n in os.environ if n.upper().startswith("GRC_")]:

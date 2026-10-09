@@ -66,3 +66,9 @@ class SpawnBlockedError(GrcError, PermissionError):
     """
 
     default_message = "Starting a process is not allowed"
+
+
+class StdoutSealError(GrcError):
+    """Standard output could not be redirected away from the host's pipe."""
+
+    default_message = "Standard output could not be sealed"

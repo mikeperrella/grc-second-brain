@@ -51,7 +51,7 @@ def ready_line(port: int) -> str:
 class ReadySignalServer(uvicorn.Server):
     """uvicorn server that announces its port once it is listening."""
 
-    def __init__(self, config: uvicorn.Config, ready_stream: TextIO | None = None) -> None:
+    def __init__(self, config: uvicorn.Config, ready_stream: TextIO) -> None:
         super().__init__(config)
         self._ready_stream = ready_stream
 
@@ -63,12 +63,13 @@ class ReadySignalServer(uvicorn.Server):
             self._emit_ready(sockets[0].getsockname()[1])
 
     def _emit_ready(self, port: int) -> None:
-        stream = self._ready_stream if self._ready_stream is not None else sys.stdout
-        stream.write(ready_line(port) + "\n")
-        stream.flush()
+        # The stream is the private copy made by seal_stdout. Closing it right after the line
+        # leaves this process holding no handle to the host's pipe.
+        with self._ready_stream as stream:
+            stream.write(ready_line(port) + "\n")
 
 
-def serve(token: str, settings: Settings, sock: socket.socket) -> None:
+def serve(token: str, settings: Settings, sock: socket.socket, ready_stream: TextIO) -> None:
     """Serve on an already bound loopback socket and close it afterwards."""
     config = uvicorn.Config(
         create_app(token),
@@ -83,6 +84,6 @@ def serve(token: str, settings: Settings, sock: socket.socket) -> None:
         proxy_headers=False,
     )
     try:
-        ReadySignalServer(config).run(sockets=[sock])
+        ReadySignalServer(config, ready_stream).run(sockets=[sock])
     finally:
         sock.close()
