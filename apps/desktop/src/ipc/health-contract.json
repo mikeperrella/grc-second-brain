@@ -1,0 +1,196 @@
+{
+  "errors": [
+    {
+      "error": "unauthorized"
+    },
+    {
+      "error": "unreachable"
+    },
+    {
+      "error": "timeout"
+    },
+    {
+      "error": "bad_response"
+    },
+    {
+      "error": "internal"
+    }
+  ],
+  "replies": [
+    {
+      "status": "starting"
+    },
+    {
+      "status": "healthy"
+    },
+    {
+      "status": "not_running"
+    },
+    {
+      "reason": {
+        "kind": "timeout"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "eof_before_ready"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "not_json"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "wrong_fields"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "port_out_of_range"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "line_too_long"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "read_failed"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "code": 3,
+        "kind": "exited_before_ready"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "startup_rejected"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "exited_after_ready"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "protocol_violation"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "not_installed"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "not_configured"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "outside_sidecar_dir"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "spawn_failed"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "job_failed"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "job_assign_failed"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "unexpected_thread_state"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "log_dir_unavailable"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "system_root_unavailable"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "random_unavailable"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "env_rejected"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "http_client_failed"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "kind": "internal"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "code": null,
+        "kind": "exited_before_ready"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "code": -2147483648,
+        "kind": "exited_before_ready"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
+        "code": 2147483647,
+        "kind": "exited_before_ready"
+      },
+      "status": "failed"
+    }
+  ]
+}
