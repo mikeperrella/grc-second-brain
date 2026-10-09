@@ -40,6 +40,8 @@ JSON is used for the metadata so none of the YAML pitfalls in ADR-009 apply to i
 | NIST SP 800-171 Rev 3 | 130 | 97 | 33 |
 | NIST SP 800-53 Rev 5 (controls and enhancements) | 1196 | 1014 | 182 |
 
+Measured size of the converted packs (M3f, bytes on disk including `pack.json`): CSF 2.0 78,062; SP 800-171 Rev 3 134,798; SP 800-53 Rev 5 1,007,239 (20 files, one per control family). Total 1,220,099 bytes, about 1.2 MB, against a 15 MB limit; the raw 10.4 MB 800-53 catalog is not committed.
+
 What the converter leaves out: the assessment objectives and assessment methods (SP 800-53 and 800-171), because they are large and not needed for mapping policies to controls. Markdown link URLs in the prose are dropped (the sources carry app-internal paths); the link text stays. Whitespace in prose is collapsed to single spaces so source text can never begin a heading or a frontmatter fence.
 
 ## Consequences
