@@ -101,3 +101,29 @@ from pathlib import Path
 pull_url = "http://127.0.0.1:11434/api/pull"
 # ok: grc-py-ollama-pull
 tags_url = "http://127.0.0.1:11434/api/tags"
+
+# ---------- grc-py-yaml-unsafe-load ----------
+# ruleid: grc-py-yaml-unsafe-load
+yaml.load(text)
+# ruleid: grc-py-yaml-unsafe-load
+yaml.load(text, Loader=yaml.SafeLoader)
+# ruleid: grc-py-yaml-unsafe-load
+yaml.load_all(text)
+# ruleid: grc-py-yaml-unsafe-load
+yaml.unsafe_load(text)
+# ruleid: grc-py-yaml-unsafe-load
+yaml.full_load(text)
+# ruleid: grc-py-yaml-unsafe-load
+parsed = yaml.parse(text, Loader=yaml.UnsafeLoader)
+# ruleid: grc-py-yaml-unsafe-load
+parsed = yaml.parse(text, Loader=yaml.CLoader)
+# ruleid: grc-py-yaml-unsafe-load
+from yaml import FullLoader
+# ok: grc-py-yaml-unsafe-load
+yaml.safe_load(text)
+# ok: grc-py-yaml-unsafe-load
+parsed = yaml.parse(text, Loader=yaml.SafeLoader)
+# ok: grc-py-yaml-unsafe-load
+raise yaml.YAMLError
+# ok: grc-py-yaml-unsafe-load
+from yaml import SafeLoader
