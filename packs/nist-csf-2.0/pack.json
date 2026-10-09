@@ -1,0 +1,16 @@
+{
+  "content_kind": "full_text",
+  "content_sha256": "6c6132f1310e04c9051754de2e798fe841a3f3f92692c82f5e847152ebc261e3",
+  "converter_version": "1",
+  "id_list_verified_against": "source file sha256 matched the pinned hash; control counts (active and withdrawn) compared with the OSCAL source at conversion time",
+  "license": "US-Gov-PD (17 USC 105); CC0-1.0 (usnistgov/oscal-content LICENSE.md)",
+  "origin": "converted_public_domain",
+  "pack_id": "nist-csf-2.0",
+  "redistributable": true,
+  "retrieved_on": "2026-10-09",
+  "source_sha256": "4836943f21d393f2821df85ada4e6f3c0617243b4ddf44263fe68205400210b4",
+  "source_url": "https://github.com/usnistgov/oscal-content/blob/78650f02ad9321bb7b817846f8fbd4f2bcd620de/nist.gov/CSF/v2.0/json/NIST_CSF_v2.0_catalog.json",
+  "title": "NIST Cybersecurity Framework 2.0",
+  "upstream_license": "US Government work (NIST), public domain in the United States; worldwide CC0 waiver stated in usnistgov/oscal-content LICENSE.md",
+  "version": "2.0"
+}

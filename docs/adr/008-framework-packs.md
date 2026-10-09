@@ -28,6 +28,20 @@ JSON is used for the metadata so none of the YAML pitfalls in ADR-009 apply to i
 
 **SOC 2 and ISO 27001.** Their text is copyrighted. Those packs hold control IDs for every control, and our own titles and one or two sentence summaries only for the controls the sample vault maps to. Users who want more import their own licensed material later.
 
+**Licence of the NIST content (recorded in M3d).** The `usnistgov/oscal-content` LICENSE.md at commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de` says: "As a work of the United States government, this project is in the public domain within the United States." It also states a worldwide copyright waiver under CC0 1.0 ("we waive copyright and related rights in the work worldwide"). `pack.json` records `license = "US-Gov-PD (17 USC 105); CC0-1.0 (usnistgov/oscal-content LICENSE.md)"`. Note: the text was read through a web-fetch tool that returned short quotes, not a raw file download, so the project owner should open LICENSE.md once and confirm these two sentences.
+
+**Loader behaviour (M3d).** `grc_sidecar/packs/loader.py` verifies every pack before anything is indexed, and one failing pack stops all of them (fail closed). A pack folder may hold only `pack.json` and top-level `*.md` files, the packs folder may hold only pack directories, and symlinks are refused, so the set of files that is hashed is exactly the set that gets indexed. The loader takes any `EmbeddingClient`; the deterministic fake lives only in `tests/`. The pack database is `packs.sqlite3` inside `index_dir`. It is built at runtime, is covered by the `*.sqlite3` rule in `.gitignore`, and is never committed or shipped.
+
+**Withdrawn controls (decision).** NIST catalogs include withdrawn controls (removed, merged into others, or moved). They are kept so old references still resolve, but they must never read like current requirements. The converter therefore writes active controls normally and puts every withdrawn control in a final `## Withdrawn controls` section of its file as one line: the ID, the word "Withdrawn", and the "Incorporated into", "Moved to" or "Addressed by" note when the source has one. A stub carries no requirement text. Counts are checked separately (active and withdrawn) against the source, both inside the converter and in `test_pack_loader.py`.
+
+| Source (OSCAL, pinned commit) | Total | Active | Withdrawn |
+|---|---|---|---|
+| NIST CSF 2.0 (categories and subcategories) | 219 | 128 | 91 |
+| NIST SP 800-171 Rev 3 | 130 | 97 | 33 |
+| NIST SP 800-53 Rev 5 (controls and enhancements) | 1196 | 1014 | 182 |
+
+What the converter leaves out: the assessment objectives and assessment methods (SP 800-53 and 800-171), because they are large and not needed for mapping policies to controls. Markdown link URLs in the prose are dropped (the sources carry app-internal paths); the link text stays. Whitespace in prose is collapsed to single spaces so source text can never begin a heading or a frontmatter fence.
+
 ## Consequences
 
 - A half-filled or hand-edited `pack.json` fails loudly, naming the bad fields and never their values.

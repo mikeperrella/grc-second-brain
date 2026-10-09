@@ -32,6 +32,7 @@ The owner (Mike) must be able to explain every design decision and every line of
 6. **Dependencies require approval.** Before adding any package, state its name, pinned version, purpose, license, and whether it has any network, telemetry, or auto-update behavior.
 7. **No fabricated content.** Never invent metrics, benchmark numbers, or claims for the README or docs. All sample data is synthetic and labeled as such.
 8. **End every chunk with the verification commands** from Section 6 for the areas touched.
+9. **Change files only with the edit tool**, never sed, heredocs or stdin scripts, so every change is reviewable as a diff.
 
 ---
 
@@ -226,7 +227,7 @@ pnpm test
 | M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
 
-**Current milestone: M3.**
+**Current milestone: M4.**
 
 ---
 

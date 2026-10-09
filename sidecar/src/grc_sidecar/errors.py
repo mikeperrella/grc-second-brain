@@ -247,6 +247,20 @@ class EndpointNotAllowedError(GrcError):
     default_message = "This Ollama endpoint is not allowed"
 
 
+class PackIntegrityError(GrcError):
+    """A framework pack does not match its manifest, or its folder holds something unexpected.
+
+    Packs fail closed: nothing from any pack is indexed. `pack_id` is the directory name (our own
+    content, never user text); the message never contains file contents.
+    """
+
+    default_message = "Framework pack failed its integrity check"
+
+    def __init__(self, pack_id: str = "") -> None:
+        super().__init__()
+        self.pack_id = pack_id
+
+
 class PackMetadataError(GrcError):
     """A framework pack's pack.json is missing fields or has invalid values.
 

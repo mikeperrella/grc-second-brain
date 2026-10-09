@@ -1,0 +1,76 @@
+---
+doc_id: nist-csf-2.0-rc
+type: framework
+owner: "NIST"
+---
+# RECOVER (RC)
+
+Assets and operations affected by a cybersecurity incident are restored
+
+## RC.CO Incident Recovery Communication
+
+Restoration activities are coordinated with internal and external parties
+
+### RC.CO-03
+
+Recovery activities and progress in restoring operational capabilities are communicated to designated internal and external stakeholders
+- Implementation example: Securely share recovery information, including restoration progress, consistent with response plans and information sharing agreements
+- Implementation example: Regularly update senior leadership on recovery status and restoration progress for major incidents
+- Implementation example: Follow the rules and protocols defined in contracts for incident information sharing between the organization and its suppliers
+- Implementation example: Coordinate crisis communication between the organization and its critical suppliers
+
+### RC.CO-04
+
+Public updates on incident recovery are shared using approved methods and messaging
+- Implementation example: Follow the organization's breach notification procedures for recovering from a data breach incident
+- Implementation example: Explain the steps being taken to recover from the incident and to prevent a recurrence
+
+## RC.RP Incident Recovery Plan Execution
+
+Restoration activities are performed to ensure operational availability of systems and services affected by cybersecurity incidents
+
+### RC.RP-01
+
+The recovery portion of the incident response plan is executed once initiated from the incident response process
+- Implementation example: Begin recovery procedures during or after incident response processes
+- Implementation example: Make all individuals with recovery responsibilities aware of the plans for recovery and the authorizations required to implement each aspect of the plans
+
+### RC.RP-02
+
+Recovery actions are selected, scoped, prioritized, and performed
+- Implementation example: Select recovery actions based on the criteria defined in the incident response plan and available resources
+- Implementation example: Change planned recovery actions based on a reassessment of organizational needs and resources
+
+### RC.RP-03
+
+The integrity of backups and other restoration assets is verified before using them for restoration
+- Implementation example: Check restoration assets for indicators of compromise, file corruption, and other integrity issues before use
+
+### RC.RP-04
+
+Critical mission functions and cybersecurity risk management are considered to establish post-incident operational norms
+- Implementation example: Use business impact and system categorization records (including service delivery objectives) to validate that essential services are restored in the appropriate order
+- Implementation example: Work with system owners to confirm the successful restoration of systems and the return to normal operations
+- Implementation example: Monitor the performance of restored systems to verify the adequacy of the restoration
+
+### RC.RP-05
+
+The integrity of restored assets is verified, systems and services are restored, and normal operating status is confirmed
+- Implementation example: Check restored assets for indicators of compromise and remediation of root causes of the incident before production use
+- Implementation example: Verify the correctness and adequacy of the restoration actions taken before putting a restored system online
+
+### RC.RP-06
+
+The end of incident recovery is declared based on criteria, and incident-related documentation is completed
+- Implementation example: Prepare an after-action report that documents the incident itself, the response and recovery actions taken, and lessons learned
+- Implementation example: Declare the end of incident recovery once the criteria are met
+
+## Withdrawn controls
+
+These controls are withdrawn. They are listed so old references still resolve.
+
+- **RC.CO-01**: Withdrawn. Incorporated into: RC.CO-04.
+- **RC.CO-02**: Withdrawn. Incorporated into: RC.CO-04.
+- **RC.IM**: Withdrawn. Incorporated into: ID.IM.
+- **RC.IM-01**: Withdrawn. Incorporated into: ID.IM-03, ID.IM-04.
+- **RC.IM-02**: Withdrawn. Incorporated into: ID.IM-03.
