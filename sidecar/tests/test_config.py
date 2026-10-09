@@ -1,6 +1,8 @@
 import secrets
+import sys
 import traceback
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from pydantic import ValidationError
@@ -93,3 +95,34 @@ def test_settings_are_frozen() -> None:
     settings = load_settings()
     with pytest.raises(ValidationError):
         settings.log_level = "DEBUG"  # type: ignore[misc]
+
+
+def _remove_home_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME"):
+        monkeypatch.delenv(name, raising=False)
+    if sys.platform != "win32":
+        import pwd
+
+        def no_such_user(uid: int) -> NoReturn:
+            raise KeyError(uid)
+
+        monkeypatch.setattr(pwd, "getpwuid", no_such_user)
+
+
+def test_missing_home_directory_is_a_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # [NEG]
+    _remove_home_directory(monkeypatch)
+    with pytest.raises(ConfigurationError) as info:
+        load_settings()
+    assert str(info.value) == "Home directory is not available; set GRC_LOG_DIR"
+    assert info.value.__cause__ is None
+    assert info.value.__suppress_context__  # no RuntimeError chained behind it
+
+
+def test_explicit_log_dir_needs_no_home_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _remove_home_directory(monkeypatch)
+    monkeypatch.setenv("GRC_LOG_DIR", str(tmp_path))
+    assert load_settings().log_dir == tmp_path

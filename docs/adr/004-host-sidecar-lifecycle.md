@@ -10,7 +10,7 @@ The Tauri host starts the Python sidecar, waits for it to announce its port, and
 - On Windows the venv interpreter `sidecar\.venv\Scripts\python.exe` is a launcher: it is the PARENT of the real interpreter, and the code runs in the child. A PyInstaller one-file sidecar (M8) has the same shape. So "the sidecar" is a process tree, and killing one PID is not enough.
 - A listening port can linger after the process is killed on Windows, so process tests wait on real conditions, never on sleeps.
 - Microsoft documents that completion-port messages for job events are not guaranteed to be delivered ("failure of a message to arrive does not necessarily mean that the event did not occur"). A design that trusts the message can hang or give a wrong answer.
-- The sidecar's startup failure behaviour is not uniform: domain errors exit with code 2 and one fixed stderr line, but a missing `SYSTEMROOT` or home directory produces exit 1 with a traceback. The host therefore treats every exit before the ready line as a failure and reports exit code 2 distinctly.
+- The sidecar's startup failure behaviour was not uniform: domain errors exit with code 2 and one fixed stderr line, but a missing `SYSTEMROOT` or home directory produced exit 1 with a traceback. The host therefore treats every exit before the ready line as a failure and reports exit code 2 distinctly. Update (sidecar hardening PR): a missing home directory and a failed loopback bind now exit 2 with one fixed line. A missing or empty `SYSTEMROOT` still exits 1 with a traceback, because Python fails while importing `asyncio` (`import _overlapped`, WinError 10106), before `main()` runs. The host always passes `SYSTEMROOT` (see `child_env.rs`), so this is reachable only when the sidecar is started by hand.
 
 ## Decision
 
@@ -72,6 +72,8 @@ Negative or risky:
 Revisit if: a non-Windows build is wanted; M8 packaging changes how the sidecar is started; any command takes a path from the frontend; or the sidecar starts its own long-lived children that must survive it.
 
 ## Finding: the sidecar starts `cmd.exe` (follow-up for the sidecar PR, not fixed here)
+
+**Resolved by ADR-007 (sidecar hardening PR).** The sidecar now installs a process-creation audit hook before uvicorn starts, so the `ver` attempt is blocked and nothing is started. The text below is the original finding and its evidence, kept as written; its candidate list is evaluated, with source evidence, in ADR-007.
 
 Found in M2c, from the first CI run of the real-sidecar test. The shipped sidecar starts `cmd.exe` through a shell, from library code, every time it starts, on Python 3.11. That is contrary to the spirit of CLAUDE.md 3.5 (no shell execution), although none of it is our code and the command is a constant.
 

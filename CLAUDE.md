@@ -51,7 +51,7 @@ The owner (Mike) must be able to explain every design decision and every line of
    - The sidecar reads the token once at startup, then deletes it from `os.environ`.
    - Every HTTP request (including `/health`) must carry header `X-GRC-Auth`, verified with `hmac.compare_digest`. Failure returns `401` with no detail.
    - Port handshake: after binding, the sidecar prints exactly one JSON line to stdout, `{"event":"ready","port":<int>}`. Rust reads it with a timeout and kills the sidecar if it never arrives.
-5. **No shell execution.** Never use `shell=True`, `os.system`, `eval`, `exec`, or invoke `cmd.exe`, `powershell`, or `bash` from app code. Use `subprocess.run([...], shell=False, timeout=..., env=<explicit minimal env>)`. The child env must NOT contain `GRC_AUTH_TOKEN`. In Rust, use `std::process::Command` with explicit args or the Tauri sidecar API with a scoped capability.
+5. **No shell execution.** Never use `shell=True`, `os.system`, `eval`, `exec`, or invoke `cmd.exe`, `powershell`, or `bash` from app code. Use `subprocess.run([...], shell=False, timeout=..., env=<explicit minimal env>)`. The child env must NOT contain `GRC_AUTH_TOKEN`. In Rust, use `std::process::Command` with explicit args or the Tauri sidecar API with a scoped capability. The sidecar enforces this at runtime with a process-creation audit hook (ADR-007); M7 extends its allowlist, never removes it.
 6. **Safe filesystem.** Every path from the user or the frontend is canonicalized with `Path.resolve(strict=True)` and checked with `candidate.is_relative_to(approved_root)`. Reject anything that escapes, including via `..` or symlinks. Rust performs the same check (`canonicalize` + `starts_with`) before forwarding. Defense in depth: both layers check.
 7. **Models are provisioned by a human.** At startup the sidecar calls Ollama `GET /api/tags` and fails closed with a clear error if a required model is missing. The app never calls `/api/pull`.
 8. **Egress guard test.** A session-wide pytest fixture patches `socket.socket.connect` to raise on any non-loopback address. The full suite must pass with it enabled.
@@ -267,3 +267,4 @@ When a MUST rule changes, update this file first, then the Cursor rule and `.cod
 - Add a deployment path for generated infrastructure code.
 - Add dependencies without approval.
 - Commit real company data, secrets, or `.env` files. All sample data is synthetic.
+- Bypass git hooks (`--no-verify`, `-n`, `core.hooksPath`, `SKIP=`).

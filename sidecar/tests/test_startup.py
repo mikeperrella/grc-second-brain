@@ -183,3 +183,51 @@ def test_child_processes_run_under_the_egress_guard() -> None:  # [NEG]
     result = run_python(["-c", code], env=minimal_env())
     assert result.returncode != 0
     assert "EgressBlockedError" in result.stderr
+
+
+_NO_HOME = """
+import runpy, sys
+if sys.platform != "win32":
+    import pwd
+
+    def no_such_user(uid):
+        raise KeyError(uid)
+
+    pwd.getpwuid = no_such_user  # HOME is already absent; this removes the user-database fallback
+runpy.run_module("grc_sidecar", run_name="__main__", alter_sys=True)
+"""
+
+
+def test_missing_home_directory_exits_2_with_one_fixed_line(  # [NEG]
+    tmp_path: Path, token: str
+) -> None:
+    env = minimal_env({"GRC_AUTH_TOKEN": token})  # no GRC_LOG_DIR, no home directory variables
+    result = run_python(["-c", _NO_HOME], env=env, cwd=tmp_path, timeout=60)
+    assert result.returncode == 2
+    assert result.stderr == "grc-sidecar: Home directory is not available; set GRC_LOG_DIR\n"
+    assert "Traceback" not in result.stderr
+    assert result.stdout == ""
+
+
+_BIND_FAILS = """
+import runpy, socket
+
+
+def refuse(self, address):
+    raise OSError("bind refused")
+
+
+socket.socket.bind = refuse
+runpy.run_module("grc_sidecar", run_name="__main__", alter_sys=True)
+"""
+
+
+def test_a_failed_loopback_bind_exits_2_with_one_fixed_line(  # [NEG]
+    tmp_path: Path, token: str
+) -> None:
+    env = minimal_env({"GRC_LOG_DIR": str(tmp_path / "logs"), "GRC_AUTH_TOKEN": token})
+    result = run_python(["-c", _BIND_FAILS], env=env, cwd=tmp_path, timeout=60)
+    assert result.returncode == 2
+    assert result.stderr == "grc-sidecar: Loopback socket could not be bound\n"
+    assert "Traceback" not in result.stderr
+    assert result.stdout == ""

@@ -15,9 +15,12 @@ The first record is a CONTROL: the wrapper itself starts a harmless child BEFORE
 and deletes the token, so that record must show the token present. If it did not, the recording
 could not tell "present" from "absent" and the assertions below would prove nothing.
 
-This test documents the current behaviour; it does not fix it. It asserts that the Windows spawn
-exists, so if a later change stops it (for example a newer Python), the test fails on purpose and
-the ADR-004 note should be updated.
+Since ADR-007 the sidecar installs a process guard (an audit hook) that vetoes process creation,
+so the `ver` attempt that CPython 3.11's `platform.system()` makes on Windows is BLOCKED. Each
+record therefore also says whether the spawn really started (`started`). The assertions:
+nothing the sidecar attempts ever starts, and on Windows the blocked `ver` attempt is present,
+which proves the guard met the real-world spawn (a test that saw no attempt at all would pass
+even if the guard did nothing). The control spawn must still start.
 """
 
 import json
@@ -59,9 +62,13 @@ def recording_init(self, args, *positional, **keywords):
         "token_value_in_os_environ": any(TOKEN in value for value in os.environ.values()),
         "token_in_process_environment_block": process_env_has_token(),
     }
-    with open(LOG, "a", encoding="utf-8") as log:
-        log.write(json.dumps(record) + "\n")
-    real_init(self, args, *positional, **keywords)
+    record["started"] = False
+    try:
+        real_init(self, args, *positional, **keywords)
+        record["started"] = True
+    finally:
+        with open(LOG, "a", encoding="utf-8") as log:
+            log.write(json.dumps(record) + "\n")
 
 
 subprocess.Popen.__init__ = recording_init
@@ -103,20 +110,21 @@ def test_no_subprocess_started_by_the_real_sidecar_inherits_the_token(tmp_path: 
     assert control["token_name_in_os_environ"] is True
     assert control["token_value_in_os_environ"] is True
     assert control["token_in_process_environment_block"] is True
+    assert control["started"] is True, "the control spawn must start (the guard is not active yet)"
 
-    # Every spawn made by the sidecar itself (uvicorn, the standard library) is token-free, by
-    # name and by value, in Python's view and in the operating system's.
+    # Every spawn attempted by the sidecar itself (uvicorn, the standard library) is token-free,
+    # by name and by value, in Python's view and in the operating system's, AND is blocked.
     for record in during_sidecar_run:
         assert record["token_name_in_os_environ"] is False, record
         assert record["token_value_in_os_environ"] is False, record
         assert record["token_in_process_environment_block"] is False, record
+        assert record["started"] is False, f"a process was started by the sidecar: {record}"
 
     if sys.platform == "win32":
-        # The finding itself: the sidecar starts `ver` through a shell during startup.
-        assert during_sidecar_run, "expected the platform module's `ver` spawn (ADR-004)"
+        # The finding itself: uvicorn's platform check still TRIES to run `ver` through a shell,
+        # and the guard stops it.
         assert any(r["shell"] is True and r["args"] == "ver" for r in during_sidecar_run), (
             during_sidecar_run
         )
-        assert all(r["env_argument_is_none"] is True for r in during_sidecar_run), (
-            during_sidecar_run
-        )
+    else:
+        assert not during_sidecar_run, during_sidecar_run
