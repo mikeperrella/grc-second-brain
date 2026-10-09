@@ -1,6 +1,6 @@
 # ADR-005: Webview CSP, capabilities and the app command manifest
 
-Status: Accepted. Evidence: round 1 (`pnpm tauri dev`) and mode B (debug build of the bundled app), both recorded below.
+Status: Accepted. Evidence: round 1 (`pnpm tauri dev`), mode B (debug build of the bundled app) and, from M2d, the capability proof with its mutation, all recorded below.
 
 ## Context
 
@@ -24,7 +24,7 @@ CLAUDE.md 3.2 says the webview's Content Security Policy is `default-src 'self'`
 - `pnpm tauri dev` has no CSP, so a CSP violation introduced by a frontend change will not show up in dev. It shows up in the bundled debug build and is checked there (manual check B in `docs/dev-setup.md`, M2d). CI does not render a webview.
 - Frontend code must not need inline styles, inline scripts, `eval`, images from `data:` or any remote origin; the production CSP will block them.
 - Adding a command is a security decision in three places that must agree: `commands.rs`, `app_commands.rs` and the capability file. The tests fail until all three do.
-- The capability under `invoke()` is not proven here. M2d proves `sidecar_health` works with only `allow-sidecar-health`.
+- The capability under `invoke()` was not proven in M2c (the page called nothing). M2d proved that `sidecar_health` works with only `allow-sidecar-health`, and that removing it makes the call fail; see "Evidence: capability proof (M2d)" below.
 
 Revisit if: Tauri documents or changes CSP handling for dev-server pages; the frontend needs a remote origin or inline content; a second window or a plugin is added; or the sidecar is ever reached from the webview.
 
@@ -50,3 +50,40 @@ Process observation, same run:
 - While the app ran, `Get-Process` showed `desktop` (24140) and two `python` processes (4600, 35572), and no `fake_sidecar`. Two Python processes is what the venv launcher plus the real interpreter should look like (ADR-004), but their command lines and parent ids were not recorded, so this is consistent with that, not proof of it.
 - After the window was closed, no `desktop` or `python` process remained.
 - This shows the debug app started the dev sidecar and that the processes were gone after a normal close. It is NOT evidence that the sidecar reached `Ready` or answered `/health`: nothing in the window shows status yet. That is decided by `tests/real_sidecar.rs` (M2c commit 5) and by the live status in M2d.
+
+## Evidence: capability proof (M2d)
+
+Run by Mike on 2026-10-08 on branch `feat/m2d-frontend-status` at `725f0ea` (before the docs commit), from a Cursor integrated terminal, with the window now showing live status ([ADR-006](006-window-status-polling-and-ipc-contract.md)). `capabilities/main-window.json` was the committed one: one permission, `allow-sidecar-health`, no `core:default`. **No core permission was needed.**
+
+Mode B, built fresh (`pnpm tauri build --debug --no-bundle`; `desktop.exe` `LastWriteTime` 9:16:38 PM, launched at `Get-Date` 9:17:43 PM):
+
+| Probe | Observed |
+|---|---|
+| Window | `Sidecar: healthy` |
+| `location.origin` | `http://tauri.localhost` (the bundled app, not the dev server) |
+| `await window.__TAURI_INTERNALS__.invoke('sidecar_health')` | `{status: 'healthy'}`. `__TAURI_INTERNALS__` exists although `withGlobalTauri` is off. |
+| `fetch('http://127.0.0.1:65000/')` | "Connecting to 'http://127.0.0.1:65000/' violates the following Content Security Policy directive: "connect-src ipc: http://ipc.localhost". The action has been blocked.", then "Fetch API cannot load http://127.0.0.1:65000/. Refused to connect because it violates the document's Content Security Policy.", then `TypeError: Failed to fetch` |
+| `eval('1')` | `Uncaught EvalError: Evaluating a string as JavaScript violates the following Content Security Policy directive because 'unsafe-eval' is not an allowed source of script: script-src 'self' 'sha256-7yg5GJXv5pbJJGW+2zZssONKINKdKxYgbrL53xcKMxo='.` |
+| CSP meta element | `undefined` (the policy is a response header) |
+| DevTools' request to `http://tauri.localhost/.well-known/appspecific/com.chrome.devtools.json` | blocked by `connect-src`, as before; a DevTools request, not application code |
+
+**The full delivered policy** (response header `Content-Security-Policy` of the `tauri.localhost` document, copied from the Network tab; this closes the gap noted in the first mode B evidence):
+
+```
+base-uri 'none'; object-src 'none'; form-action 'none'; style-src 'self'; script-src 'self' 'sha256-7yg5GJXv5pbJJGW+2zZssONKINKdKxYgbrL53xcKMxo='; font-src 'self'; frame-ancestors 'none'; img-src 'self'; default-src 'self'; connect-src ipc: http://ipc.localhost
+```
+
+It is the configured policy (directives in a different order) plus one `'sha256-...'` source on `script-src`, added by Tauri for the bundled script. Nothing else was added or removed, and `connect-src` is still only `ipc: http://ipc.localhost`. The hash differs from the one in the first mode B run (`HxZc9p...`) because the bundled script changed (it now holds the status UI); expect a new hash whenever the frontend bundle changes.
+
+**Mutation: remove `allow-sidecar-health`.** Original sha256 of `main-window.json`: `BC3903AEB04F28FFC887E16D3AF5BEF572AE804F155814CE81CC0944130000C8`. With the permission removed (`"permissions": []`) and a fresh build:
+
+- The call is refused. In the console, `invoke('sidecar_health')` rejected with this string (typeof `string`): `sidecar_health not allowed. Permissions associated with this command: allow-sidecar-health`.
+- The window status line in this mutated run was **not recorded**. The expected line is `Sidecar: failed (ipc: rejected)`, from the unit tests that map any unparseable reject-channel value to `rejected`; that mapping is tested, but the rendered line was not observed.
+- `cargo test --locked --test security_config` while mutated was not run in this check (it was optional).
+- Restore: `git restore` on the file gave sha256 `BC3903AE...130000C8` (equal), and `git status` showed no change. The first rebuild after the restore failed with "Access is denied" because the mutated app was still running; after `Stop-Process -Name desktop -Force` it built, and the window showed `Sidecar: healthy` again.
+
+What this shows and does not show:
+
+- The permission is what allows the call: with it the call works, without it the call is refused with a message naming the permission. Together with the mode B probes, the trimmed capability, the CSP and the live status are proven in the bundled app.
+- It does not show that no other permission is needed for features not yet built (events, window control). Each is added individually when needed, never as `core:default`.
+- The devtools toggle (Ctrl+Shift+I) is still not granted; F12 opens DevTools in debug builds regardless.
