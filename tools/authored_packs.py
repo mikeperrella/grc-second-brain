@@ -58,8 +58,8 @@ SOC2_SUMMARIES: Final[dict[str, Summary]] = {
     ),
     "CC6.5": Summary(
         "Secure disposal",
-        "Data and the assets that hold it are disposed of or made unreadable once they are no "
-        "longer needed.",
+        "Physical assets that hold data stay protected until that data has been destroyed or "
+        "made unrecoverable and is no longer needed.",
     ),
     "CC7.4": Summary(
         "Carrying out incident response",
@@ -68,8 +68,8 @@ SOC2_SUMMARIES: Final[dict[str, Summary]] = {
     ),
     "CC9.2": Summary(
         "Vendor and partner risk",
-        "The organization assesses and manages the risks that come from its vendors and business "
-        "partners.",
+        "Risks introduced by third parties, such as vendors and business partners, are "
+        "identified, evaluated and kept under control.",
     ),
 }
 
@@ -84,34 +84,39 @@ ISO_FILES: Final[dict[str, tuple[str, list[str]]]] = {
 ISO_SUMMARIES: Final[dict[str, Summary]] = {
     "A.5.15": Summary(
         "Access rules",
-        "Rules decide who may reach information and assets, physically and logically, based on "
-        "business and security needs.",
+        "The organization decides, documents and enforces who can get to information and related "
+        "assets, both in systems and in physical spaces, in line with its business and security "
+        "goals.",
     ),
     "A.5.19": Summary(
         "Supplier security",
-        "The organization sets up a process to manage the security risks of using suppliers' "
-        "products and services.",
+        "The organization has a defined way to identify and control the security risk that comes "
+        "with relying on outside suppliers.",
     ),
     "A.5.24": Summary(
         "Incident planning",
-        "Roles, responsibilities and processes for handling security incidents are planned and "
-        "communicated before an incident happens.",
+        "Before anything goes wrong, the organization decides who handles security incidents and "
+        "how, and makes sure those people know their roles.",
     ),
     "A.5.26": Summary(
         "Incident response",
-        "Security incidents are responded to by following documented procedures.",
+        "When a security incident happens, staff handle it using the written procedures prepared "
+        "in advance.",
     ),
     "A.8.5": Summary(
-        "Strong authentication",
-        "Authentication methods and procedures match how sensitive the access being protected is.",
+        "Sign-in controls",
+        "Authentication methods follow the organization's access restrictions and access control "
+        "policy, with stronger methods expected where access is more sensitive.",
     ),
     "A.8.10": Summary(
         "Deleting information",
-        "Information kept in systems and devices is deleted once it is no longer required.",
+        "Data that is no longer needed is removed from systems, devices and storage media rather "
+        "than kept indefinitely.",
     ),
     "A.8.24": Summary(
         "Cryptography rules",
-        "Rules for using cryptography, including key management, are defined and put into effect.",
+        "The organization decides how encryption and keys are used and managed, and makes sure "
+        "those decisions are followed.",
     ),
 }
 

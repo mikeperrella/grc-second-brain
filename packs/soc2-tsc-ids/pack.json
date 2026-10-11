@@ -1,6 +1,6 @@
 {
   "content_kind": "ids_and_original_summaries",
-  "content_sha256": "11a29a3d7622279b4ca1997028b135f6cbeb8e103a233e43f6a3d173e8b6ae2f",
+  "content_sha256": "fed56f03b39921154bda66c043e1daac5dc5277a43bdb63e3aafbcbbedf005eb",
   "converter_version": "authored-1",
   "id_list_verified_against": "unverified",
   "license": "BizAI-original (control IDs and original summaries)",
@@ -8,7 +8,7 @@
   "pack_id": "soc2-tsc-ids",
   "redistributable": true,
   "retrieved_on": "2026-10-09",
-  "source_sha256": "11a29a3d7622279b4ca1997028b135f6cbeb8e103a233e43f6a3d173e8b6ae2f",
+  "source_sha256": "fed56f03b39921154bda66c043e1daac5dc5277a43bdb63e3aafbcbbedf005eb",
   "source_url": "https://www.aicpa-cima.com/",
   "title": "SOC 2 Trust Services Criteria: control IDs",
   "upstream_license": "AICPA copyright; text not bundled",

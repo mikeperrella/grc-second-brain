@@ -29,7 +29,7 @@ owner: "BizAI Solutions"
 - **CC6.2**
 - **CC6.3**
 - **CC6.4**
-- **CC6.5** Secure disposal. Data and the assets that hold it are disposed of or made unreadable once they are no longer needed.
+- **CC6.5** Secure disposal. Physical assets that hold data stay protected until that data has been destroyed or made unrecoverable and is no longer needed.
 - **CC6.6**
 - **CC6.7**
 - **CC6.8**
@@ -40,4 +40,4 @@ owner: "BizAI Solutions"
 - **CC7.5**
 - **CC8.1**
 - **CC9.1**
-- **CC9.2** Vendor and partner risk. The organization assesses and manages the risks that come from its vendors and business partners.
+- **CC9.2** Vendor and partner risk. Risks introduced by third parties, such as vendors and business partners, are identified, evaluated and kept under control.
