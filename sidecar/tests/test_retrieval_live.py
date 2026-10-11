@@ -29,6 +29,7 @@ from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
 from grc_sidecar.packs.loader import index_packs
 from grc_sidecar.repositories.sqlite_vec_repo import SqliteVecRepository
 from grc_sidecar.retrieval.models import RetrievalResult
+from grc_sidecar.retrieval.query import build_lexical_query
 from grc_sidecar.retrieval.service import Retriever
 from grc_sidecar.vault.clock import SystemClock
 from grc_sidecar.vault.indexer import Indexer
@@ -98,6 +99,92 @@ def test_ranked_results_with_real_models() -> None:
     problems = problems_in(results, expect_mode="hybrid")
     print("\nproblems:", problems or "none")
     assert problems == []
+
+
+def test_raw_search_lists_match_the_ranks_in_the_table() -> None:
+    """Prints the raw vector and keyword top 5 of each store for one question and checks that the
+    ranks the retriever reports are positions in those lists (vector rank from the vector list,
+    keyword rank from the keyword list), not one list's rank copied into the other."""
+    if not (INDEX_DIR / "vault.sqlite3").exists() or not (INDEX_DIR / "packs.sqlite3").exists():
+        pytest.fail("No live index yet. Run test_ranked_results_with_real_models first.")
+    question = "log retention"
+
+    async def scenario() -> None:
+        client = OllamaEmbeddingClient(BASE_URL, EMBEDDING, expected_dimension=768)
+        stores = {
+            "vault": SqliteVecRepository(INDEX_DIR / "vault.sqlite3"),
+            "packs": SqliteVecRepository(INDEX_DIR / "packs.sqlite3"),
+        }
+        try:
+            profile = await client.ensure_ready()
+            vector = await client.embed_query(question)
+            lexical_match = build_lexical_query(question).match
+            raw_vector: dict[str, list[str]] = {}
+            raw_lexical: dict[str, list[str]] = {}
+            for name, repo in stores.items():
+                assert await repo.open_for_deletions()
+                await repo.open_or_create(profile)
+                nearest = await repo.search(vector, 20)
+                nearest.sort(key=lambda h: (h.distance, h.chunk.chunk_id))
+                keyword = await repo.lexical_search(lexical_match, 20)
+                keyword.sort(key=lambda h: (h.bm25, h.chunk.chunk_id))
+                raw_vector[name] = [h.chunk.chunk_id for h in nearest]
+                raw_lexical[name] = [h.chunk.chunk_id for h in keyword]
+                print(f"\n--- {name}: vector top 5 for {question!r}")
+                for i, h in enumerate(nearest[:5], start=1):
+                    c = h.chunk
+                    print(
+                        f"{i} {c.chunk_id[:12]} {c.source_path} {c.start_line}-{c.end_line} "
+                        f"distance={h.distance:.5f}"
+                    )
+                print(f"--- {name}: keyword top 5 for {question!r}")
+                for i, k in enumerate(keyword[:5], start=1):
+                    c = k.chunk
+                    print(
+                        f"{i} {c.chunk_id[:12]} {c.source_path} {c.start_line}-{c.end_line} "
+                        f"bm25={k.bm25:.5f}"
+                    )
+        finally:
+            for repo in stores.values():
+                await repo.close()
+            await client.aclose()
+        results = await _retrieve_one(question)
+        checked = 0
+        for chunk in results.chunks:
+            if chunk.role != "seed":
+                continue
+            store = "packs" if chunk.source_kind == "framework_reference" else "vault"
+            for ranks, rank in ((raw_vector, chunk.vector_rank), (raw_lexical, chunk.lexical_rank)):
+                if rank is not None:
+                    assert ranks[store][rank - 1] == chunk.chunk_id
+                    checked += 1
+        print(f"\nchecked {checked} reported ranks against the raw lists")
+        assert checked > 0
+
+    asyncio.run(scenario())
+
+
+async def _retrieve_one(question: str) -> RetrievalResult:
+    client = OllamaEmbeddingClient(BASE_URL, EMBEDDING, expected_dimension=768)
+    vault_repo = SqliteVecRepository(INDEX_DIR / "vault.sqlite3")
+    packs_repo = SqliteVecRepository(INDEX_DIR / "packs.sqlite3")
+    try:
+        clock = SystemClock()
+        gate = ModelGate(client, (EMBEDDING, GENERATION), clock)
+        retriever = Retriever(
+            vault_repo=vault_repo,
+            indexer=Indexer(vault_repo, client, SAMPLE_VAULT),
+            embedder=client,
+            gate=gate,
+            embedding_model=EMBEDDING,
+            clock=clock,
+            packs_repo=packs_repo,
+        )
+        return await retriever.retrieve(question)
+    finally:
+        await vault_repo.close()
+        await packs_repo.close()
+        await client.aclose()
 
 
 def test_lexical_only_when_ollama_is_stopped() -> None:

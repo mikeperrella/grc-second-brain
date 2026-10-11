@@ -32,7 +32,7 @@ The owner (Mike) must be able to explain every design decision and every line of
 6. **Dependencies require approval.** Before adding any package, state its name, pinned version, purpose, license, and whether it has any network, telemetry, or auto-update behavior.
 7. **No fabricated content.** Never invent metrics, benchmark numbers, or claims for the README or docs. All sample data is synthetic and labeled as such.
 8. **End every chunk with the verification commands** from Section 6 for the areas touched.
-9. **Change files only with the edit tool**, never sed, heredocs or stdin scripts, so every change is reviewable as a diff.
+9. **Change files only with the edit tool**, never sed, heredocs or stdin scripts, so every change is reviewable as a diff. Exception: the project formatters (ruff format, cargo fmt) may rewrite files in place; show the resulting git diff before committing.
 
 ---
 

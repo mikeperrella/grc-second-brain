@@ -29,7 +29,8 @@ AI proposes, code verifies. A local model (through Ollama) reads policies and dr
 | Feature | What it does | Status |
 |---|---|---|
 | Secure offline foundation | Zero-trust host and sidecar, confined processes, strict CSP, CI-proven no-network operation | Built (M0 to M2, ADR-007) |
-| Policy vault and search | Markdown vault with owners and review dates, indexing, search by meaning | Planned (M3, M4) |
+| Policy vault and indexing | Markdown vault with owners and review dates, change-driven indexing | Built (M3) |
+| Search | Hybrid keyword and meaning search with citations, framework text kept separate from company evidence | Built (M4, internal; UI in M6) |
 | Cited questionnaire answers | Excel in, cited answers out, original file never modified | Planned (M5) |
 | Honest blanks | Unsupported questions flagged for a human, never guessed | Planned (M5) |
 | Deal unblocker metrics | Measured turnaround, reuse and review counts per questionnaire, never estimated | Planned (M5) |
