@@ -4,13 +4,13 @@
 
 *Every compliance answer needs an alibi.*
 
-ALIBI is a desktop compliance workbench for answering security questionnaires from your own policies. A local model (through Ollama) drafts answers, and code checks every quote word for word against its source, so each answer points at the exact line behind it. Everything runs on your machine: no cloud, no accounts, no telemetry.
+ALIBI is a desktop compliance workbench for answering security questionnaires from your own policies. A local model (through Ollama) drafts answers, and code checks every quote word for word against its source, so each answer points at the exact line behind it. Everything runs on your machine: no cloud, no accounts, no telemetry. ALIBI's own code makes no network connection except to Ollama on 127.0.0.1, and the sidecar's no-network operation is tested in CI. ALIBI cannot vouch for Ollama, Windows, or other software on the machine, which have their own network behaviour (see [docs/threat-model.md](docs/threat-model.md)).
 
 ALIBI was formerly called GRC Second Brain. Some internal names predate the rename and are unchanged on purpose (the `grc_sidecar` Python package, the Tauri identifier, the repository directory).
 
 ## Status: early development
 
-Only the secure offline foundation exists today. The app opens a window and shows the live status of its local sidecar process. None of the compliance features below is built yet, and the status column says so. The current milestone is M3 (see [CLAUDE.md](CLAUDE.md), Section 9).
+Only the secure offline foundation exists today. The app opens a window and shows the live status of its local sidecar process. None of the compliance features below is built yet, and the status column says so. The current milestone is M5 (see [CLAUDE.md](CLAUDE.md), Section 9).
 
 ## The problem map
 

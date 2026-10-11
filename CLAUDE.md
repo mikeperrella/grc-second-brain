@@ -225,10 +225,10 @@ pnpm test
 | M5.5 | Promise ledger and recall, blast-radius preview, contradiction detector, reality check (offline import of IT exports checked against policy claims) | Each has tests and mutation proofs |
 | M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view |
 | M7 | Policy-to-code | Structured plan, patch generation, static validation, approval gate |
-| M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, threat model, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
+| M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
 
-**Current milestone: threat model (moved up from M8, due before M5), then M5.**
+**Current milestone: M5.**
 
 ---
 
@@ -244,6 +244,8 @@ pnpm test
 | Claude Desktop Project | This file is uploaded as project knowledge and supersedes older architecture docs |
 
 When a MUST rule changes, update this file first, then the Cursor rule and `.coderabbit.yaml` in the same PR. CI will fail if the Cursor rule drifts (M1.5).
+
+**Threat model.** `docs/threat-model.md` is the canonical threat model. Update it in the same PR as any new data flow, new dependency, or change to a MUST rule in Section 3 or 11. Its backlog (Section 12) names the milestone that owns each residual risk.
 
 **Rules are enforced by machines, not just by prompts.** AI instructions are advisory. The blocking controls are:
 
