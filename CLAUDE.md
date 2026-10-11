@@ -106,8 +106,9 @@ grc-second-brain/
       questionnaire/           Excel engine
       remediation/             Policy-to-code engine
     tests/
-  vault-sample/                Synthetic Obsidian vault (fictional company)
-  fixtures/                    Synthetic questionnaires and test files
+  vault-sample/                Synthetic Obsidian vault (fictional company); pinned by the M4 golden tests
+  vault-demo/                  Second synthetic vault for the M5 evaluation set and demo (M5b)
+  fixtures/                    Synthetic questionnaires and test files (eval/ holds the labeled eval set)
   docs/
     adr/                       Architecture Decision Records
     threat-model.md

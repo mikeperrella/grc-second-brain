@@ -11,6 +11,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_VAULT = REPO_ROOT / "vault-sample" / "vault"
 SAMPLE_README = REPO_ROOT / "vault-sample" / "README.md"
 ADVERSARIAL_VAULT = REPO_ROOT / "fixtures" / "vault-adversarial"
+# M5: a second synthetic vault for the evaluation set and the demo spreadsheet (vault-sample is
+# pinned by the M4 golden tests), hostile notes and questionnaire cells kept out of both vaults,
+# and the labeled evaluation set.
+DEMO_VAULT = REPO_ROOT / "vault-demo" / "vault"
+DEMO_README = REPO_ROOT / "vault-demo" / "README.md"
+ADVERSARIAL_M5 = REPO_ROOT / "fixtures" / "adversarial-m5"
+ADVERSARIAL_M5_VAULT = ADVERSARIAL_M5 / "vault"
+ADVERSARIAL_M5_CELLS = ADVERSARIAL_M5 / "questionnaire-cells.json"
+EVAL_SET = REPO_ROOT / "fixtures" / "eval" / "eval-set.json"
 
 DEFAULT_FRONTMATTER = (
     "doc_id: T-001",
