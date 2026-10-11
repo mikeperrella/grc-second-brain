@@ -38,6 +38,9 @@ class RetrievedChunk(_Frozen):
     heading_path: str
     text: str  # UNTRUSTED, byte for byte what is in the file between those lines
     text_sha256: str
+    # sha256 of the whole file's normalized text as it was indexed. The questionnaire engine keeps
+    # it with the answer and compares it with the file when the export is written (ADR-013).
+    file_sha256: str
 
     source_kind: SourceKind
     pack_id: str | None  # for a framework chunk, the pack it came from (e.g. "nist-sp800-171-r3")

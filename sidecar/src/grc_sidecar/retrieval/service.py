@@ -150,6 +150,7 @@ def _chunk_of(
         heading_path=chunk.heading_path,
         text=chunk.text,
         text_sha256=chunk.text_sha256,
+        file_sha256=document.file_sha256,
         source_kind=source_kind_of(document.collection, document.type),
         pack_id=pack_id_of(document.collection),
         doc_type=document.type,

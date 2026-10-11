@@ -38,6 +38,7 @@ def candidate(name: str, kind: SourceKind, size: int, rank: int) -> Candidate:
         doc_id=name,
         type="policy" if kind == "company_policy" else "framework",
         review_by=None,
+        file_sha256="f" * 64,
     )
     item = Fused(chunk=chunk, score=Fraction(1, 60 + rank), lexical_rank=rank, vector_rank=None)
     return Candidate(item=item, document=document, kind=kind, withdrawn=False)

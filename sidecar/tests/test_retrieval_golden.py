@@ -9,6 +9,8 @@ needs its own vault.
 """
 
 import asyncio
+import hashlib
+import json
 import re
 import shutil
 from pathlib import Path
@@ -19,6 +21,7 @@ from grc_sidecar.retrieval.expansion import has_body_text
 from grc_sidecar.retrieval.models import RetrievalResult, RetrievedChunk
 from grc_sidecar.retrieval.query import build_lexical_query
 from grc_sidecar.retrieval.selection import DEFAULT_CHAR_BUDGET, framework_char_cap
+from grc_sidecar.vault.scan import scan_vault
 
 from .livekit import LIVE_QUERIES, format_result, problems_in
 from .retrieval_expectations import (
@@ -401,3 +404,73 @@ def test_a_withdrawn_enhancement_in_800_53_is_labeled_too(golden_index: Path) ->
     stubs = withdrawn_chunks(result)
     assert stubs and all(c.withdrawn for c in stubs)
     assert any("AC-3(1)" in c.text and "Withdrawn." in c.text for c in stubs)
+
+
+# ----- the full output, pinned (M5e: adding `file_sha256` must change nothing else) ---------------
+
+SNAPSHOT_QUERIES: tuple[tuple[str, dict[str, int]], ...] = (
+    *((q, {}) for q in sorted({*QUESTIONS, *LIVE_QUERIES, EXPANSION_QUESTION})),
+    ("AC-3(1)", {}),
+    ("03.01.13", {}),
+    ("vendor review", {"max_chunks": 8}),
+    ("03.13.08", {"max_chunks": 8}),
+)
+# sha256 of each result's complete JSON (every field of the result and of every chunk, sorted keys),
+# taken BEFORE `file_sha256` was added to RetrievedChunk. The test removes that one new field from
+# the dump and compares everything else, so a change to ANY existing field fails it.
+PINNED_SNAPSHOT: dict[str, str] = {
+    "03.01.01 []": "c44555b94f9aa44a832758f597613bf82ca9b382e3b6f15770b590693a1289ef",
+    "03.01.13 []": "412853f2d28399876ebd8d8faee4364cf35ed380e6e480629291ca3ccd695b5e",
+    "03.13.08 [('max_chunks', 8)]": (
+        "c21da16f08a53bbd5a7dc55037ac341f9f55073e801469ed72c62f904818e134"
+    ),
+    "3.1.1 []": "0f66d7108c243ee61f56ef402417292c934c27fcc90442f2e9226dab36bc7c82",
+    "A.5.15 []": "18e0fdccbab03a2cbaf34541f51cf179ecc3a734857ae045eec511c5bb3578b2",
+    "AC-2 []": "a3c7bfb07182464767d489de28d6aa5b2fbddaee7891446d9215f681e5879401",
+    "AC-3(1) []": "feccadba86017df104a6f6c05f7682f1761964aebb6673de01899f063435d68e",
+    "CC6.1 []": "1ff4d4d25074b750ddbdaae8e2f8d90cfd87c58e3888fe9856309e53f358ea32",
+    "log retention []": "5d054e32067162cb80498db4d5be5d6efcc00f9bae49fff78083ab942ef4a08c",
+    "multi-factor authentication []": (
+        "16b5b3bca4de0d5fa4256d130cb59c228cf010be7b76d839ab6ad97bcdd8f1c4"
+    ),
+    "retention schedule deleted expired data audit record retention []": (
+        "e595be946395b054dc9e8e70984a583d695b2a6512dabf95c37011c9ae0299bf"
+    ),
+    "vendor review [('max_chunks', 8)]": (
+        "72d6b980ceee4726dd6028bb771eeb977877cec7937c174367be6cda189d6636"
+    ),
+    "vendor review []": "d7b5b273f702a66896a35edfb784739428edfdbeae765506c4295e16ac0ac4b2",
+}
+
+
+def snapshot(result: RetrievalResult) -> str:
+    data = result.model_dump(mode="json")
+    for chunk in data["chunks"]:
+        chunk.pop("file_sha256", None)  # the only field M5e adds
+    text = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(text.encode("ascii")).hexdigest()
+
+
+def test_every_chunk_carries_the_hash_of_the_file_it_came_from(golden_index: Path) -> None:  # [NEG]
+    """The hash is the one the indexer computed for the whole (normalized) file: the same value the
+    scan gives for that file, and different for different files."""
+    expected = {d.source_path: d.file_sha256 for d in scan_vault(SAMPLE_VAULT).documents}
+    result = ask(golden_index, "log retention", max_chunks=8)
+    company = [c for c in result.chunks if c.source_kind == "company_policy"]
+    assert company
+    for chunk in company:
+        assert chunk.file_sha256 == expected[chunk.source_path], chunk.source_path
+        assert chunk.file_sha256 != chunk.text_sha256  # the whole file, not the chunk
+    assert len({c.file_sha256 for c in company}) == len({c.source_path for c in company})
+    framework = [c for c in result.chunks if c.source_kind == "framework_reference"]
+    assert all(re.fullmatch(r"[0-9a-f]{64}", c.file_sha256) for c in framework)
+
+
+def test_m4_golden_results_identical_with_file_sha256(golden_index: Path) -> None:  # [NEG]
+    actual = {
+        f"{question} {sorted(kwargs.items())}": snapshot(ask(golden_index, question, **kwargs))
+        for question, kwargs in SNAPSHOT_QUERIES
+    }
+    if not PINNED_SNAPSHOT:  # first run only: print the values to pin
+        print(json.dumps(actual, indent=4, sort_keys=True))
+    assert actual == PINNED_SNAPSHOT
