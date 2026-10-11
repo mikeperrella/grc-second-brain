@@ -18,7 +18,7 @@ Later: vCISOs and GRC consultancies serving many clients (needs separate client 
 
 ## The promise
 
-A desktop compliance workbench that answers questionnaires from your own policies, cites the exact line behind every answer, says "no evidence" instead of guessing, checks your policies against what your IT systems actually show, remembers every promise you've made, and never sends a byte off your machine.
+A desktop compliance workbench that answers questionnaires from your own policies, cites the exact line behind every answer, says "no evidence" instead of guessing, checks your policies against what your IT systems actually show, remembers every promise you've made, and ALIBI itself never sends a byte off your machine: it talks only to Ollama on this computer.
 
 ## How it works
 
@@ -39,7 +39,7 @@ AI proposes, code verifies. A local model (through Ollama) reads policies and dr
 | Contradiction detector | Finds policies that disagree with each other | Planned (M5.5) |
 | Reality check | Offline import of IT exports (identity, device, cloud reports) checked against policy claims | Planned (M5.5) |
 | Answer receipts | A tamper-evident fingerprint of the source text behind each answer | Planned |
-| Egress attestation | A report proving nothing left the machine | Planned |
+| Egress attestation | A report of every connection ALIBI's own process made (loopback only), plus an OS-level check | Planned |
 | Trust packet | A proactive security overview built from approved, cited answers | Later |
 | AI governance pack | Answers AI-usage questions from the company's own AI policy (NIST AI RMF) | Later |
 | Adversarial auditor | AI challenges your answers before you send them | Later |
