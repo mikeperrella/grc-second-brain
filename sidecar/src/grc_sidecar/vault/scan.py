@@ -16,6 +16,7 @@ ALL of them are left out, because "first one wins" would depend on directory ord
 """
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 from grc_sidecar.errors import (
@@ -130,7 +131,31 @@ def scan_vault(vault_root: Path) -> ScanResult:
         else:
             parsed.append(outcome)
             issues.extend(outcome.notes)
+    return _assemble(parsed, issues)
 
+
+def scan_files(files: Mapping[str, bytes]) -> ScanResult:
+    """Parse files whose bytes the caller already holds (vault-relative POSIX path -> bytes).
+
+    Reads nothing from disk. The pack loader uses it so that the bytes it verified are the bytes
+    that get indexed (ADR-008). The decoding, parsing and duplicate rules are those of
+    `scan_vault`; the path rules are the caller's business, since no path is opened here.
+    """
+    issues: list[IndexIssue] = []
+    parsed: list[ParsedDocument] = []
+    for relative in sorted(files):
+        try:
+            document = parse_document(decode_and_normalize(files[relative], relative), relative)
+        except VaultError as error:
+            issues.append(error_to_issue(error, relative))
+        else:
+            parsed.append(document)
+            issues.extend(document.notes)
+    return _assemble(parsed, issues)
+
+
+def _assemble(parsed: list[ParsedDocument], issues: list[IndexIssue]) -> ScanResult:
+    """Drop every copy of a duplicate `doc_id`, then sort documents and issues."""
     by_doc_id: dict[str, list[ParsedDocument]] = {}
     for doc in parsed:
         by_doc_id.setdefault(doc.frontmatter.doc_id, []).append(doc)
