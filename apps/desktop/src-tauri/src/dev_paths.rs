@@ -70,7 +70,6 @@ pub(crate) fn vault_dir_for_this_build() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn absolute() -> OsString {
         OsString::from(r"C:\Users\someone\Documents\vault")
@@ -135,32 +134,16 @@ mod tests {
         }
     }
 
-    /// A unique directory under the system temp directory, removed on drop.
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Self {
-            static NEXT: AtomicUsize = AtomicUsize::new(0);
-            let path = env::temp_dir().join(format!(
-                "grc_dev_paths_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::SeqCst)
-            ));
-            fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
+    // These tests read only what the crate already has on disk: its own manifest directory (an
+    // existing directory) and `Cargo.toml` inside it (an existing file). They create nothing, so
+    // there is no temporary directory to name or clean up.
+    fn manifest_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     }
 
     #[test]
     fn an_existing_directory_is_returned_canonical_and_without_the_prefix() {
-        let temp = TempDir::new();
-        let found = existing_directory(temp.0.clone()).unwrap();
+        let found = existing_directory(manifest_dir()).unwrap();
         assert!(found.is_absolute());
         assert!(found.is_dir());
         assert!(!found.to_string_lossy().starts_with(VERBATIM_PREFIX));
@@ -168,10 +151,12 @@ mod tests {
 
     #[test]
     fn a_missing_path_and_a_file_are_not_directories() {
-        let temp = TempDir::new();
-        assert_eq!(existing_directory(temp.0.join("missing")), None);
-        let file = temp.0.join("file.txt");
-        fs::write(&file, "x").unwrap();
+        assert_eq!(
+            existing_directory(manifest_dir().join("no-such-folder")),
+            None
+        );
+        let file = manifest_dir().join("Cargo.toml");
+        assert!(file.is_file(), "the test needs the manifest to exist");
         assert_eq!(existing_directory(file), None);
     }
 }

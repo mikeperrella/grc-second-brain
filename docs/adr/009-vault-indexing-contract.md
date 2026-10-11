@@ -113,7 +113,7 @@ Limits of these proofs, stated plainly:
 
 ## Mutation proofs (M4b)
 
-Same procedure as M3b: record each file's sha256, apply the one named break with the edit tool, run the test by its node ID, restore, show the sha256 equal to the original and the test passing again. Originals: `child_env.rs` = `0ea13b6d5c5afa5e8f5ed1423222c80da1f93489152d7e7b90a5130214757a59`, `dev_paths.rs` = `9644c84151a59cf5ec48ac4d7b88c6cc49f3913ee979b8ac7decd85f96998b9a`, `config.py` = `033581cd86ead6de68f09e367977799a1c34a49a80f875ea4650af54f396143c`. Every restore matched.
+Same procedure as M3b: record each file's sha256, apply the one named break with the edit tool, run the test by its node ID, restore, show the sha256 equal to the original and the test passing again. Originals: `child_env.rs` = `0ea13b6d5c5afa5e8f5ed1423222c80da1f93489152d7e7b90a5130214757a59`, `dev_paths.rs` = `e36de4d85db7e30999c8e08695e0f06d695fd6eb9ef585a6d453a754e6071e9f` (its test module was reworked after the first CI run, because Semgrep's registry rule `rust.lang.security.temp-dir.temp-dir` flagged `env::temp_dir()`; the tests now read the crate's own manifest directory and create nothing; row 20 was re-run on this version), `config.py` = `033581cd86ead6de68f09e367977799a1c34a49a80f875ea4650af54f396143c`. Every restore matched.
 
 | # | Control | Break | Test that failed | Result |
 |---|---|---|---|---|
