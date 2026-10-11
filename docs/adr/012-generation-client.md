@@ -1,6 +1,6 @@
 # ADR-012: Generation client, and what Ollama v0.40.3 does with a chat request
 
-Status: Accepted (M5a). Amends CLAUDE.md 3.7 (non-local models are refused) and 8.3 (exactly two messages per request, one shared retry budget). The client itself is built in M5c and the prompt in M5d; this ADR records the decisions and the evidence they rest on, before any of that code exists.
+Status: Accepted (M5a). Amends CLAUDE.md 3.7 (non-local models are refused) and 8.3 (exactly two messages per request, one shared retry budget). This ADR records the decisions and the evidence they rest on. The client and the gate's non-local refusal are built in M5c (its mutation proofs are at the end); the prompt builder is M5d.
 
 ## Context
 
@@ -64,6 +64,38 @@ Negative or risky:
 - Treating a refused model as "missing" makes the message less specific. A user who configured `llama3.1:cloud` sees a missing model, and the log says why.
 - Ollama may write full request bodies to its temp directory if a user sets `OLLAMA_DEBUG_LOG_REQUESTS`. Threat-model Section 7 records it; live checks A and B look for the directory.
 
-## Mutation proofs
+## Mutation proofs (M5c)
 
-Recorded when the controls exist: the generation client and gate in M5c (endpoint allowlist, gate before call, no response body in errors, explicit timeouts, non-local refusal, `shift: false`, post-check, sizing constants) and the prompt builder in M5d (two messages, schema on every request, retry bound). Procedure as in ADR-009 and ADR-011: back up the file outside the repo and record its sha256, apply one named break with the edit tool, run the named test, require "N failed", restore, show the sha256 equals the original, show the test passes again.
+Procedure (as in ADR-009 and ADR-011): back up the file outside the repo and record its sha256, apply the one named break with the edit tool, run the named tests, require "N failed", restore with the exact inverse edit, show the sha256 equals the original, and show the tests pass again. Originals: `llm/generation_client.py` = `056896dbdb6ea0ad0a2d9c9ee3a19c90203bd71039171c36034cddbc7423d744`, `llm/limits.py` = `e907f53556a0df6a10c332b9b59569aea03c8dd404658bf5e15571ab75ed0882`, `llm/ollama_embeddings.py` = `9f43409a9b5fb2053f64dcb945ff3b613d94c3ae35f95857d70f82b571a69bf6`, `llm/model_gate.py` = `bfc9a52a29bc75d3f6c30417c96ee85d3446ecd4ab98289e3491d12c013adff7`, `errors.py` = `8f9f5155aa53f1e2998bdd3a08c11c57a184844197685bd2a9af2e4372b78a61`. Every restore matched.
+
+| # | Control | Break | Tests that failed | Result |
+|---|---|---|---|---|
+| 1 | Endpoint allowlist | `("POST", "/api/show")` added to `ALLOWED_ENDPOINTS` | `test_generation_client.py::test_the_client_refuses_every_endpoint_but_chat_and_tags` | 1 failed (`DID NOT RAISE EndpointNotAllowedError`) |
+| 2 | Gate before the call | `await self._gate.require(...)` removed from `generate` | `::test_no_request_is_sent_when_the_model_is_not_installed`, `::test_no_request_is_sent_when_ollama_is_unreachable`, `::test_a_cloud_or_remote_model_is_refused_before_any_request` (3 cases) | 5 failed |
+| 3a | No Ollama text in errors | `raise GenerationResponseError(reason)` (the stop reason is Ollama's text) | `::test_an_ollama_error_body_never_appears_in_the_error_or_its_chain[chat_200_bad_reason]` | 1 failed, 7 passed |
+| 3b | Nothing chained | `except HTTPError as exc: raise GenerationUnavailableError from exc` | `::test_connection_problems_are_unavailable_errors_without_the_original` (4 cases) | 4 failed, 8 passed |
+| 4 | Explicit timeouts | the per-request `timeout=` removed | `::test_the_first_call_gets_the_longer_timeout_and_later_calls_the_normal_one`, `::test_a_failed_first_call_does_not_use_up_the_long_timeout`, `::test_the_digest_listing_uses_the_short_timeout` | 3 failed, 1 passed |
+| 5 | Schema on every request | `format` sent on the first request only | `::test_every_request_carries_the_schema_in_format` (drives three calls) | 1 failed |
+| 6 | `shift: false` | `"shift": True` | `::test_every_request_disables_context_shifting`, `::test_one_chat_request_with_the_exact_body` | 2 failed |
+| 7 | Exactly two messages | from the second request on, the body is `system, user, assistant, user` | `::test_every_request_is_exactly_one_system_and_one_user_message` | 1 failed |
+| 8 | Post-check on the reported token count | `raise ContextWindowReachedError` replaced by `pass` | `::test_a_prompt_count_that_reaches_the_window_fails_closed` (the 3 refuse cases; the 2 below-limit cases still pass) | 3 failed, 2 passed |
+| 9 | Remote-host tripwire on the reply | `raise NonLocalModelError` replaced by `pass` | `::test_a_reply_that_names_a_remote_host_is_a_tripwire`, `::test_an_ollama_error_body_never_appears_in_the_error_or_its_chain[chat_200_remote]` | 2 failed, 1 passed |
+| 10 | Pre-flight size check | `raise PromptTooLargeError` replaced by `pass` | `::test_oversize_messages_are_refused_before_anything_is_sent` (the at-the-cap case still passes) | 1 failed, 1 passed |
+| 11a | Non-local refusal: remote entries (`find_local_entry`, shared by the gate, the embedding client and the generation client) | `any(entry.remote ...)` removed | 15 tests in `test_model_entries.py`, `test_model_gate.py`, `test_generation_client.py` (lookup, `ensure_ready`, the gate for generation and embedding, `remote_model` only, odd values, `read_model_entry`) | 15 failed, 21 passed |
+| 11b | Non-local refusal: cloud names | the `is_cloud_model_name` check removed from `find_local_entry` | 6 tests (lookup, embedding `ensure_ready`, gate x2, generation client x2) | 6 failed, 18 passed |
+| 11c | A remote duplicate refuses the name | `any(...)` replaced by `matches[0].remote` | `test_model_entries.py::test_one_remote_duplicate_refuses_the_name_even_if_another_entry_is_local`, `test_model_gate.py::test_a_remote_duplicate_of_a_local_name_refuses_the_model` | 2 failed |
+| 11d | Odd remote values fail closed | `not in (None, "")` replaced by `bool(...)` (so `0`, `false`, `[]` pass as local) | `test_model_entries.py::test_any_other_remote_field_marks_the_entry_remote` (3 cases), `test_model_gate.py::test_an_odd_remote_value_fails_closed` (2 cases) | 5 failed, 13 passed |
+| 12 | Sizing is derived and pinned | `SYSTEM_MAX_CHARS` 3,000 changed to 4,000 | `test_generation_limits.py::test_the_message_and_prompt_caps_add_up`, `::test_the_token_bound_uses_the_worst_measured_ratio_with_independent_arithmetic`, `::test_num_ctx_is_derived_from_the_caps`, `test_generation_client.py::test_decoding_options_come_from_the_derived_limits` | 4 failed, 73 passed |
+| 13 | Only the generation client names the chat endpoint | the literal added to a docstring in `errors.py` | `test_chat_endpoint_hygiene.py::test_only_the_generation_client_names_the_chat_endpoint` (the scan names `errors.py`) | 1 failed, 2 passed |
+
+Verification of the full suite after the code and before the proofs: 1,318 passed, 9 deselected (the `ollama` marker), ruff and mypy clean.
+
+Notes and known limits:
+
+- **The tests use a fake Ollama.** They prove what our client sends and how it reacts, not what Ollama does. Everything in "Unverified" above is still unverified until live check A.
+- **Row 7** simulates "attempt 2" with the client's own call counter. The real retry (rebuilding the user message with the error text) is the prompt builder's job (M5d), which gets its own test; row 7 proves that the client cannot send anything but two messages whatever its caller does.
+- **Row 8's check is secondary** (decision 3): it can only catch a cut that leaves the reported count near the window. The control that matters, `shift: false` (row 6), is proven here only as "the request says it". That Ollama honours it on the chat path is the live oversize probe's job.
+- **Rows 9 and 11** are controls on different things. 11 refuses before a request is sent; 9 only notices afterwards, so it can never undo a leak.
+- **The Semgrep rule `grc-py-chat-endpoint-outside-generation-client`** (22 rules now) could not be run with `semgrep --test` locally, because Semgrep is not installed on this machine; CI runs it. I checked its regex against its own fixture annotations with Python's `re` (5 lines that must match did, 4 that must not did not), and `check_semgrep_rule_coverage.py` reports 22 rules, 22 annotated. Row 13's text scan is the second line of defence and was proven by mutation.
+- **Not wired into the app yet.** `main.py` does not construct a `GenerationClient`; the answer service (M5f) does.
+- The gate's `ModelLister` changed from names to `ModelEntry` objects; the existing gate, embedding and retrieval tests all passed unchanged apart from the retrieval test helper, which now returns entries.

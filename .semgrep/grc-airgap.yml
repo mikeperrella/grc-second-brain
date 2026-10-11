@@ -94,6 +94,17 @@ rules:
       - pattern-regex: '(?i)api/+(\./+)*(p|%70)ull\b'
       - pattern: $CLIENT.pull(...)
 
+  # ---------- Python: one module may name the chat endpoint (ADR-012) ----------
+  - id: grc-py-chat-endpoint-outside-generation-client
+    languages: [python]
+    severity: ERROR
+    message: "Only grc_sidecar/llm/generation_client.py may name the Ollama chat endpoint (ADR-012). That module holds the endpoint allowlist, the exactly-two-messages rule, shift:false, the model gate and the fixed-message errors; a second caller would bypass all of them. Spellings caught: with or without the leading slash, any case, doubled slashes and dot segments."
+    paths:
+      exclude:
+        - "**/llm/generation_client.py"
+        - "**/tests/**"
+    pattern-regex: '(?i)api/+(\./+)*chat\b'
+
   # ---------- Python: frontmatter and vault content are untrusted (CLAUDE.md 8.6) ----------
   - id: grc-py-yaml-unsafe-load
     languages: [python]

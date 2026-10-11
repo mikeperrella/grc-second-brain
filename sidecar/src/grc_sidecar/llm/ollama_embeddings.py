@@ -72,35 +72,90 @@ def model_names(model: str) -> set[str]:
     return {model, model if ":" in model else f"{model}:latest"}
 
 
-def _installed_names(tags: object) -> frozenset[str]:
-    """Every name Ollama lists for an installed model. A bad shape is an error, never a guess."""
+def is_cloud_model_name(name: str) -> bool:
+    """True if Ollama would run this model name on ollama.com instead of locally.
+
+    The rule is Ollama's own `parseSourceSuffix` (`internal/modelref/modelref.go:99-117` at the
+    v0.40.3 commit, ADR-012): look at the text after the LAST colon, trimmed and lower-cased; it is
+    cloud if it is `cloud`, or if it contains no `/` and ends in `-cloud`. A name with no colon is
+    never cloud. Such a request is forwarded to ollama.com with no local model involved, so the gate
+    refuses these names before anything is sent.
+    """
+    colon = name.rfind(":")
+    if colon < 0:
+        return False
+    tag = name[colon + 1 :].strip()
+    lowered = tag.lower()
+    return lowered == "cloud" or ("/" not in tag and lowered.endswith("-cloud"))
+
+
+@dataclass(frozen=True)
+class ModelEntry:
+    """One installed model, as `GET /api/tags` lists it.
+
+    `names` holds every name Ollama gives it (`name` and `model`). `digest` is None if the listing
+    has none. `remote` is True when the entry carries a non-empty `remote_host` or `remote_model`:
+    Ollama forwards such a model to another host (ADR-012, row 2), so it is not a local model.
+    """
+
+    names: frozenset[str]
+    digest: str | None
+    remote: bool
+
+
+def parse_model_entries(tags: object) -> tuple[ModelEntry, ...]:
+    """Every model Ollama lists. A bad shape is an error, never a guess."""
     if not isinstance(tags, dict) or not isinstance(tags.get("models"), list):
         raise EmbeddingResponseError
-    names: set[str] = set()
+    entries: list[ModelEntry] = []
     for entry in tags["models"]:
         if not isinstance(entry, dict):
             raise EmbeddingResponseError
         found = [value for value in (entry.get("name"), entry.get("model")) if value]
         if not found or not all(isinstance(value, str) for value in found):
             raise EmbeddingResponseError
-        names.update(found)
-    return frozenset(names)
+        digest = entry.get("digest")
+        # Any value other than absent, null or "" in a remote field counts as remote, whatever its
+        # type: a shape we do not understand must fail closed, not pass as local.
+        remote = any(entry.get(key) not in (None, "") for key in ("remote_host", "remote_model"))
+        entries.append(
+            ModelEntry(
+                names=frozenset(found),
+                digest=digest if isinstance(digest, str) and digest else None,
+                remote=remote,
+            )
+        )
+    return tuple(entries)
+
+
+def find_local_entry(entries: Sequence[ModelEntry], model: str) -> ModelEntry | None:
+    """The listing entry that proves `model` is installed AND local, or None.
+
+    None covers: not installed, a cloud-named model (Ollama forwards it to ollama.com with no
+    local model involved), and an entry listed with a `remote_host` or `remote_model`. If more
+    than one entry carries the name, any remote one refuses the model: a listing that is not
+    fully local must not pass as local (ADR-012).
+    """
+    if is_cloud_model_name(model):
+        return None
+    wanted = model_names(model)
+    matches = [entry for entry in entries if entry.names & wanted]
+    if not matches or any(entry.remote for entry in matches):
+        return None
+    return matches[0]
 
 
 def _digest_of_installed(tags: object, model: str) -> str | None:
-    """The digest of the installed model, None if it is not installed. Bad shapes are errors."""
-    if not isinstance(tags, dict) or not isinstance(tags.get("models"), list):
+    """The digest of the installed LOCAL model; None if it is not installed or not local.
+
+    Documents must never be sent to a model that is not local (ADR-012). Bad shapes are errors.
+    """
+    entry = find_local_entry(parse_model_entries(tags), model)
+    if entry is None:
+        return None
+    if entry.digest is None:
         raise EmbeddingResponseError
-    wanted = model_names(model)
-    for entry in tags["models"]:
-        if not isinstance(entry, dict):
-            raise EmbeddingResponseError
-        if {entry.get("name"), entry.get("model")} & wanted:
-            digest = entry.get("digest")
-            if not isinstance(digest, str) or not digest:
-                raise EmbeddingResponseError
-            return digest
-    return None
+    return entry.digest
 
 
 def _parse_embeddings(payload: object, count: int, dimension: int | None) -> EmbedResult:
@@ -207,13 +262,14 @@ class OllamaEmbeddingClient:
                 total_tokens = None
         return EmbedResult(vectors=vectors, prompt_eval_count=total_tokens)
 
-    async def installed_models(self) -> frozenset[str]:
-        """The names of the models installed in Ollama (`GET /api/tags`, the model gate's input).
+    async def installed_models(self) -> tuple[ModelEntry, ...]:
+        """The models installed in Ollama (`GET /api/tags`, the model gate's input).
 
-        Uses the same restricted client as everything else (no new endpoint) and a short timeout.
+        Each entry carries the digest and whether Ollama would run it off this machine. Uses the
+        same restricted client as everything else (no new endpoint) and a short timeout.
         Raises EmbeddingUnavailableError or EmbeddingResponseError, with fixed messages.
         """
-        return _installed_names(await self._call("GET", TAGS_PATH, None, TAGS_CHECK_TIMEOUT))
+        return parse_model_entries(await self._call("GET", TAGS_PATH, None, TAGS_CHECK_TIMEOUT))
 
     # ----- the EmbeddingClient protocol ------------------------------------------------------
 

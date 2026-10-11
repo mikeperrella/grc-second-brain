@@ -122,6 +122,26 @@ unrelated = "/api/pullover-docs"
 # ok: grc-py-ollama-pull
 queue.pop()
 
+# ---------- grc-py-chat-endpoint-outside-generation-client ----------
+# ruleid: grc-py-chat-endpoint-outside-generation-client
+chat_url = "http://127.0.0.1:11434/api/chat"
+# ruleid: grc-py-chat-endpoint-outside-generation-client
+chat_no_slash = urljoin(base, "api/chat")
+# ruleid: grc-py-chat-endpoint-outside-generation-client
+chat_shouting = "/API/Chat"
+# ruleid: grc-py-chat-endpoint-outside-generation-client
+chat_doubled = "/api//chat"
+# ruleid: grc-py-chat-endpoint-outside-generation-client
+chat_dotted = "/api/./chat"
+# ok: grc-py-chat-endpoint-outside-generation-client
+chat_tags_url = "http://127.0.0.1:11434/api/tags"
+# ok: grc-py-chat-endpoint-outside-generation-client
+chat_embed_url = "http://127.0.0.1:11434/api/embed"
+# ok: grc-py-chat-endpoint-outside-generation-client
+chat_longer_word = "/api/chatter"
+# ok: grc-py-chat-endpoint-outside-generation-client
+chat_prose = "the support chat is open"
+
 # ---------- grc-py-yaml-unsafe-load ----------
 # ruleid: grc-py-yaml-unsafe-load
 yaml.load(text)
