@@ -575,6 +575,16 @@ class _SqliteStore:
                 )
         return found
 
+    def source_path_of_doc_id(self, doc_id: str) -> str | None:
+        # doc_id is unique among valid documents (a duplicate excludes every copy, ADR-009), so at
+        # most one row has rows; the ORDER BY only keeps the answer stable if a stale row remains.
+        row = self._con.execute(
+            "SELECT source_path FROM documents WHERE doc_id = ? "
+            "ORDER BY stale, source_path LIMIT 1",
+            (doc_id,),
+        ).fetchone()
+        return None if row is None else str(row[0])
+
     def chunks_for(self, source_path: str) -> list[Chunk]:
         rows = self._con.execute(
             "SELECT c.chunk_id, c.source_path, c.doc_id, c.start_line, c.end_line, "
@@ -755,6 +765,10 @@ class SqliteVecRepository:
     async def documents_info(self, source_paths: Sequence[str]) -> dict[str, DocInfo]:
         store = self._store()
         return await self._run(lambda: store.documents_info(source_paths))
+
+    async def source_path_of_doc_id(self, doc_id: str) -> str | None:
+        store = self._store()
+        return await self._run(lambda: store.source_path_of_doc_id(doc_id))
 
     async def chunks_for(self, source_path: str) -> list[Chunk]:
         store = self._store()

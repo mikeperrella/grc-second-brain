@@ -167,6 +167,9 @@ class VectorRepository(Protocol):
     async def documents_info(self, source_paths: Sequence[str]) -> dict[str, DocInfo]:
         """The `documents` row of each path that has one (unknown paths are simply absent)."""
 
+    async def source_path_of_doc_id(self, doc_id: str) -> str | None:
+        """The path of the document with this `doc_id`, or None (used to follow a resolved link)."""
+
     async def chunks_for(self, source_path: str) -> list[Chunk]: ...
 
     async def links_for(self, source_path: str) -> list[ResolvedLink]: ...

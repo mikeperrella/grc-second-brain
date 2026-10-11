@@ -54,6 +54,17 @@ class RetrievedChunk(_Frozen):
     vector_rank: int | None  # 1-based rank in the vector results, None if not found there
 
 
+class BudgetReport(_Frozen):
+    """How the context budget was used (characters, an approximation of tokens; selection.py)."""
+
+    max_chunks: int
+    char_budget: int
+    used_chars: int
+    framework_chars: int
+    # Chunks that ranked high enough but did not fit the characters left. Never truncated to fit.
+    dropped_for_budget: tuple[str, ...]
+
+
 class RetrievalResult(_Frozen):
     """What a question found.
 
@@ -67,6 +78,7 @@ class RetrievalResult(_Frozen):
     mode: RetrievalMode
     degraded_reason: DegradedReason | None
     chunks: tuple[RetrievedChunk, ...]
+    budget: BudgetReport
     # Documents whose file changed after they were indexed: their rows were deleted, so they are
     # NOT in `chunks`. Listed so a caller knows evidence was withheld, not that none exists.
     withheld_unindexed: tuple[str, ...]

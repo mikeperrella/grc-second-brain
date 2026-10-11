@@ -5,6 +5,7 @@ needed. A test calls `async with stack(...)`; the repositories are closed afterw
 """
 
 import json
+import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -88,9 +89,13 @@ async def stack(
     embedder: FakeEmbeddingClient | None = None,
     index_embedder: FakeEmbeddingClient | None = None,
     sync: bool = True,
+    reuse_packs_index: Path | None = None,
 ) -> AsyncIterator[Stack]:
     """Index `vault_dir` (and `packs_dir`) with `index_embedder`, then build a Retriever that
-    embeds questions with `embedder`. They differ only in tests about a changed model."""
+    embeds questions with `embedder`. They differ only in tests about a changed model.
+
+    `reuse_packs_index` is a `packs.sqlite3` built earlier: it is copied in instead of indexing
+    the packs again (indexing all of them takes about 20 seconds)."""
     index_dir.mkdir(parents=True, exist_ok=True)
     embedder = embedder or FakeEmbeddingClient()
     index_embedder = index_embedder or embedder
@@ -99,8 +104,10 @@ async def stack(
     vault_repo = SqliteVecRepository(index_dir / "vault.sqlite3")
     packs_repo: SqliteVecRepository | None = None
     if packs_dir is not None:
+        if reuse_packs_index is not None:
+            shutil.copyfile(reuse_packs_index, index_dir / "packs.sqlite3")
         packs_repo = SqliteVecRepository(index_dir / "packs.sqlite3")
-        if sync:
+        if sync and reuse_packs_index is None:
             await index_packs(packs_dir, packs_repo, index_embedder)
             await packs_repo.close()  # the retriever opens it itself, like a fresh process would
             packs_repo = SqliteVecRepository(index_dir / "packs.sqlite3")

@@ -57,8 +57,7 @@ def test_a_question_returns_cited_company_chunks(index_dir: Path) -> None:
             for chunk in result.chunks:
                 assert chunk.source_kind == "company_policy"
                 assert chunk.pack_id is None
-                assert chunk.role == "seed"
-                assert chunk.expanded_from == ()
+                assert (chunk.role == "expanded") == bool(chunk.expanded_from)
                 assert 1 <= chunk.start_line <= chunk.end_line
                 # a citation can be checked: the text IS the file's lines start..end
                 lines = (SAMPLE_VAULT / chunk.source_path).read_text(encoding="utf-8").splitlines()
@@ -74,9 +73,10 @@ def test_both_searches_contribute(index_dir: Path) -> None:
     async def scenario() -> None:
         async with stack(SAMPLE_VAULT, index_dir) as s:
             result = await s.retriever.retrieve("multi-factor authentication")
-            assert any(c.lexical_rank and c.vector_rank for c in result.chunks)
-            assert all(c.lexical_rank or c.vector_rank for c in result.chunks)
-            scores = [c.fused_score for c in result.chunks]
+            seeds = [c for c in result.chunks if c.role == "seed"]
+            assert any(c.lexical_rank and c.vector_rank for c in seeds)
+            assert all(c.lexical_rank or c.vector_rank for c in seeds)
+            scores = [c.fused_score for c in seeds]
             assert scores == sorted(scores, reverse=True)
 
     asyncio.run(scenario())
@@ -94,12 +94,16 @@ def test_the_same_question_gives_byte_identical_output(index_dir: Path, tmp_path
     assert asyncio.run(once(index_dir)) == asyncio.run(once(tmp_path / "second-index"))
 
 
-def test_limit_is_honoured_and_validated(index_dir: Path) -> None:
+def test_the_budget_parameters_are_honoured_and_validated(index_dir: Path) -> None:
     async def scenario() -> None:
         async with stack(SAMPLE_VAULT, index_dir) as s:
-            assert len((await s.retriever.retrieve("policy", limit=2)).chunks) == 2
-            with pytest.raises(ValueError, match="limit"):
-                await s.retriever.retrieve("policy", limit=0)
+            assert len((await s.retriever.retrieve("policy", max_chunks=2)).chunks) <= 2
+            for bad in ({"max_chunks": 0}, {"char_budget": 0}):
+                with pytest.raises(ValueError, match="at least 1"):
+                    await s.retriever.retrieve("policy", **bad)
+            for depth in (-1, 3):
+                with pytest.raises(ValueError, match="expansion_depth"):
+                    await s.retriever.retrieve("policy", expansion_depth=depth)
             for empty in ("", "   ", "\n"):
                 with pytest.raises(ValueError, match="empty"):
                     await s.retriever.retrieve(empty)
@@ -283,7 +287,7 @@ def test_an_unusable_vault_folder_fails_closed(index_dir: Path, tmp_path: Path) 
 def test_vendor_policy_is_flagged_overdue(index_dir: Path) -> None:  # [NEG] mutation row 17
     async def scenario() -> None:
         async with stack(SAMPLE_VAULT, index_dir, today=date(2026, 10, 10)) as s:
-            result = await s.retriever.retrieve("vendor review", limit=10)
+            result = await s.retriever.retrieve("vendor review", max_chunks=10)
             by_path = {c.source_path: c for c in result.chunks}
             assert VENDOR in by_path, "the vendor policy must be retrieved for this test"
             vendor = by_path[VENDOR]
@@ -298,12 +302,12 @@ def test_vendor_policy_is_flagged_overdue(index_dir: Path) -> None:  # [NEG] mut
 def test_the_review_date_itself_is_not_overdue_the_day_after_is(index_dir: Path) -> None:
     async def scenario() -> None:
         async with stack(SAMPLE_VAULT, index_dir, today=date(2024, 6, 30)) as s:
-            result = await s.retriever.retrieve("vendor review", limit=10)
+            result = await s.retriever.retrieve("vendor review", max_chunks=10)
             vendor = [c for c in result.chunks if c.source_path == VENDOR]
             assert vendor, "the vendor policy must be retrieved for this test"
             assert not any(c.review_overdue for c in vendor)  # due today is not overdue
             s.clock.fixed = date(2024, 7, 1)
-            result = await s.retriever.retrieve("vendor review", limit=10)
+            result = await s.retriever.retrieve("vendor review", max_chunks=10)
             assert all(c.review_overdue for c in result.chunks if c.source_path == VENDOR)
 
     asyncio.run(scenario())
@@ -506,7 +510,7 @@ def test_hidden_instructions_come_back_as_plain_data(  # [NEG]
 def test_retrieval_never_alters_the_text_it_returns(index_dir: Path) -> None:
     async def scenario() -> None:
         async with stack(SAMPLE_VAULT, index_dir) as s:
-            result = await s.retriever.retrieve("multi-factor authentication", limit=10)
+            result = await s.retriever.retrieve("multi-factor authentication", max_chunks=10)
             for chunk in result.chunks:
                 stored = {c.chunk_id: c for c in await s.vault_repo.chunks_for(chunk.source_path)}
                 assert chunk.text == stored[chunk.chunk_id].text
