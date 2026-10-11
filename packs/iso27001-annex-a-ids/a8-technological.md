@@ -12,12 +12,12 @@ owner: "BizAI Solutions"
 - **A.8.2**
 - **A.8.3**
 - **A.8.4**
-- **A.8.5** Strong authentication. Authentication methods and procedures match how sensitive the access being protected is.
+- **A.8.5** Sign-in controls. Authentication methods follow the organization's access restrictions and access control policy, with stronger methods expected where access is more sensitive.
 - **A.8.6**
 - **A.8.7**
 - **A.8.8**
 - **A.8.9**
-- **A.8.10** Deleting information. Information kept in systems and devices is deleted once it is no longer required.
+- **A.8.10** Deleting information. Data that is no longer needed is removed from systems, devices and storage media rather than kept indefinitely.
 - **A.8.11**
 - **A.8.12**
 - **A.8.13**
@@ -31,7 +31,7 @@ owner: "BizAI Solutions"
 - **A.8.21**
 - **A.8.22**
 - **A.8.23**
-- **A.8.24** Cryptography rules. Rules for using cryptography, including key management, are defined and put into effect.
+- **A.8.24** Cryptography rules. The organization decides how encryption and keys are used and managed, and makes sure those decisions are followed.
 - **A.8.25**
 - **A.8.26**
 - **A.8.27**

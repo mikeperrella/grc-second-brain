@@ -4,8 +4,10 @@ These hold control IDs only, plus our own short summaries for exactly the contro
 maps to. The list of expected summaries is read from the sample vault, not typed here.
 """
 
+import importlib.util
 import re
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -13,6 +15,7 @@ from grc_sidecar.packs.loader import verify_pack
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKS = ROOT / "packs"
+TOOLS = ROOT / "tools"
 VAULT = ROOT / "vault-sample" / "vault"
 ENTRY = re.compile(r"^- \*\*(?P<id>[A-Z0-9.]+)\*\*(?P<rest>.*)$", re.MULTILINE)
 SOC2_ID = re.compile(r"^(CC\d\.\d|A1\.\d|C1\.\d|PI1\.\d|P\d\.\d)$")
@@ -24,6 +27,14 @@ SPECS = {
     "soc2-tsc-ids": ("SOC2", SOC2_ID, 61),
     "iso27001-annex-a-ids": ("ISO27001", ISO_ID, 93),
 }
+
+
+def _load_generator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("authored_packs", TOOLS / "authored_packs.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def entries(pack_id: str) -> dict[str, str]:
@@ -50,6 +61,16 @@ def test_pack_verifies_and_is_marked_authored_and_unverified(pack_id: str) -> No
     assert metadata.content_kind == "ids_and_original_summaries"
     assert metadata.id_list_verified_against == "unverified"
     assert "not bundled" in metadata.upstream_license
+
+
+def test_committed_packs_are_byte_identical_to_the_generator_output(tmp_path: Path) -> None:
+    """The generator is the source of truth: a hand edit of a pack, or a generator edit that was
+    not regenerated, makes the committed files differ from what the generator produces."""
+    assert _load_generator().main(["--out", str(tmp_path)]) == 0
+    for pack_id in SPECS:
+        generated = {p.name: p.read_bytes() for p in (tmp_path / pack_id).iterdir()}
+        committed = {p.name: p.read_bytes() for p in (PACKS / pack_id).iterdir()}
+        assert generated == committed, pack_id
 
 
 @pytest.mark.parametrize("pack_id", sorted(SPECS))

@@ -1,6 +1,6 @@
 {
   "content_kind": "ids_and_original_summaries",
-  "content_sha256": "c2edda088f087a6813c0345ab1194dcbdb0cb94771ef4240b3db11d9065f4857",
+  "content_sha256": "23ff6fcd3bf47b2ac54f890a289cc7167ad72bf7451d875fb362abf429bf126d",
   "converter_version": "authored-1",
   "id_list_verified_against": "unverified",
   "license": "BizAI-original (control IDs and original summaries)",
@@ -8,7 +8,7 @@
   "pack_id": "iso27001-annex-a-ids",
   "redistributable": true,
   "retrieved_on": "2026-10-09",
-  "source_sha256": "c2edda088f087a6813c0345ab1194dcbdb0cb94771ef4240b3db11d9065f4857",
+  "source_sha256": "23ff6fcd3bf47b2ac54f890a289cc7167ad72bf7451d875fb362abf429bf126d",
   "source_url": "https://www.iso.org/standard/27001",
   "title": "ISO/IEC 27001:2022 Annex A: control IDs",
   "upstream_license": "ISO/IEC copyright; text not bundled",
