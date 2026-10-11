@@ -42,11 +42,13 @@ from grc_sidecar.errors import (
     VectorDimensionError,
 )
 from grc_sidecar.repositories.base import (
+    DocInfo,
     DocState,
     EmbeddingProfile,
     IndexedDocument,
     IntegrityProblem,
     IntegrityReport,
+    LexicalHit,
     RepositoryMode,
     ScanSnapshot,
     ScoredChunk,
@@ -538,6 +540,51 @@ class _SqliteStore:
         )
         return [ScoredChunk(chunk=_chunk_from_row(row), distance=float(row[9])) for row in rows]
 
+    def lexical_search(self, match: str, k: int) -> list[LexicalHit]:
+        if not 1 <= k <= MAX_K:
+            raise ValueError("k is out of range")
+        if not match:
+            return []
+        # `match` is an FTS5 query built by retrieval/query.py (every word quoted) and is passed as
+        # a bound parameter. bm25() is lower for a better match; chunk_id breaks ties, so the order
+        # never depends on rowids or insertion order.
+        rows = self._con.execute(
+            "SELECT c.chunk_id, c.source_path, c.doc_id, c.start_line, c.end_line, "
+            "c.heading_path, c.text, c.text_sha256, c.flags, bm25(fts_chunks) AS score "
+            "FROM fts_chunks JOIN chunks AS c ON c.rowid = fts_chunks.rowid "
+            "WHERE fts_chunks MATCH ? ORDER BY score, c.chunk_id LIMIT ?",
+            (match, k),
+        )
+        return [LexicalHit(chunk=_chunk_from_row(row), bm25=float(row[9])) for row in rows]
+
+    def documents_info(self, source_paths: Sequence[str]) -> dict[str, DocInfo]:
+        found: dict[str, DocInfo] = {}
+        for path in dict.fromkeys(source_paths):
+            row = self._con.execute(
+                "SELECT source_path, collection, doc_id, type, review_by "
+                "FROM documents WHERE source_path = ?",
+                (path,),
+            ).fetchone()
+            if row is not None:
+                found[path] = DocInfo(
+                    source_path=row[0],
+                    collection=row[1],
+                    doc_id=row[2],
+                    type=row[3],
+                    review_by=row[4],
+                )
+        return found
+
+    def source_path_of_doc_id(self, doc_id: str) -> str | None:
+        # doc_id is unique among valid documents (a duplicate excludes every copy, ADR-009), so at
+        # most one row has rows; the ORDER BY only keeps the answer stable if a stale row remains.
+        row = self._con.execute(
+            "SELECT source_path FROM documents WHERE doc_id = ? "
+            "ORDER BY stale, source_path LIMIT 1",
+            (doc_id,),
+        ).fetchone()
+        return None if row is None else str(row[0])
+
     def chunks_for(self, source_path: str) -> list[Chunk]:
         rows = self._con.execute(
             "SELECT c.chunk_id, c.source_path, c.doc_id, c.start_line, c.end_line, "
@@ -710,6 +757,18 @@ class SqliteVecRepository:
     async def search(self, query: Sequence[float], k: int) -> list[ScoredChunk]:
         store = self._store()
         return await self._run(lambda: store.search(query, k))
+
+    async def lexical_search(self, match: str, k: int) -> list[LexicalHit]:
+        store = self._store()
+        return await self._run(lambda: store.lexical_search(match, k))
+
+    async def documents_info(self, source_paths: Sequence[str]) -> dict[str, DocInfo]:
+        store = self._store()
+        return await self._run(lambda: store.documents_info(source_paths))
+
+    async def source_path_of_doc_id(self, doc_id: str) -> str | None:
+        store = self._store()
+        return await self._run(lambda: store.source_path_of_doc_id(doc_id))
 
     async def chunks_for(self, source_path: str) -> list[Chunk]:
         store = self._store()

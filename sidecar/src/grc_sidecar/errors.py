@@ -212,6 +212,27 @@ class ModelMissingError(GrcError):
     )
 
 
+class IndexNotBuiltError(GrcError):
+    """There is no search index to retrieve from.
+
+    Retrieval never builds one: indexing needs the embedding model and can take minutes, so it is
+    started deliberately (the UI, M6), not as a side effect of a question.
+    """
+
+    default_message = "No search index has been built yet"
+
+
+class RetrievalUnavailableError(GrcError):
+    """Retrieval was refused because it could not be certified fresh.
+
+    Raised when the vault cannot be checked against the index (the vault folder is unusable, or
+    the index could not be updated). Nothing is returned: stale text must never be served by
+    default (CLAUDE.md 8.1).
+    """
+
+    default_message = "Retrieval is not available"
+
+
 class ModelsUnavailableError(GrcError):
     """A model-dependent operation was refused because a required model is not confirmed present.
 

@@ -34,6 +34,7 @@ Negative or risky:
 - `/readiness` makes an outbound request to loopback Ollama when asked (at most once per interval). It is authenticated like every route.
 - `models_missing` for `unreachable` and `bad_response` lists every required model, because nothing could be confirmed.
 - A new input to the host: the host does not read `/readiness` yet (no UI consumer until M6), so the degraded state is visible to tests and to `curl`-style checks only.
+- **Known limit (M4b): `EnvRejected` is reused.** When the host cannot prepare the index folder for the sidecar it reports the existing `FailureKind::EnvRejected` ("the child environment could not be built"), because a new failure kind would change the IPC contract with the window (`health.ts` Zod schema and `health-contract.json`). The window therefore cannot tell "bad path" from "could not create the index folder". M6, which touches that contract for the folder picker anyway, adds a dedicated failure kind.
 - The startup-not-blocked test measures a real child process against a connection that stays open for the 3 s read timeout, so it has a margin of about 3 s on a very slow machine.
 
 ## Mutation proofs (M4a)
