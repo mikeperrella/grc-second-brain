@@ -18,7 +18,7 @@ use common::{
     assert_exits, wait_for_venv_sidecar_shape, Reaper, Scratch, TestResult, SHAPE_SETTLE_BOUND,
 };
 use desktop_lib::health::HealthReply;
-use desktop_lib::host::SidecarHost;
+use desktop_lib::host::{SidecarDirs, SidecarHost};
 use desktop_lib::sidecar::job::{describe_processes, ProcessInfo};
 use desktop_lib::sidecar::supervisor::SidecarState;
 
@@ -54,7 +54,13 @@ fn port_is_closed(port: u16) -> bool {
 #[ignore = "needs sidecar/.venv"]
 fn the_real_sidecar_starts_answers_health_and_stops() -> TestResult {
     let scratch = Scratch::new("real_sidecar")?;
-    let host = SidecarHost::start_dev(scratch.path())
+    let index_dir = scratch.file("index");
+    let dirs = SidecarDirs {
+        log_dir: scratch.path(),
+        index_dir: &index_dir,
+        vault_dir: None,
+    };
+    let host = SidecarHost::start_dev(&dirs)
         .map_err(|kind| format!("the real sidecar did not start: {kind:?}"))?;
     let mut reaper = Reaper::new();
     reaper.add(host.supervisor().child_pid());

@@ -119,8 +119,26 @@ pub fn fake_spec(
     file: Option<&Path>,
     handshake: Duration,
 ) -> Result<SidecarSpec, Box<dyn Error>> {
+    fake_spec_with_vault(scratch, mode, file, handshake, None)
+}
+
+/// Like [`fake_spec`], with an optional vault directory. The index directory is `scratch`'s
+/// `index` folder (the spec does not create it; the fake never touches it).
+pub fn fake_spec_with_vault(
+    scratch: &Scratch,
+    mode: &str,
+    file: Option<&Path>,
+    handshake: Duration,
+    vault_dir: Option<&Path>,
+) -> Result<SidecarSpec, Box<dyn Error>> {
     let token = AuthToken::generate()?;
-    let env = build_child_env(&system_windows_directory()?, scratch.path(), &token)?;
+    let env = build_child_env(
+        &system_windows_directory()?,
+        scratch.path(),
+        &scratch.file("index"),
+        vault_dir,
+        &token,
+    )?;
     let mut args = vec![OsString::from(mode)];
     if let Some(file) = file {
         args.push(file.as_os_str().to_owned());

@@ -121,6 +121,7 @@ runpy.run_module("grc_sidecar", run_name="__main__", alter_sys=True)
 def test_the_real_sidecar_allows_only_the_vendored_extension(tmp_path: Path) -> None:  # [NEG]
     token = secrets.token_hex(32)
     result_file = tmp_path / "result.json"
+    (tmp_path / "index").mkdir()  # the host creates the index folder; the sidecar requires it (M4b)
     env = minimal_env(
         {
             "GRC_LOG_DIR": str(tmp_path / "logs"),

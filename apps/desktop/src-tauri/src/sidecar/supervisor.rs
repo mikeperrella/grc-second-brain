@@ -149,7 +149,8 @@ pub enum FailureKind {
     SystemRootUnavailable,
     /// The operating system gave no random bytes for the auth token.
     RandomUnavailable,
-    /// The child environment could not be built (a path was not absolute or not valid text).
+    /// The child environment could not be built (a path was not absolute or not valid text), or
+    /// the index directory it names could not be created.
     EnvRejected,
     /// The host's HTTP client could not be built.
     HttpClientFailed,
@@ -930,6 +931,8 @@ mod tests {
         let env = build_child_env(
             Path::new(r"C:\Windows"),
             Path::new(r"C:\Users\someone\AppData\Local\app\logs"),
+            Path::new(r"C:\Users\someone\AppData\Local\app\index"),
+            Some(Path::new(r"C:\Users\someone\Documents\vault")),
             &token,
         )
         .unwrap();
@@ -964,7 +967,14 @@ mod tests {
     fn the_default_handshake_timeout_is_thirty_seconds_and_can_be_replaced() {
         assert_eq!(HANDSHAKE_TIMEOUT, Duration::from_secs(30));
         let token = AuthToken::generate().unwrap();
-        let env = build_child_env(Path::new(r"C:\Windows"), Path::new(r"C:\logs"), &token).unwrap();
+        let env = build_child_env(
+            Path::new(r"C:\Windows"),
+            Path::new(r"C:\logs"),
+            Path::new(r"C:\index"),
+            None,
+            &token,
+        )
+        .unwrap();
         let spec = SidecarSpec::new(PathBuf::from("x"), Vec::new(), PathBuf::from(r"C:\w"), env);
         assert_eq!(spec.handshake_timeout, HANDSHAKE_TIMEOUT);
         let spec = spec.with_handshake_timeout(Duration::from_secs(2));

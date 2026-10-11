@@ -40,6 +40,16 @@ pub(crate) fn decide(state: SidecarState) -> Decision {
     }
 }
 
+/// The directories the sidecar is told about. All must be absolute (the environment builder
+/// checks). `vault_dir` is `None` when no vault has been chosen (always so in release builds
+/// until the folder picker exists, M6).
+#[derive(Debug, Clone, Copy)]
+pub struct SidecarDirs<'a> {
+    pub log_dir: &'a Path,
+    pub index_dir: &'a Path,
+    pub vault_dir: Option<&'a Path>,
+}
+
 /// A started sidecar and the client for its `/health` endpoint.
 pub struct SidecarHost {
     supervisor: Supervisor,
@@ -48,8 +58,10 @@ pub struct SidecarHost {
 
 impl SidecarHost {
     /// Start `program` with `args` as the sidecar. `log_dir` becomes the child's `GRC_LOG_DIR` and
-    /// working directory and is created if missing. Returns as soon as the process is running; the
-    /// handshake continues on supervision threads (read it with `supervisor().state()`).
+    /// working directory and is created if missing. `index_dir` becomes `GRC_INDEX_DIR` and is
+    /// created if missing; `vault_dir`, if there is one, becomes `GRC_VAULT_DIR` (the caller has
+    /// already checked it exists). Returns as soon as the process is running; the handshake
+    /// continues on supervision threads (read it with `supervisor().state()`).
     ///
     /// `pub` because integration tests start the fake sidecar through it; the app's only caller is
     /// [`SidecarHost::start_dev`], which passes the resolved dev interpreter.
@@ -59,15 +71,26 @@ impl SidecarHost {
     pub fn start(
         program: PathBuf,
         args: Vec<OsString>,
-        log_dir: &Path,
+        dirs: &SidecarDirs<'_>,
         handshake_timeout: Duration,
     ) -> Result<Self, FailureKind> {
+        let log_dir = dirs.log_dir;
         fs::create_dir_all(log_dir).map_err(|_| FailureKind::LogDirUnavailable)?;
+        // A failure to prepare the index directory is reported as `EnvRejected`: the child's
+        // environment could not be built from it. A new failure kind would change the IPC
+        // contract with the window (health.ts, health-contract.json) for no new information.
+        fs::create_dir_all(dirs.index_dir).map_err(|_| FailureKind::EnvRejected)?;
         let system_root =
             system_windows_directory().map_err(|_| FailureKind::SystemRootUnavailable)?;
         let token = AuthToken::generate().map_err(|_| FailureKind::RandomUnavailable)?;
-        let env =
-            build_child_env(&system_root, log_dir, &token).map_err(|_| FailureKind::EnvRejected)?;
+        let env = build_child_env(
+            &system_root,
+            log_dir,
+            dirs.index_dir,
+            dirs.vault_dir,
+            &token,
+        )
+        .map_err(|_| FailureKind::EnvRejected)?;
         let client = HealthClient::new(&token).map_err(|_| FailureKind::HttpClientFailed)?;
         let spec = SidecarSpec::new(program, args, log_dir.to_owned(), env)
             .with_handshake_timeout(handshake_timeout);
@@ -77,13 +100,13 @@ impl SidecarHost {
 
     /// Start the dev sidecar: the repository's venv interpreter (debug builds only; release builds
     /// report `NotConfigured` until M8) with the fixed isolated-module arguments.
-    pub fn start_dev(log_dir: &Path) -> Result<Self, FailureKind> {
+    pub fn start_dev(dirs: &SidecarDirs<'_>) -> Result<Self, FailureKind> {
         let program = resolve_sidecar_program().map_err(FailureKind::from)?;
         let args = SIDECAR_ARGS.iter().map(OsString::from).collect();
         Self::start(
             program,
             args,
-            log_dir,
+            dirs,
             crate::sidecar::supervisor::HANDSHAKE_TIMEOUT,
         )
     }

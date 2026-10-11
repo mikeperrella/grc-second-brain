@@ -7,6 +7,7 @@
 pub mod app_commands;
 pub mod child_env;
 mod commands;
+mod dev_paths;
 pub mod health;
 pub mod host;
 pub mod ready;
@@ -15,7 +16,8 @@ pub mod token;
 
 use tauri::{Manager, RunEvent, WindowEvent};
 
-use crate::host::{HostState, SidecarHost};
+use crate::dev_paths::vault_dir_for_this_build;
+use crate::host::{HostState, SidecarDirs, SidecarHost};
 use crate::sidecar::supervisor::FailureKind;
 
 /// Build and run the app. Returns when the last window is closed.
@@ -61,10 +63,27 @@ fn start_sidecar_in_background(handle: &tauri::AppHandle) {
             return;
         }
     };
+    // The index lives under the app's local data directory, chosen here by the host. The vault is
+    // a developer's debug-build setting until the folder picker (M6); release builds pass none.
+    let index_dir = match handle.path().app_local_data_dir() {
+        Ok(dir) => dir.join("index"),
+        Err(_) => {
+            handle
+                .state::<HostState>()
+                .finish_start(Err(FailureKind::EnvRejected));
+            return;
+        }
+    };
+    let vault_dir = vault_dir_for_this_build();
     let spawned = std::thread::Builder::new()
         .name("sidecar-start".to_owned())
         .spawn(move || {
-            let result = SidecarHost::start_dev(&log_dir);
+            let dirs = SidecarDirs {
+                log_dir: &log_dir,
+                index_dir: &index_dir,
+                vault_dir: vault_dir.as_deref(),
+            };
+            let result = SidecarHost::start_dev(&dirs);
             state_handle.state::<HostState>().finish_start(result);
         });
     if spawned.is_err() {
