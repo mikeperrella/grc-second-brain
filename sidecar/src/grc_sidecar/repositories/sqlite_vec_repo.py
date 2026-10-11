@@ -47,6 +47,7 @@ from grc_sidecar.repositories.base import (
     IndexedDocument,
     IntegrityProblem,
     IntegrityReport,
+    LexicalHit,
     RepositoryMode,
     ScanSnapshot,
     ScoredChunk,
@@ -538,6 +539,23 @@ class _SqliteStore:
         )
         return [ScoredChunk(chunk=_chunk_from_row(row), distance=float(row[9])) for row in rows]
 
+    def lexical_search(self, match: str, k: int) -> list[LexicalHit]:
+        if not 1 <= k <= MAX_K:
+            raise ValueError("k is out of range")
+        if not match:
+            return []
+        # `match` is an FTS5 query built by retrieval/query.py (every word quoted) and is passed as
+        # a bound parameter. bm25() is lower for a better match; chunk_id breaks ties, so the order
+        # never depends on rowids or insertion order.
+        rows = self._con.execute(
+            "SELECT c.chunk_id, c.source_path, c.doc_id, c.start_line, c.end_line, "
+            "c.heading_path, c.text, c.text_sha256, c.flags, bm25(fts_chunks) AS score "
+            "FROM fts_chunks JOIN chunks AS c ON c.rowid = fts_chunks.rowid "
+            "WHERE fts_chunks MATCH ? ORDER BY score, c.chunk_id LIMIT ?",
+            (match, k),
+        )
+        return [LexicalHit(chunk=_chunk_from_row(row), bm25=float(row[9])) for row in rows]
+
     def chunks_for(self, source_path: str) -> list[Chunk]:
         rows = self._con.execute(
             "SELECT c.chunk_id, c.source_path, c.doc_id, c.start_line, c.end_line, "
@@ -710,6 +728,10 @@ class SqliteVecRepository:
     async def search(self, query: Sequence[float], k: int) -> list[ScoredChunk]:
         store = self._store()
         return await self._run(lambda: store.search(query, k))
+
+    async def lexical_search(self, match: str, k: int) -> list[LexicalHit]:
+        store = self._store()
+        return await self._run(lambda: store.lexical_search(match, k))
 
     async def chunks_for(self, source_path: str) -> list[Chunk]:
         store = self._store()

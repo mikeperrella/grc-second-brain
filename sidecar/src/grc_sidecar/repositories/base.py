@@ -82,6 +82,11 @@ class ScoredChunk(_Frozen):
     distance: float  # cosine distance, 0.0 = same direction, 1.0 = unrelated, 2.0 = opposite
 
 
+class LexicalHit(_Frozen):
+    chunk: Chunk
+    bm25: float  # SQLite's bm25(): LOWER is a better match (the values are negative)
+
+
 class IntegrityProblem(_Frozen):
     code: IntegrityCode
     detail: str  # a row id or a vault-relative path, never document text
@@ -141,6 +146,13 @@ class VectorRepository(Protocol):
 
     async def search(self, query: Sequence[float], k: int) -> list[ScoredChunk]:
         """The k nearest chunks. There is no stale filter: stale documents have no rows."""
+
+    async def lexical_search(self, match: str, k: int) -> list[LexicalHit]:
+        """Up to k chunks matching an FTS5 query, best first (bm25, then chunk_id).
+
+        `match` must come from `retrieval.query.build_lexical_query`: every word quoted, so user
+        text can never change the meaning of the query. An empty string returns no chunks.
+        """
 
     async def chunks_for(self, source_path: str) -> list[Chunk]: ...
 
