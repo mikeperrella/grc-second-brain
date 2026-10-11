@@ -63,6 +63,59 @@ def test_a_body_link_leads_to_the_first_chunk_of_the_target(vault: Path, index_d
     assert linked.source_kind == "company_policy"
 
 
+BANNER = "> SYNTHETIC SAMPLE DATA: a banner line before the title."
+
+
+def test_the_lead_chunk_skips_a_preamble_before_the_first_heading(
+    vault: Path, index_dir: Path
+) -> None:
+    write_doc(vault, "alpha.md", f"{SEED_TEXT} See [[beta]].")
+    write_doc(vault, "beta.md", f"{BANNER}\n\n# Beta\n\nbeta body text.")
+    (linked,) = expanded(run_question(vault, index_dir))
+    assert linked.source_path == "beta.md"
+    assert linked.heading_path == "Beta"
+    assert "beta body text." in linked.text
+    assert BANNER not in linked.text
+
+
+def test_a_target_without_headings_falls_back_to_its_first_chunk(
+    vault: Path, index_dir: Path
+) -> None:
+    write_doc(vault, "alpha.md", f"{SEED_TEXT} See [[beta]].")
+    write_doc(vault, "beta.md", f"{BANNER}\n\nplain text with no heading at all.")
+    (linked,) = expanded(run_question(vault, index_dir))
+    assert linked.source_path == "beta.md"
+    assert linked.heading_path == ""
+
+
+def test_a_lead_chunk_that_does_not_fit_is_dropped_not_replaced_by_the_banner(  # [NEG] row 30
+    vault: Path, index_dir: Path
+) -> None:
+    write_doc(vault, "alpha.md", f"{SEED_TEXT} See [[beta]].")
+    write_doc(vault, "beta.md", f"{BANNER}\n\n# Beta\n\n{filler(120)}")
+    result = run_question(vault, index_dir, char_budget=400)
+    beta = {c.heading_path: c for c in asyncio.run(_chunks(vault, index_dir, "beta.md"))}
+    assert set(beta) == {"", "Beta"}, "the fixture needs a banner chunk and a body chunk"
+    assert len(beta[""].text) <= 400 < len(beta["Beta"].text)
+    assert expanded(result) == []
+    assert beta["Beta"].chunk_id in result.budget.dropped_for_budget
+    assert beta[""].chunk_id not in result.budget.dropped_for_budget  # never a candidate
+    # the released slot may go to a company seed, but then it is a seed, not a link's target
+    assert beta[""].chunk_id not in {c.chunk_id for c in result.chunks if c.role == "expanded"}
+    assert result.budget.used_chars <= 400
+
+
+def test_when_the_first_lead_chunk_does_not_fit_the_next_link_gets_the_slot(  # [NEG] row 30
+    vault: Path, index_dir: Path
+) -> None:
+    write_doc(vault, "alpha.md", f"{SEED_TEXT} See [[beta]] and [[gamma]].")
+    write_doc(vault, "beta.md", f"{BANNER}\n\n# Beta\n\n{filler(120)}")
+    write_doc(vault, "gamma.md", f"{BANNER}\n\n# Gamma\n\ngamma body text.")
+    (linked,) = expanded(run_question(vault, index_dir, char_budget=400))
+    assert linked.source_path == "gamma.md"
+    assert "gamma body text." in linked.text
+
+
 def test_a_heading_fragment_selects_the_chunk_under_that_heading(
     vault: Path, index_dir: Path
 ) -> None:

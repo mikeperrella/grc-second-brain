@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from grc_sidecar.retrieval.expansion import has_body_text
 from grc_sidecar.retrieval.models import RetrievalResult, RetrievedChunk
 from grc_sidecar.retrieval.query import build_lexical_query
 from grc_sidecar.retrieval.selection import DEFAULT_CHAR_BUDGET, framework_char_cap
@@ -268,6 +269,24 @@ def test_the_body_link_at_line_30_alone_supplies_the_expanded_chunk(
     assert origin.source_path == RETENTION
     assert origin.start_line <= link_line <= origin.end_line
     assert origin.heading_path.endswith("Deletion")
+
+
+def test_every_expanded_chunk_in_the_sample_vault_has_body_text(  # [NEG] mutation row 30
+    golden_index: Path, tmp_path: Path
+) -> None:
+    # The lead chunk used to be the synthetic-data banner before the H1, which adds no content.
+    questions = [*LIVE_QUERIES, EXPANSION_QUESTION]
+    found = [c for q in questions for c in ask(golden_index, q).chunks if c.role == "expanded"]
+    vault = vault_variant(tmp_path, drop_frontmatter=False, drop_body=False)
+    result, _ = ask_variant(golden_index, vault, tmp_path / "idx")
+    found += [c for c in result.chunks if c.role == "expanded"]
+    assert found, "no expanded chunk to check: the test would pass on nothing"
+    for chunk in found:
+        assert chunk.heading_path, (
+            f"{chunk.source_path} {chunk.start_line}: before the first heading"
+        )
+        assert has_body_text(chunk.text), f"{chunk.source_path} {chunk.start_line}: no body text"
+        assert not chunk.text.startswith("> SYNTHETIC SAMPLE DATA")
 
 
 def test_the_frontmatter_link_alone_also_supplies_it(golden_index: Path, tmp_path: Path) -> None:

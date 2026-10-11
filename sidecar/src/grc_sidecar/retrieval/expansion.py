@@ -7,9 +7,13 @@ and neither are `control_mappings`.
 
 Which chunks a link leads to: a body link belongs to the chunk whose line range contains the line
 it is written on, a frontmatter link belongs to every chunk of its document. At the target, a
-`#Heading` fragment selects the chunks under that heading; otherwise the lead chunk (the first by
-line number) is used, which is deterministic and needs no extra query. Known limit: the lead chunk
-may not be the most relevant one.
+`#Heading` fragment selects the chunks under that heading; otherwise the lead chunk is used: the
+first chunk by line number that sits under a heading and has body text beyond its heading lines.
+That skips a preamble (such as a banner line) before the first heading. If the target has no such
+chunk, the first chunk of the document is used. The choice never looks at the budget: a lead chunk
+that does not fit is dropped by the caller, and the banner is never substituted for it. Known
+limit: the lead chunk may not be the most relevant one, and text in a preamble is never chosen
+unless the document has no chunk under a heading with body text.
 
 The walk is breadth-first and bounded: `depth` levels (default 1, never more than
 MAX_EXPANSION_DEPTH), and a visited set (seeded with the seeds) so a cycle (A links B, B links A)
@@ -22,6 +26,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from grc_sidecar.repositories.base import VectorRepository
+from grc_sidecar.vault.markdown import heading_of
 from grc_sidecar.vault.models import Chunk
 
 _SEGMENT_SEPARATOR: Final = " > "
@@ -39,6 +44,20 @@ class Expansion:
 def _heading_matches(heading_path: str, fragment: str) -> bool:
     wanted = fragment.strip().casefold()
     return any(part.strip().casefold() == wanted for part in heading_path.split(_SEGMENT_SEPARATOR))
+
+
+def has_body_text(text: str) -> bool:
+    """True if the text has a non-blank line that is not a heading line."""
+    return any(line.strip() and heading_of(line) is None for line in text.split("\n"))
+
+
+def _lead_chunk(target_chunks: Sequence[Chunk]) -> Chunk:
+    """The chunk a link without a usable fragment leads to (`target_chunks` is in line order)."""
+    for chunk in target_chunks:
+        # an empty heading path means the chunk sits before the first heading
+        if chunk.heading_path and has_body_text(chunk.text):
+            return chunk
+    return target_chunks[0]
 
 
 async def _linked_chunks(repo: VectorRepository, chunk: Chunk) -> list[Chunk]:
@@ -62,7 +81,7 @@ async def _linked_chunks(repo: VectorRepository, chunk: Chunk) -> list[Chunk]:
             under_heading = [
                 c for c in target_chunks if _heading_matches(c.heading_path, link.fragment)
             ]
-        reached.extend(under_heading or target_chunks[:1])
+        reached.extend(under_heading or [_lead_chunk(target_chunks)])
     return sorted(reached, key=lambda c: (c.source_path, c.start_line, c.chunk_id))
 
 
