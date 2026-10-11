@@ -1,6 +1,6 @@
 # ADR-010: Hybrid retrieval, a lexical FTS5 table beside the vectors
 
-Status: Accepted for the store (M3b). Query syntax and lexical search are implemented in M4d (below). Merging, the context budget and the rest are decided in M4e and M4f, which must also update CLAUDE.md 8.2 ("Graph RAG" retrieval flow) when retrieval uses the lexical table (done in M4g).
+Status: Accepted. The store is M3b. Query building and lexical search are M4d, the merge and typed results M4e, the budget, quota, withdrawn handling and expansion M4f, and CLAUDE.md 8.2 and the Section 9 M4 row were updated in M4g. Items 3 and 4 of the Decision below describe the M3 state (M3 exposes no lexical query method and "M4 owns the query builder"); the sections after "What the tokenizer does not do" describe what M4 built.
 
 ## Context
 
@@ -129,6 +129,19 @@ Procedure as before. Originals: `service.py` = `9504e0bb4ee11d58383172ce95781cf2
 Hollow greens caught and fixed before the proofs were accepted. **Row 5a:** with the exception always on, only the default-exclusion test failed, because for `03.01.12` the withdrawn chunk never reached the two framework slots; the test now asks for `03.13.08` (the control a stub points to), for which the always-on exception does bring the stub back. **Row 7:** an unresolved link has no target, a missing target is also rejected, and so is a missing target path, so removing the status check alone breaks nothing; the new damaged-row test (an index row that says `unresolved` but carries a target) makes the status check the only guard. **Row 3 (M4e)** and rows 12 and 13 were handled the same way.
 
 Notes: the expansion goldens use the two links of `data-retention-policy.md` to the vendor policy: the body link at line 30 (`... as required by the [[vendor-management-policy]].`) and the frontmatter `links` at line 7. `test_the_body_link_at_line_30_alone_supplies_the_expanded_chunk` removes the frontmatter link (so the body link moves to line 29 in that copy) and shows the expanded chunk's origin is the chunk containing the link, the "Deletion" section; the frontmatter-only variant and the no-links variant pin the other cases.
+
+## Known limits and hand-off to M5 (M4g)
+
+What M4 does not do, stated once so M5 does not assume otherwise:
+
+- **A non-empty result is not evidence.** There is no relevance floor and M4 sets no threshold. M5 decides "no evidence" itself (the verbatim-quote check, CLAUDE.md 8.4) and must refuse `framework_reference` chunks as evidence in code.
+- **The offline tests prove mechanics, not semantic quality.** The golden tests use a hashed bag-of-words embedder, so they pin the keyword side, the merge, the quota, withdrawn handling, expansion and the flags. How well the real model ranks a paraphrase is measured only by the manual live check (`tests/test_retrieval_live.py`, `pytest -m ollama`), which prints the ranked results and shares its expectations (`tests/retrieval_expectations.py`) with the golden tests.
+- **Rank-only fusion** ignores how strong a match was. **The expansion's lead chunk** may not be the most relevant chunk of the linked document. **Withdrawn stubs are grouped** into chunks. **The character budget is an approximation** (worst measured ratio, errs small). **`control_mappings` in frontmatter are not searchable** (frontmatter is not chunked); mapping is M5's job and needs the mappings stored (a schema change).
+- **Packs are verified when loaded**, not on every question, and retrieval never refreshes or builds an index; one question runs at a time.
+- **Identifier recognition** is whole whitespace-delimited words only, and a string such as `6.1` is also searched in its other written forms (harmless noise). The identifier-first ordering applies only to identifiers-only questions.
+- M4 adds no HTTP route and no Tauri command: `Retriever` is an in-process interface until M5 has a caller, so the threat surface did not grow. Untrusted-data delimiters (CLAUDE.md 8.6) are applied when M5 builds a prompt; `RetrievedChunk.text` is documented as untrusted and returned byte for byte.
+
+Mutation proofs in this ADR: M4d (1a, 1b, 10L, 28, N1), M4e (3a, 3b, 10a, 10b, 11, 12, 13, 14, 16, 17), M4f (2, 4, 5a, 5b, 6, 7, 8, 9, 18a, 18b, 23, 24, 29): 33 mutation proofs. The M4a and M4b proofs are in ADR-011 and ADR-009. The tie-break (rows 10a, 10b, 10L), the hollow greens (3, 5a, 7, 12, 13) and the limits above are recorded with the rows.
 
 ## Consequences
 

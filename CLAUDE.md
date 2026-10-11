@@ -101,7 +101,7 @@ grc-second-brain/
       api/                     FastAPI routers (thin; no business logic)
       llm/                     Ollama client, prompt builders, schemas
       vault/                   Markdown parsing, chunking, indexer
-      retrieval/               Vector search + graph expansion
+      retrieval/               Query builder, hybrid merge, graph expansion, context budget
       repositories/            VectorRepository protocol + implementations
       questionnaire/           Excel engine
       remediation/             Policy-to-code engine
@@ -176,8 +176,9 @@ pnpm test
 
 ### 8.2 Graph RAG
 - Graph edges come only from explicit `[[wikilinks]]` and frontmatter `links`. Never from semantic similarity.
-- Retrieval flow: vector search returns seed chunks, graph expansion follows explicit links (bounded depth, default 1), the combined context is passed to the LLM.
-- Every chunk in context keeps its `source_path` and line range so citations can be verified.
+- Retrieval flow: the vault index is checked for files changed since indexing first (a stale file is never returned); keyword (FTS5) and vector search each return ranked chunks, merged by Reciprocal Rank Fusion into seed chunks (framework text is capped so it cannot crowd out company policy; withdrawn controls are left out); graph expansion follows resolved explicit links from the seeds (bounded depth, default 1) into one reserved slot; the combined context is passed to the LLM. If the embedding model is unavailable, retrieval is keyword-only and says so (`mode`).
+- Every chunk in context keeps its `source_path` and line range so citations can be verified, and carries a `source_kind`: framework text is never evidence that the company does something.
+- A non-empty retrieval result is not evidence: there is no relevance floor, so the questionnaire engine decides "no evidence" itself (the grounding check, 8.4).
 
 ### 8.3 Structured output
 - Every generation request passes a JSON schema via Ollama's `format` parameter.
@@ -219,7 +220,7 @@ pnpm test
 | M1.5 | CI pipeline | Semgrep, Bandit, lint/type/test jobs green; sidecar tests pass inside a `--network none` container; network canary proves isolation |
 | M2 | Tauri host | Token generation, sidecar spawn, handshake with timeout, typed proxy command, least-privilege capabilities |
 | M3 | Vault indexer | Frontmatter parsing, deterministic chunking, `sqlite-vec` repository, change-driven re-index |
-| M4 | Retrieval | Vector search plus explicit-link graph expansion with citations |
+| M4 | Retrieval | Hybrid keyword and vector retrieval merged by Reciprocal Rank Fusion, explicit-link graph expansion with citations, typed `source_kind`, framework cap, withdrawn handling, staleness flags |
 | M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, SSE progress |
 | M5.5 | Promise ledger and recall, blast-radius preview, contradiction detector, reality check (offline import of IT exports checked against policy claims) | Each has tests and mutation proofs |
 | M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view |

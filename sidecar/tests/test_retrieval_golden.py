@@ -19,6 +19,7 @@ from grc_sidecar.retrieval.models import RetrievalResult, RetrievedChunk
 from grc_sidecar.retrieval.query import build_lexical_query
 from grc_sidecar.retrieval.selection import DEFAULT_CHAR_BUDGET, framework_char_cap
 
+from .livekit import LIVE_QUERIES, format_result, problems_in
 from .retrieval_expectations import (
     DOC_FILES,
     EXPANSION_QUESTION,
@@ -90,6 +91,38 @@ def test_overdue_flags_follow_the_review_dates(golden_index: Path) -> None:
     for doc_id, overdue in OVERDUE.items():
         assert by_doc[doc_id] is overdue
     assert all(not flag for doc_id, flag in by_doc.items() if doc_id not in OVERDUE)
+
+
+# ----- the live check's table and checks, exercised offline --------------------------------------
+
+
+def test_the_live_check_helpers_agree_with_the_golden_run(golden_index: Path) -> None:
+    # The live test (real Ollama, run by hand) uses these helpers; here they run on the fake stack,
+    # so a mistake in them is found in CI and not on the day the models are on.
+    results = {q: ask(golden_index, q) for q in LIVE_QUERIES}
+    table = "\n".join(format_result(q, r) for q, r in results.items())
+    assert problems_in(results, expect_mode="hybrid") == []
+    for question in LIVE_QUERIES:
+        assert f"=== {question!r}" in table
+    assert "company_policy=" in table and "framework_reference=" in table
+
+
+def test_the_live_check_helpers_in_keyword_only_mode(golden_index: Path) -> None:  # [NEG]
+    async def scenario() -> dict[str, RetrievalResult]:
+        async with stack(SAMPLE_VAULT, golden_index, packs_dir=PACKS, sync=False) as s:
+            s.embedder.unreachable = True
+            return {q: await s.retriever.retrieve(q) for q in LIVE_QUERIES}
+
+    results = asyncio.run(scenario())
+    assert problems_in(results, expect_mode="lexical_only") == []
+    # and the helper really does notice a wrong mode, so "no problems" above means something
+    assert problems_in(results, expect_mode="hybrid") != []
+
+
+def test_the_helpers_report_a_missing_document(golden_index: Path) -> None:  # [NEG]
+    results = {"log retention": ask(golden_index, "zzqx vortex lemon")}
+    problems = problems_in(results, expect_mode="hybrid")
+    assert any("data-retention-policy.md" in p for p in problems)
 
 
 # ----- an identifier in any written form finds the same control ----------------------------------
