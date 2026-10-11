@@ -6,25 +6,77 @@ The Rust host reads that line to learn the port. Nothing else may be written to
 stdout; logs go to a file (see logging_config).
 """
 
+import asyncio
 import json
 import socket
 import sys
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from typing import Final, TextIO
 
 import uvicorn
 from fastapi import FastAPI
 
+from grc_sidecar.api.errors import register_error_handlers
 from grc_sidecar.api.health import router as health_router
+from grc_sidecar.api.readiness import router as readiness_router
 from grc_sidecar.config import Settings
+from grc_sidecar.llm.model_gate import ModelGate
+from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
 from grc_sidecar.security.auth import ASGIApp, AuthMiddleware
+from grc_sidecar.vault.clock import SystemClock
 
 LOOPBACK_HOST: Final = "127.0.0.1"
 
 
-def create_app(token: str) -> ASGIApp:
-    """Build the app with authentication wrapped around it from the outside."""
-    api = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+def _model_check_lifespan(
+    settings: Settings,
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+    """Startup and shutdown: build the Ollama client and the model gate, check in the background.
+
+    The check is a task, not an `await` before `yield`: the ready line is printed once startup
+    finishes, and the host gives the sidecar a fixed time to print it (CLAUDE.md 3.4), so a slow
+    or absent Ollama must never delay it (ADR-011).
+    """
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        client = OllamaEmbeddingClient(
+            settings.ollama_base_url,
+            settings.embedding_model,
+            expected_dimension=settings.embedding_dimension,
+        )
+        gate = ModelGate(
+            client, (settings.embedding_model, settings.generation_model), SystemClock()
+        )
+        app.state.gate = gate
+        check = asyncio.create_task(gate.refresh())
+        try:
+            yield
+        finally:
+            check.cancel()
+            with suppress(asyncio.CancelledError):
+                await check
+            await client.aclose()
+
+    return lifespan
+
+
+def create_app(
+    token: str, *, settings: Settings | None = None, gate: ModelGate | None = None
+) -> ASGIApp:
+    """Build the app with authentication wrapped around it from the outside.
+
+    With `settings`, startup builds the Ollama client and a model gate and checks the models in
+    the background. A ready-made `gate` is for tests; with neither, `/readiness` and anything
+    that needs a model refuse (503) instead of proceeding unchecked.
+    """
+    lifespan = _model_check_lifespan(settings) if settings is not None and gate is None else None
+    api = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    api.state.gate = gate
+    register_error_handlers(api)
     api.include_router(health_router)
+    api.include_router(readiness_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own
     # error handling, so even 404/405/422/500 responses require the token.
     return AuthMiddleware(api, token)
@@ -72,7 +124,7 @@ class ReadySignalServer(uvicorn.Server):
 def serve(token: str, settings: Settings, sock: socket.socket, ready_stream: TextIO) -> None:
     """Serve on an already bound loopback socket and close it afterwards."""
     config = uvicorn.Config(
-        create_app(token),
+        create_app(token, settings=settings),
         host=LOOPBACK_HOST,
         port=0,
         log_config=None,  # logging is configured by us, to a file
