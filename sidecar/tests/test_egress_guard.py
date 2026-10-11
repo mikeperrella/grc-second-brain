@@ -1,3 +1,4 @@
+import contextlib
 import socket
 
 import pytest
@@ -41,6 +42,60 @@ def test_create_connection_blocked() -> None:  # [NEG]
 def test_getaddrinfo_hostname_blocked() -> None:  # [NEG]
     with pytest.raises(EgressBlockedError):
         socket.getaddrinfo("example.com", 80)
+
+
+def test_gethostbyname_blocks_every_name_even_localhost() -> None:  # [NEG]
+    for name in ("example.com", "localhost"):
+        with pytest.raises(EgressBlockedError):
+            socket.gethostbyname(name)
+
+
+def test_gethostbyname_allows_an_ip_literal() -> None:
+    assert socket.gethostbyname("127.0.0.1") == "127.0.0.1"
+
+
+def test_gethostbyname_ex_blocks_every_name_even_localhost() -> None:  # [NEG]
+    for name in ("example.com", "localhost"):
+        with pytest.raises(EgressBlockedError):
+            socket.gethostbyname_ex(name)
+
+
+def test_gethostbyname_ex_allows_an_ip_literal() -> None:
+    assert "127.0.0.1" in socket.gethostbyname_ex("127.0.0.1")[2]
+
+
+@pytest.mark.parametrize("target", ["example.com", "localhost", "192.0.2.1", "2001:db8::1"])
+def test_gethostbyaddr_blocks_names_and_non_loopback_addresses(target: str) -> None:  # [NEG]
+    with pytest.raises(EgressBlockedError):
+        socket.gethostbyaddr(target)
+
+
+def test_gethostbyaddr_does_not_block_a_loopback_literal() -> None:
+    # An OSError means the system has no name for it: that answer came from the OS, not the guard.
+    with contextlib.suppress(OSError):
+        socket.gethostbyaddr("127.0.0.1")
+
+
+@pytest.mark.parametrize(
+    "sockaddr",
+    [("192.0.2.1", 80), ("example.com", 80), ("localhost", 80), ("2001:db8::1", 80, 0, 0)],
+)
+def test_getnameinfo_blocks_names_and_non_loopback_addresses(
+    sockaddr: tuple[str | int, ...],
+) -> None:  # [NEG]
+    with pytest.raises(EgressBlockedError):
+        socket.getnameinfo(sockaddr, 0)  # type: ignore[arg-type]
+
+
+def test_getnameinfo_blocks_a_non_loopback_address_even_when_numeric() -> None:  # [NEG]
+    flags = socket.NI_NUMERICHOST | socket.NI_NUMERICSERV
+    with pytest.raises(EgressBlockedError):
+        socket.getnameinfo(("192.0.2.1", 80), flags)
+
+
+def test_getnameinfo_allows_a_loopback_literal() -> None:
+    flags = socket.NI_NUMERICHOST | socket.NI_NUMERICSERV
+    assert socket.getnameinfo(("127.0.0.1", 80), flags) == ("127.0.0.1", "80")
 
 
 def test_ipv4_mapped_ipv6() -> None:  # [NEG] for the blocked half
