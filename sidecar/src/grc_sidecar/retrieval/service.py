@@ -17,7 +17,8 @@
    (withdrawn.py).
 6. Seeds are chosen within the slots, the character budget and the framework quota
    (selection.py); then one expanded chunk is added by following an explicit link from a company
-   seed (expansion.py), or the slot goes to the next company seed when no link qualifies.
+   seed (expansion.py) to company text only, or the slot goes to the next company seed when no
+   link qualifies.
 
 Two stores, never mixed: the vault index (the company's own documents) and the packs index
 (framework text, read-only, ADR-008). Each chunk is tagged with a `source_kind` computed HERE from
@@ -293,11 +294,25 @@ class Retriever:
         room: int,
         dropped: list[str],
     ) -> Expansion | None:
-        """The first linked chunk that fits in `room` characters, or None."""
+        """The first linked chunk that is company text and fits in `room` characters, or None.
+
+        A link into a document whose derived kind is framework (a vault file typed `framework`) is
+        never taken: the expansion slot is outside the framework cap, so it must hold company text
+        only. The walk itself still passes through such a document (ADR-010).
+        """
         company = [c.item.chunk for c in seeds if c.kind == "company_policy"]
         if depth < 1 or not company:
             return None
-        for found in await expansion_candidates(self._vault, company, depth=depth):
+        found_all = await expansion_candidates(self._vault, company, depth=depth)
+        documents = await self._vault.documents_info(
+            list(dict.fromkeys(f.chunk.source_path for f in found_all))
+        )
+        for found in found_all:
+            document = documents.get(found.chunk.source_path)
+            if document is None:
+                raise RetrievalUnavailableError  # a chunk with no document row: damaged index
+            if source_kind_of(document.collection, document.type) != "company_policy":
+                continue
             if len(found.chunk.text) <= room:
                 return found
             dropped.append(found.chunk.chunk_id)

@@ -332,6 +332,38 @@ def test_the_slot_goes_to_a_company_seed_when_there_is_no_link(  # [NEG] mutatio
     assert [c.role for c in result.chunks] == ["seed", "seed"]
 
 
+def test_a_link_into_a_framework_typed_document_is_not_expanded(  # [NEG] pre-M5 F-B
+    vault: Path, index_dir: Path
+) -> None:
+    # The expansion slot sits outside the framework cap, so it may hold company text only. beta is
+    # a vault file typed `framework`: reachable by the link, but never taken. The slot is released
+    # to the next company seed (gamma), as it is when there is no link at all. gamma is padded so
+    # that alpha, the document with the link, is the single best seed.
+    write_doc(vault, "alpha.md", f"{SEED_TEXT} See [[beta]].")
+    beta = write_doc(vault, "beta.md", "# Beta\n\nbeta framework text.")
+    beta.write_text(
+        beta.read_text(encoding="utf-8").replace("type: policy", "type: framework"),
+        encoding="utf-8",
+        newline="\n",
+    )
+    write_doc(vault, "gamma.md", f"# Gamma\n\n{filler(60)} zebrafish.")
+
+    async def scenario() -> tuple[RetrievalResult, list[Chunk]]:
+        async with stack(vault, index_dir) as s:
+            result = await s.retriever.retrieve(QUESTION, max_chunks=2)
+            return result, await s.vault_repo.chunks_for("beta.md")
+
+    result, beta_chunks = asyncio.run(scenario())
+    assert beta_chunks, "the fixture needs the framework document to be indexed"
+    assert result.chunks[0].source_path == "alpha.md", "the linking document must be the seed"
+    assert expanded(result) == []
+    assert beta_chunks[0].chunk_id not in {c.chunk_id for c in result.chunks}
+    assert [(c.role, c.source_path, c.source_kind) for c in result.chunks] == [
+        ("seed", "alpha.md", "company_policy"),
+        ("seed", "gamma.md", "company_policy"),
+    ]
+
+
 def test_an_expanded_chunk_carries_its_own_provenance(vault: Path, index_dir: Path) -> None:
     write_doc(vault, "alpha.md", f"{SEED_TEXT} See [[beta]].")
     write_doc(vault, "beta.md", "# Beta\n\nbeta text.")
