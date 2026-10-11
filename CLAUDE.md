@@ -56,7 +56,7 @@ The owner (Mike) must be able to explain every design decision and every line of
    - Port handshake: after binding, the sidecar prints exactly one JSON line to stdout, `{"event":"ready","port":<int>}`. Rust reads it with a timeout and kills the sidecar if it never arrives.
 5. **No shell execution.** Never use `shell=True`, `os.system`, `eval`, `exec`, or invoke `cmd.exe`, `powershell`, or `bash` from app code. Use `subprocess.run([...], shell=False, timeout=..., env=<explicit minimal env>)`. The child env must NOT contain `GRC_AUTH_TOKEN`. In Rust, use `std::process::Command` with explicit args or the Tauri sidecar API with a scoped capability. The sidecar enforces this at runtime with a process-creation audit hook (ADR-007); M7 extends its allowlist, never removes it.
 6. **Safe filesystem.** Every path from the user or the frontend is canonicalized with `Path.resolve(strict=True)` and checked with `candidate.is_relative_to(approved_root)`. Reject anything that escapes, including via `..` or symlinks. Rust performs the same check (`canonicalize` + `starts_with`) before forwarding. Defense in depth: both layers check.
-7. **Models are provisioned by a human.** At startup the sidecar calls Ollama `GET /api/tags` (through the restricted client) and records which required models are present. A missing model or an unreachable Ollama does not stop the sidecar from starting: it reports a typed degraded state on an authenticated endpoint, and every model-dependent operation fails closed with a typed error until the models are present. The app never calls `/api/pull`.
+7. **Models are provisioned by a human.** At startup the sidecar calls Ollama `GET /api/tags` (through the restricted client) and records which required models are present. A missing model or an unreachable Ollama does not stop the sidecar from starting: it reports a typed degraded state on an authenticated endpoint, and every model-dependent operation fails closed with a typed error until the models are present. The app never calls `/api/pull`. The sidecar refuses non-local models (a cloud-named model, or one whose listing carries `remote_host` or `remote_model`), because Ollama can forward those to ollama.com (ADR-012).
 8. **Egress guard test.** A session-wide pytest fixture patches `socket.socket.connect` to raise on any non-loopback address. The full suite must pass with it enabled.
 
 ---
@@ -78,7 +78,7 @@ The owner (Mike) must be able to explain every design decision and every line of
 **Resolved spec decisions (do not revert without an ADR):**
 - `llama3.2:8b` does not exist (Llama 3.2 text models are 1B and 3B only). Default generation model is `llama3.1:8b`.
 - ADR-001: `sqlite-vec` is the default vector store: single file, no server process, no telemetry, packages cleanly with PyInstaller. ChromaDB remains a swappable implementation behind the same interface.
-- Confidence bands are defined in Section 8.4 and have no gaps.
+- Answer status is defined in Section 8.4 and ADR-013: it is computed from checks, and the model's confidence can only lower it.
 
 ---
 
@@ -182,21 +182,23 @@ pnpm test
 
 ### 8.3 Structured output
 - Every generation request passes a JSON schema via Ollama's `format` parameter.
+- Every request, on every attempt, is exactly one `system` message (instructions only) and one `user` message (the untrusted data). Never a longer conversation: Ollama drops older messages silently when a prompt is too long, and the overflow control (`shift: false`) is complete only for two messages (ADR-012).
 - Responses are parsed strictly with Pydantic.
-- Bounded retries: maximum 2 attempts. On attempt 2, include the exact `ValidationError` text in the prompt. After 2 failures, return `NEEDS_REVIEW`. Never loop indefinitely.
+- Bounded retries: one shared budget of at most 2 attempts per question, covering schema and grounding failures together. On attempt 2, rebuild the user message with the exact error text (pydantic's documentation URL removed) inside its data block. After 2 failures, return `NEEDS_REVIEW`. Never loop indefinitely. Error text never reaches a log above DEBUG.
 
 ### 8.4 Questionnaire engine
-- Load with `openpyxl.load_workbook(path, read_only=False, data_only=False)` (add `keep_vba=True` for `.xlsm`).
-- Never modify original question cells. Write answers to a new appended column titled `GRC Answer` (plus `Confidence`, `Status`, `Evidence` columns). Save as a new file; never overwrite the input.
-- Known limitation: OpenPyXL can drop images and charts on save. Detect these on load, warn the user, and document it.
-- LLM output schema includes `answer`, `cited_source_path`, `exact_quote`, `model_confidence`.
-- **Grounding check:** the backend verifies `exact_quote` appears verbatim as a substring of the cited chunk (after whitespace normalization only). Failure triggers the retry path.
-- **Final status is computed by the backend, not trusted from the model:**
-  - Quote verification failed after retries: `NEEDS_REVIEW` (regardless of model confidence).
-  - Verified, confidence ≥ 0.90: `SUPPORTED`.
-  - Verified, 0.40 ≤ confidence < 0.90: `PARTIAL` (answer includes noted limitations).
-  - Confidence < 0.40: `NEEDS_REVIEW`. Never write a compliance claim.
-- Progress streams to the UI via Server-Sent Events, proxied through the Rust host (e.g. `Question 37/150 completed`).
+The status contract, with its reasons, is ADR-013 (status and grounding). The file and run rules get their own ADR-014 when they are built (M5i).
+
+- Read the input file once, hash those bytes and parse the same bytes. Load with `openpyxl.load_workbook(..., read_only=False, data_only=False)` (add `keep_vba=True` for a macro-enabled package, decided from its declared content type). Re-hash the file on disk before writing and fail if it changed.
+- Never modify original question cells and never insert a row. Write to new appended columns titled `GRC Answer [UNREVIEWED DRAFT]`, `Confidence (model self-rating) [UNREVIEWED DRAFT]`, `Status [UNREVIEWED DRAFT]`, `Reason` and `Evidence` (vault-relative path, exact lines, quote), plus `Review`. Save to a new file whose name carries `UNREVIEWED-DRAFT`, with exclusive create: never overwrite any existing file, not only the input.
+- Known limitation: OpenPyXL can drop images and charts on save. Inventory the package parts before and after, warn the user, report exactly what was dropped, and document it.
+- The model cites an opaque per-request source ID (`S1` to `S5`), not a path; code maps it back to `source_path` and the line range. LLM output schema: `answer`, `source_id`, `exact_quote`, `model_confidence`, `coverage`, `conflicting_source_ids`, `no_evidence`.
+- **Evidence status is computed by the backend. Model output can only lower a status, never raise it.**
+  - `SUPPORTED` requires all of: the quote is found verbatim (whitespace normalization only) in the raw text of the chunk the cited ID maps to; that chunk was in the context sent; its `source_kind` is `company_policy`; its review is not overdue (injected `Clock`); the model names no conflict among the context's sources; the quote meets the length floor; the cited file is unchanged when the export is written; `coverage` is `full` and `model_confidence` ≥ 0.90; for an identifier-only question, the cited chunk contains a whole written form of the identifier. Framework text is never evidence of company practice.
+  - `PARTIAL`: those checks pass (except the review date and the coverage and confidence conditions) and a limit applies: review overdue, partial coverage, confidence in [0.40, 0.90), keyword-only retrieval, or files withheld because they changed after indexing. The answer is written and the limits are in the `Reason` column.
+  - `NEEDS_REVIEW`: anything else, including every "no evidence" result and confidence below 0.40. The answer cell stays blank and the `Reason` column says why. Every reason that applies is recorded. Never write a compliance claim.
+- Nothing in M5 is approved. Review state is a separate field from evidence status, always `unreviewed` in M5, so approval can be added later without renaming a status.
+- Progress streams as Server-Sent Events from the sidecar (e.g. `Question 37/150 completed`), carrying counts, indexes and status codes, never document or question text. The Rust host proxy comes in M6.
 
 ### 8.5 Policy-to-code engine
 - Pipeline: Control Requirement, Policy Gap, Evidence, Remediation Objective, structured plan (Ollama), Terraform/Docker patch, static validation, **human approval**.
@@ -221,9 +223,9 @@ pnpm test
 | M2 | Tauri host | Token generation, sidecar spawn, handshake with timeout, typed proxy command, least-privilege capabilities |
 | M3 | Vault indexer | Frontmatter parsing, deterministic chunking, `sqlite-vec` repository, change-driven re-index |
 | M4 | Retrieval | Hybrid keyword and vector retrieval merged by Reciprocal Rank Fusion, explicit-link graph expansion with citations, typed `source_kind`, framework cap, withdrawn handling, staleness flags |
-| M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, SSE progress |
+| M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, authenticated sidecar routes with SSE progress (no host change: the file picker, the Rust path check and the SSE proxy are in M6) |
 | M5.5 | Promise ledger and recall, blast-radius preview, contradiction detector, reality check (offline import of IT exports checked against policy claims) | Each has tests and mutation proofs |
-| M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view |
+| M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view, plus the host side deferred from M5: the questionnaire and vault folder pickers, the Rust path check (`canonicalize` + `starts_with`, 3.6) and the Rust SSE proxy, with the questionnaire and export roots passed to the sidecar (G9) |
 | M7 | Policy-to-code | Structured plan, patch generation, static validation, approval gate |
 | M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
@@ -269,7 +271,8 @@ When a MUST rule changes, update this file first, then the Cursor rule and `.cod
 - Bind any server to `0.0.0.0` or `::`.
 - Use `shell=True`, `eval`, `exec`, or spawn a shell.
 - Overwrite a user's input file.
-- Mark an answer `SUPPORTED` without a verified verbatim quote.
+- Mark an answer `SUPPORTED` without a verified verbatim quote and every other 8.4 check passing.
+- Let model output raise a status. It can only lower one.
 - Pull, download, or update models from inside the app.
 - Add a deployment path for generated infrastructure code.
 - Add dependencies without approval.
