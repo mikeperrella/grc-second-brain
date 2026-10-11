@@ -284,6 +284,22 @@ class EndpointNotAllowedError(GrcError):
     default_message = "This Ollama endpoint is not allowed"
 
 
+class EmptyQuestionError(GrcError):
+    """A questionnaire cell has no question in it (empty or only whitespace)."""
+
+    default_message = "The question is empty"
+
+
+class QuestionTooLongError(GrcError):
+    """A questionnaire cell is longer than a question may be.
+
+    The cell is untrusted data, so it is capped, never silently cut: a cut question could ask
+    something different from what the cell says (ADR-013, `question_too_long`).
+    """
+
+    default_message = "The question is too long"
+
+
 class GenerationUnavailableError(GrcError):
     """Ollama could not be reached for a generation call, timed out, or failed on its side.
 

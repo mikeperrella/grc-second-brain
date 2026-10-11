@@ -1,6 +1,6 @@
 # ADR-012: Generation client, and what Ollama v0.40.3 does with a chat request
 
-Status: Accepted (M5a). Amends CLAUDE.md 3.7 (non-local models are refused) and 8.3 (exactly two messages per request, one shared retry budget). This ADR records the decisions and the evidence they rest on. The client and the gate's non-local refusal are built in M5c (its mutation proofs are at the end); the prompt builder is M5d.
+Status: Accepted (M5a). Amends CLAUDE.md 3.7 (non-local models are refused) and 8.3 (exactly two messages per request, one shared retry budget). This ADR records the decisions and the evidence they rest on. The client and the gate's non-local refusal are built in M5c; the prompt builder, the output schema and the retry loop in M5d. Each has its mutation proofs at the end.
 
 ## Context
 
@@ -96,6 +96,55 @@ Notes and known limits:
 - **Row 7** simulates "attempt 2" with the client's own call counter. The real retry (rebuilding the user message with the error text) is the prompt builder's job (M5d), which gets its own test; row 7 proves that the client cannot send anything but two messages whatever its caller does.
 - **Row 8's check is secondary** (decision 3): it can only catch a cut that leaves the reported count near the window. The control that matters, `shift: false` (row 6), is proven here only as "the request says it". That Ollama honours it on the chat path is the live oversize probe's job.
 - **Rows 9 and 11** are controls on different things. 11 refuses before a request is sent; 9 only notices afterwards, so it can never undo a leak.
-- **The Semgrep rule `grc-py-chat-endpoint-outside-generation-client`** (22 rules now) could not be run with `semgrep --test` locally, because Semgrep is not installed on this machine; CI runs it. I checked its regex against its own fixture annotations with Python's `re` (5 lines that must match did, 4 that must not did not), and `check_semgrep_rule_coverage.py` reports 22 rules, 22 annotated. Row 13's text scan is the second line of defence and was proven by mutation.
+- **The Semgrep rule `grc-py-chat-endpoint-outside-generation-client`** (22 rules now) could not be run with `semgrep --test` locally, because Semgrep is not installed on this machine. I checked its regex against its own fixture annotations with Python's `re` (5 lines that must match did, 4 that must not did not), and `check_semgrep_rule_coverage.py` reports 22 rules, 22 annotated. On the M5c push the CI `semgrep` job, which runs `semgrep --test` on each fixture, the coverage check and a scan of the code, passed. Row 13's text scan is the second line of defence and was proven by mutation.
 - **Not wired into the app yet.** `main.py` does not construct a `GenerationClient`; the answer service (M5f) does.
 - The gate's `ModelLister` changed from names to `ModelEntry` objects; the existing gate, embedding and retrieval tests all passed unchanged apart from the retrieval test helper, which now returns entries.
+
+## Prompt builder, schema and retry (M5d)
+
+What was built, and the choices a reader may ask about. Code: `llm/prompt.py`, `llm/schemas.py`, `llm/retry.py`; tests: `test_prompt.py`, `test_schemas.py`, `test_retry.py`.
+
+- **Two messages, instructions and data apart.** The system message is a fixed template (2,601 characters, 2,637 with a boundary substituted; cap 3,000) holding instructions only. The user message holds only data, each part between marker lines that start with the boundary: the question, each source, and on a retry the error report. The template's sha256 (`3de5c706b14ae3cd040105533c37985b3b7fd30ea14ef59ee3cd88e0ef3d8b90`) is pinned in a test and recorded in every run summary, so a changed word fails a test and, after the freeze (ADR-013, decision 16), needs a tuning-log entry.
+- **The boundary** is `BND-` plus 24 hex digits (96 bits, 28 characters), random per request, injected as a callable so tests are exact. The first sketch used 32 hex digits; at that length the marker lines of five sources plus a retry cost slightly more than the 1,000 framing characters ADR-012 decision 4 assumes. `test_the_worst_case_framing_fits_its_cap` computes the real figure with a real boundary (five sources, two of them framework text, which have the longest header, and a retry) instead of trusting the arithmetic. 96 bits cannot be guessed by a note written in advance.
+- **A boundary found inside data is replaced** with `[removed]`, in the question, every source and the retry report, in any letter case. One pass is enough: the replacement contains no character that could join the text around it into a new boundary (tested with a boundary hidden inside itself). Source text is otherwise passed through unchanged, because the grounding check compares the model's quote with the raw chunk and not with this prompt.
+- **Framework text is labelled twice:** the header says `kind=framework_reference ... NOT-EVIDENCE-OF-COMPANY-PRACTICE`, and the instructions say it never shows what the company does. This is a request to the model; the control that does not depend on the model is the verifier's refusal of any quote from a framework source (ADR-013, check 3).
+- **The question cell is capped (1,000 characters) and refused, not cut,** with `EmptyQuestionError` or `QuestionTooLongError`; source ids must be `S1` to `Sn` in order; the source text total may not exceed the retrieval budget (5,520); and the two messages together may not exceed the message cap. All of these fail before anything is sent.
+- **The schema is written by hand,** with this request's ids as the only values `source_id` and `conflicting_source_ids` may take, `maxLength` on the answer (1,200) and the quote (400), and no `$defs`, `$ref` or `anyOf`. A test keeps it in step with the Pydantic model. Whether the server enforces a schema while decoding is unverified (ADR-012, row 5), so the strict parse is the control: JSON types must match exactly (a string is not a number or a boolean), unknown keys are refused, and an id the request did not offer is refused.
+- **Retries:** one shared budget of two attempts per question (`MAX_ATTEMPTS = 2`), whatever failed. Attempt 2 is the same two messages with the user message rebuilt, the exact error text inside an ERROR block (pydantic's documentation URL lines removed, capped at 1,200 characters, boundary neutralized). A failure that is not about the answer (Ollama unreachable, a refused model, an oversize prompt) is an exception and is not retried. Only the attempt number is logged, at DEBUG.
+
+Honest limits:
+
+- **The prompt can lower the chance that hidden text steers the model; it cannot remove it.** Injected text can still change the wording of a draft, and a true quote that does not answer the question passes the checks. The controls that do not depend on the model are in the verifier (M5e) and, above all, human approval (M6).
+- **The instruction "do not start the answer with `=`, `+`, `-` or `@`" is a request.** The control is the writer's formula neutralization (M5j), which does not trust the model.
+- **Nothing here has been run against a real model.** Whether llama3.1:8b follows these instructions, copies quotes exactly, or says "no evidence" when it should is measured at live check A. The template may be edited until the freeze (M5g) without a log entry; after it, every edit is logged.
+
+## Mutation proofs (M5d)
+
+Same procedure as above. Originals: `llm/prompt.py` = `a3ae91b490c09fc9b5f56624f195b57097337620edb1b6e919dfbb26ec59314f`, `llm/retry.py` = `c6977e48a68236dcbf143a8fc3b79572285a7a36ee8422d999e7e378f7b19e1d`, `llm/schemas.py` = `5db7effd6592d30a9d42a997b837ebee2a091780f2e1ae47c3b85026807e69cd`. Every restore matched.
+
+| # | Control | Break | Tests that failed | Result |
+|---|---|---|---|---|
+| 14 | Boundary found in data is neutralized | `neutralize` returns its input | `test_prompt.py::test_the_boundary_inside_a_source_is_neutralized` (4 letter-case variants), `::test_the_boundary_inside_the_question_is_neutralized`, `::test_the_boundary_inside_a_retry_error_is_neutralized`, `::test_neutralize_removes_every_occurrence_and_nothing_else`, `::test_a_boundary_split_around_a_removal_cannot_re_form` | 8 failed |
+| 15 | ... in any letter case | `re.IGNORECASE` removed | the 3 non-exact-case variants and the unit test (the exact-case variant still passes) | 4 failed, 4 passed |
+| 16 | Retry budget is two | `MAX_ATTEMPTS = 3` | `test_retry.py::test_the_budget_is_two`, `::test_two_rejections_end_in_a_failure_with_the_last_error_and_never_a_third_attempt`, `::test_a_schema_failure_and_a_grounding_failure_share_one_budget`, `::test_the_error_text_is_never_logged`, `::test_the_loop_ends_even_if_the_attempt_always_rejects` | 5 failed, 3 passed |
+| 17 | Attempt 2 carries the exact error | `attempt(None)` on every attempt | `::test_a_second_attempt_gets_the_exact_error_of_the_first`, `::test_two_rejections_end_in_a_failure_...` | 2 failed, 6 passed |
+| 18 | The retry error block is part of the rebuilt user message | the block is never built | `test_prompt.py::test_attempt_two_is_the_same_user_message_plus_an_error_block`, `::test_the_boundary_inside_a_retry_error_is_neutralized`, `::test_the_pydantic_documentation_url_is_never_shown`, `::test_an_empty_error_report_still_makes_a_block`, `::test_the_system_message_is_instructions_only` | 5 failed, 45 passed |
+| 19 | No pydantic documentation URL in what the model sees (prompt builder) | the URL-line filter removed from `sanitize_error` | `test_prompt.py::test_the_pydantic_documentation_url_is_never_shown` | 1 failed, 4 passed |
+| 20 | ... and in the rendered validation error | the filter removed from `render_validation_error` | `test_schemas.py::test_the_error_text_is_pydantics_own_minus_the_documentation_url` | 1 failed, 1 passed |
+| 21 | An empty question is refused | the check replaced by `pass` | `test_prompt.py::test_an_empty_question_is_refused` (3 cases) | 3 failed |
+| 22 | An over-long question is refused, not cut | the check replaced by `pass` | `::test_a_question_over_the_cap_is_refused_not_cut` (the sources-cap test still passes) | 1 failed, 1 passed |
+| 23 | Sources over the retrieval budget are refused | the cap multiplied by 100 | `::test_sources_over_the_cap_are_refused` (a total below the message cap, so only this check can refuse it) | 1 failed |
+| 24 | Framework text is labelled not-evidence | the label removed from the header | `::test_framework_text_is_labelled_as_not_evidence_and_never_as_company_policy` | 1 failed |
+| 25 | The system message holds instructions only | the question appended to it | `::test_the_system_message_is_instructions_only` | 1 failed, 2 passed |
+| 26 | A malformed boundary is refused | the shape check replaced by `pass` | `::test_a_malformed_boundary_is_refused` (6 cases) | 6 failed |
+| 27 | The template is pinned | one letter of one word changed in the template | `::test_the_template_hash_is_recorded_and_pinned` (the only failure) | 1 failed, 49 passed |
+| 28 | Strict parse | `strict=False` | `test_schemas.py::test_a_wrong_type_or_value_is_refused` (a string confidence, a string boolean, an integer boolean) | 3 failed, 61 passed |
+| 29 | An id this request did not offer is refused | the `source_id` check removed | `::test_an_id_that_is_not_in_this_request_is_refused` (5 of 7 cases), `::test_the_ids_of_a_request_decide_what_is_valid` (the 2 conflict-id cases still pass: that validator is separate) | 6 failed, 2 passed |
+| 30 | Unknown keys are refused | `extra="ignore"` | `::test_an_unknown_field_is_refused` | 1 failed |
+
+Notes and known limits:
+
+- The two-messages and schema-on-every-request controls live in the client and were proven in M5c (rows 5 and 7). Here, `BuiltPrompt` can hold nothing but `system` and `user`, and attempt 2's user message is proven to be attempt 1's plus the error block (row 18).
+- Row 27 is deliberate friction: a prompt edit before the freeze is allowed, but it must update the pinned hash in the same commit, so it cannot happen by accident.
+- Row 23's mutation raises the cap rather than deleting the check, because deleting it would leave the later message-cap check to refuse the same input and make the test pass for the wrong reason; with the cap raised, only the specific check is in play.
+- Row 15 shows the case-insensitivity is a separate control from the replacement itself (row 14).
