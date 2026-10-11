@@ -8,11 +8,16 @@ is verified first, and if any one fails nothing is indexed. Verification is an i
 Strictness that keeps the verified file set equal to the indexed file set: the packs folder may
 hold only directories, a pack folder may hold only `pack.json` and top-level `*.md` files, and
 symlinks are refused. Otherwise a stray Markdown file could be indexed without being hashed.
+
+The bytes that are hashed are also the bytes that are indexed: each file is read once, and the
+indexer is handed those bytes (`scan_files`), never the folder. Re-reading after the check would
+let a file changed in between be indexed unverified.
 """
 
 import hashlib
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -22,6 +27,7 @@ from grc_sidecar.packs.models import PackMetadata, parse_pack_metadata
 from grc_sidecar.repositories.base import VectorRepository
 from grc_sidecar.security.paths import resolve_within
 from grc_sidecar.vault.indexer import Indexer, SyncReport
+from grc_sidecar.vault.scan import scan_files
 
 PACK_FILE: Final = "pack.json"
 PACKS_INDEX_NAME: Final = "packs.sqlite3"
@@ -64,8 +70,15 @@ def _read_pack_files(pack_dir: Path, pack_id: str) -> tuple[bytes, dict[str, byt
     return manifest, files
 
 
-def verify_pack(pack_dir: Path) -> PackMetadata:
-    """Verify one pack folder. Raises PackMetadataError or PackIntegrityError."""
+@dataclass(frozen=True)
+class _VerifiedPack:
+    """A pack that passed verification, with the exact bytes that were hashed."""
+
+    metadata: PackMetadata
+    files: dict[str, bytes]  # file name -> the bytes that matched the manifest's content hash
+
+
+def _verify_pack(pack_dir: Path) -> _VerifiedPack:
     pack_id = pack_dir.name
     manifest, files = _read_pack_files(pack_dir, pack_id)
     try:
@@ -74,25 +87,34 @@ def verify_pack(pack_dir: Path) -> PackMetadata:
         raise PackMetadataError((PACK_FILE,)) from None
     if metadata.pack_id != pack_id or content_sha256(files) != metadata.content_sha256:
         raise PackIntegrityError(pack_id)
-    return metadata
+    return _VerifiedPack(metadata=metadata, files=files)
 
 
-def verify_packs(packs_dir: Path) -> list[PackMetadata]:
-    """Verify every pack under `packs_dir`, in sorted order. Any failure raises (fail closed)."""
+def verify_pack(pack_dir: Path) -> PackMetadata:
+    """Verify one pack folder. Raises PackMetadataError or PackIntegrityError."""
+    return _verify_pack(pack_dir).metadata
+
+
+def _verify_all(packs_dir: Path) -> list[_VerifiedPack]:
     try:
         root = resolve_within(".", packs_dir)
         with os.scandir(root) as entries:
             ordered = sorted(entries, key=lambda entry: entry.name)
     except (GrcError, OSError):
         raise PackIntegrityError from None
-    packs: list[PackMetadata] = []
+    packs: list[_VerifiedPack] = []
     for entry in ordered:
         if entry.name.startswith("."):
             continue
         if entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
             raise PackIntegrityError(entry.name)
-        packs.append(verify_pack(Path(entry.path)))
+        packs.append(_verify_pack(Path(entry.path)))
     return packs
+
+
+def verify_packs(packs_dir: Path) -> list[PackMetadata]:
+    """Verify every pack under `packs_dir`, in sorted order. Any failure raises (fail closed)."""
+    return [pack.metadata for pack in _verify_all(packs_dir)]
 
 
 def collection_of(source_path: str) -> str:
@@ -106,7 +128,19 @@ async def index_packs(
     """Verify all packs, then index them into `repo` (the pack database, not the vault's).
 
     Takes any `EmbeddingClient`. Verification happens before the embedder or the repository is
-    touched, so a tampered pack changes nothing.
+    touched, so a tampered pack changes nothing. The indexer is given the very bytes that were
+    hashed and never reads a pack file again, so a file changed after verification cannot reach
+    the index (ADR-008).
     """
-    verify_packs(packs_dir)
-    return await Indexer(repo, embedder, packs_dir, collection_of=collection_of).sync()
+    verified = {
+        f"{pack.metadata.pack_id}/{name}": data
+        for pack in _verify_all(packs_dir)
+        for name, data in pack.files.items()
+    }
+    return await Indexer(
+        repo,
+        embedder,
+        packs_dir,
+        collection_of=collection_of,
+        scan=lambda: scan_files(verified),
+    ).sync()

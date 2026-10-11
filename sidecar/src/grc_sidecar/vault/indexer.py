@@ -33,7 +33,7 @@ from grc_sidecar.llm.embeddings import EmbeddingClient
 from grc_sidecar.repositories.base import IndexedDocument, ScanSnapshot, VectorRepository
 from grc_sidecar.vault.chunker import CHUNKER_VERSION, chunk_document, embedding_input
 from grc_sidecar.vault.links import ResolutionIndex, extract_links
-from grc_sidecar.vault.models import Chunk, IndexIssue, ParsedDocument, RawLink
+from grc_sidecar.vault.models import Chunk, IndexIssue, ParsedDocument, RawLink, ScanResult
 from grc_sidecar.vault.scan import scan_vault
 
 DEFAULT_COLLECTION = "vault"
@@ -77,8 +77,10 @@ class _Prepared:
     links: tuple[RawLink, ...]
 
 
-def _scan_and_chunk(vault_dir: Path) -> tuple[list[_Prepared], tuple[IndexIssue, ...]]:
-    result = scan_vault(vault_dir)
+def _scan_and_chunk(
+    scan: Callable[[], ScanResult],
+) -> tuple[list[_Prepared], tuple[IndexIssue, ...]]:
+    result = scan()
     prepared = [
         _Prepared(doc=doc, chunks=chunk_document(doc), links=extract_links(doc))
         for doc in result.documents
@@ -116,10 +118,14 @@ class Indexer:
         *,
         collection: str = DEFAULT_COLLECTION,
         collection_of: Callable[[str], str] | None = None,
+        scan: Callable[[], ScanResult] | None = None,
     ) -> None:
         self._repo = repo
         self._embedder = embedder
         self._vault_dir = vault_dir
+        # `scan()` finds the documents. By default it reads `vault_dir` from disk; the pack loader
+        # passes a scan over bytes it already verified, so no file is read a second time (ADR-008).
+        self._scan: Callable[[], ScanResult] = scan or (lambda: scan_vault(vault_dir))
         # `collection_of(source_path)` labels each document separately (the pack loader uses the
         # pack folder name); without it every document gets `collection`.
         self._collection_of = collection_of or (lambda _source_path: collection)
@@ -132,7 +138,7 @@ class Indexer:
         and not yet replaced stays stale, holding no rows.
         """
         profile = await self._embedder.ensure_ready()  # nothing is written if this fails
-        prepared, issues = await asyncio.to_thread(_scan_and_chunk, self._vault_dir)
+        prepared, issues = await asyncio.to_thread(_scan_and_chunk, self._scan)
         if self._repo.mode != "full":
             await self._repo.open_or_create(profile)
 
@@ -191,7 +197,7 @@ class Indexer:
         """
         if self._repo.mode == "closed" and not await self._repo.open_for_deletions():
             return RefreshReport(index_found=False, removed=(), marked_stale=())
-        result = await asyncio.to_thread(scan_vault, self._vault_dir)
+        result = await asyncio.to_thread(self._scan)
         report = await self._repo.begin_sync(_snapshot(list(result.documents)))
         return RefreshReport(
             index_found=True, removed=report.removed, marked_stale=report.marked_stale

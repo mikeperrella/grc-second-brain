@@ -21,6 +21,7 @@ from grc_sidecar.packs.loader import (
     verify_pack,
     verify_packs,
 )
+from grc_sidecar.repositories.base import EmbeddingProfile
 from grc_sidecar.repositories.sqlite_vec_repo import SqliteVecRepository
 
 from .fakes import FakeEmbeddingClient
@@ -170,6 +171,68 @@ def test_packs_index_into_their_own_database_with_pack_collections(tmp_path: Pat
         f"pack:{pack_id}" for pack_id in {p.parent.name for p in PACKS.glob("*/pack.json")}
     }
     assert chunks > 0
+
+
+TAMPER_MARKER = b"TAMPERED-AFTER-VERIFICATION"
+
+
+class TamperingEmbedder(FakeEmbeddingClient):
+    """Rewrites a pack file the first time the indexer calls it.
+
+    `Indexer.sync` calls `ensure_ready` after the loader has verified the packs and before it scans
+    them, so this lands exactly between "hashed" and "indexed", with no sleeps and nothing added to
+    the production code.
+    """
+
+    def __init__(self, target: Path) -> None:
+        super().__init__()
+        self.target = target
+        self.tampered = False
+
+    async def ensure_ready(self) -> EmbeddingProfile:
+        self.target.write_bytes(self.target.read_bytes() + b"\n" + TAMPER_MARKER + b"\n")
+        self.tampered = True
+        return await super().ensure_ready()
+
+
+def test_a_file_changed_after_verification_never_reaches_the_index(  # [NEG] pre-M5 F-A
+    tmp_path: Path,
+) -> None:
+    root = copy_pack(tmp_path)
+    target = root / "nist-csf-2.0" / "gv.md"
+    verified_text = target.read_bytes().decode("utf-8")
+    embedder = TamperingEmbedder(target)
+    index = packs_index_path(tmp_path / "index")
+    index.parent.mkdir()
+
+    async def run() -> None:
+        repo = SqliteVecRepository(index)
+        try:
+            report = await index_packs(root, repo, embedder)
+            assert report.complete and report.issues == ()
+        finally:
+            await repo.close()
+
+    asyncio.run(run())
+    assert embedder.tampered, "the hook must have run, or the test proves nothing"
+    assert TAMPER_MARKER in target.read_bytes(), "the file on disk really did change"
+    marker = TAMPER_MARKER.decode("ascii")
+    assert not any(marker in text for call in embedder.document_calls for text in call)
+    connection = open_raw(index)
+    try:
+        stored = [
+            row[0]
+            for row in connection.execute(
+                "SELECT text FROM chunks WHERE source_path = ?", ("nist-csf-2.0/gv.md",)
+            )
+        ]
+    finally:
+        connection.close()
+    assert stored, "the fixture needs gv.md to be indexed"
+    assert not any(marker in text for text in stored)
+    # what was indexed is the verified content: its last line is in the index, with nothing after
+    last_line = verified_text.rstrip().splitlines()[-1]
+    assert any(last_line in text for text in stored)
 
 
 def test_pack_database_is_gitignored() -> None:

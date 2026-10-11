@@ -131,6 +131,16 @@ Hollow greens caught and fixed before the proofs were accepted. **Row 5a:** with
 
 Notes: the expansion goldens use the two links of `data-retention-policy.md` to the vendor policy: the body link at line 30 (`... as required by the [[vendor-management-policy]].`) and the frontmatter `links` at line 7. `test_the_body_link_at_line_30_alone_supplies_the_expanded_chunk` removes the frontmatter link (so the body link moves to line 29 in that copy) and shows the expanded chunk's origin is the chunk containing the link, the "Deletion" section; the frontmatter-only variant and the no-links variant pin the other cases.
 
+### Correction: the expansion slot and the framework cap (pre-M5 fix, finding F-B)
+
+**What was wrong.** The M4 plan said "an expanded chunk is always company". That was false for vault documents typed `framework`. A company seed that links to such a document expanded into it: the chunk was correctly labelled `framework_reference`, but the expansion slot sits outside the framework cap (2 chunks, 40%), so framework text entered the context past the cap (`docs/threat-model.md`, G2).
+
+**The fix.** `_expand` (`retrieval/service.py`) looks up each candidate's document and accepts a candidate only if its derived `source_kind` is `company_policy` (the same `source_kind_of` as everywhere else: where the document was loaded from and its declared type, never its text). A framework-typed target is skipped, not counted as dropped for budget. The slot then follows the existing rule: the next qualifying candidate, otherwise it is released to the next company seed. The claim now holds because it is enforced: an expanded chunk is company text.
+
+**Accepted limit: traversal is unchanged.** The check applies to the chunk that takes the slot, not to the walk. At `expansion_depth` 2, expansion can pass through a framework-typed vault document and reach company text behind it. This is accepted because the default depth is 1 (where it cannot happen), the cap is 2, every link on the path is explicit (the edge rule of CLAUDE.md 8.2 is unchanged), and the chunk that is returned is company text with its own source path and line range, which is what the citation check needs. Stopping the walk at framework documents would also hide company text that a human deliberately linked.
+
+**Mutation proof (row 31).** Original `service.py` (before the fix) = `9504e0bb4ee11d58383172ce95781cf2a6888c904b9b2cfc6349f7c0ab538fe5`; with the fix = `a997c06e6a8f96ae2626d99f7377631153ea67801adb6b077585fc9c83231b17`. The `source_kind` check was removed from `_expand`; `test_expansion.py` then ran as 1 failed, 24 passed (`test_expansion.py::test_a_link_into_a_framework_typed_document_is_not_expanded`); the restore matched the fixed hash. A hollow green was caught first: with `gamma` ranked above `alpha`, `gamma` became the only seed, `beta` was never reachable, and the test passed with the check removed. The test now pads `gamma` and asserts that `alpha` is the seed.
+
 ## Known limits and hand-off to M5 (M4g)
 
 What M4 does not do, stated once so M5 does not assume otherwise:
