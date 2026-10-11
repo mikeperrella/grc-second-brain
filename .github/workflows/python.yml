@@ -38,17 +38,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: python -m pip check
 
+      # ../tools holds the generators for the packs the app ships. It has no pyproject.toml of its
+      # own. --config pins the sidecar's rules (including the `S` security set) for it explicitly,
+      # instead of relying on ruff's fallback to the config in the current directory.
       - name: Lint (ruff check)
         if: ${{ !cancelled() }}
-        run: python -m ruff check .
+        run: python -m ruff check . ../tools --config pyproject.toml
 
       - name: Formatting (ruff format --check)
         if: ${{ !cancelled() }}
-        run: python -m ruff format --check .
+        run: python -m ruff format --check . ../tools --config pyproject.toml
 
       - name: Types (mypy --strict)
         if: ${{ !cancelled() }}
-        run: python -m mypy --strict src
+        run: python -m mypy --strict src ../tools
 
       - name: Tests
         if: ${{ !cancelled() }}

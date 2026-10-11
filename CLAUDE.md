@@ -121,9 +121,9 @@ Run from the directory shown. On Windows, call the venv Python directly (no acti
 
 **Python** (from `sidecar/`):
 ```
-.venv/Scripts/python -m ruff check .
-.venv/Scripts/python -m ruff format --check .
-.venv/Scripts/python -m mypy --strict src
+.venv/Scripts/python -m ruff check . ../tools --config pyproject.toml
+.venv/Scripts/python -m ruff format --check . ../tools --config pyproject.toml
+.venv/Scripts/python -m mypy --strict src ../tools
 .venv/Scripts/python -m pytest
 ```
 
@@ -249,7 +249,7 @@ When a MUST rule changes, update this file first, then the Cursor rule and `.cod
 | Control | Where | Gate (required to merge from M9) |
 |---|---|---|
 | Custom air-gap rules | `.semgrep/grc-airgap.yml`, with `semgrep --test` fixtures in `.semgrep/fixtures/` | Yes |
-| Python SAST | Bandit on `sidecar/src`, `sidecar/ci` and `.github/scripts`. Semgrep and Bandit do not scan tests; ruff `S` rules and gitleaks cover them | Yes |
+| Python SAST | Bandit on `sidecar/src`, `sidecar/ci`, `.github/scripts` and `tools`. Semgrep and Bandit do not scan tests; ruff `S` rules and gitleaks cover them | Yes |
 | Rust / TS SAST | Semgrep registry rulesets, `clippy -D warnings`, ESLint `no-explicit-any` | Yes |
 | Secrets | gitleaks pre-commit hook (local), GitHub push protection (server; enable at M9), gitleaks in CI | Yes |
 | Dependencies | Dependabot (pip, npm, cargo, docker, github-actions), `cargo deny`, `pip-audit`, `pnpm audit`; also run weekly (`audit.yml`) | Yes for known vulns |
