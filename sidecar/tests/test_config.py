@@ -20,6 +20,23 @@ def test_defaults() -> None:
     assert settings.ollama_base_url == "http://127.0.0.1:11434"
 
 
+def test_the_required_models_have_pinned_defaults_and_can_be_overridden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = load_settings()
+    assert settings.embedding_model == "nomic-embed-text"
+    assert settings.generation_model == "llama3.1:8b"
+    monkeypatch.setenv("GRC_GENERATION_MODEL", "llama3.1:70b")
+    assert load_settings().generation_model == "llama3.1:70b"
+
+
+def test_an_empty_generation_model_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:  # [NEG]
+    monkeypatch.setenv("GRC_GENERATION_MODEL", "")
+    with pytest.raises(ConfigurationError) as info:
+        load_settings()
+    assert "generation_model" in str(info.value)
+
+
 def test_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("GRC_LOG_LEVEL", "debug")
     monkeypatch.setenv("GRC_LOG_DIR", str(tmp_path / "logs"))

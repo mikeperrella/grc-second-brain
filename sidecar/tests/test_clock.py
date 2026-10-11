@@ -13,6 +13,17 @@ def test_system_clock_returns_a_date() -> None:
     assert type(SystemClock().today()) is date
 
 
+def test_system_clock_monotonic_never_goes_backwards() -> None:
+    clock = SystemClock()
+    first = clock.monotonic()
+    assert clock.monotonic() >= first
+
+
+def test_fixed_clock_never_lets_time_pass() -> None:
+    clock = FixedClock(date(2026, 1, 1))
+    assert clock.monotonic() == clock.monotonic()
+
+
 def test_a_review_date_in_the_past_is_stale() -> None:
     assert is_stale(date(2024, 6, 30), date(2026, 1, 1))
 

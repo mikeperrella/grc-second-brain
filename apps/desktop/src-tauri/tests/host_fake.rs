@@ -17,7 +17,7 @@ use common::{
     assert_exits, fake_sidecar_path, Reaper, Scratch, TestResult, SETTLE_SLACK, TEST_HANDSHAKE,
 };
 use desktop_lib::health::{HealthError, HealthReply};
-use desktop_lib::host::SidecarHost;
+use desktop_lib::host::{SidecarDirs, SidecarHost};
 use desktop_lib::sidecar::supervisor::{FailureKind, SidecarState};
 
 fn start(scratch: &Scratch, mode: &str) -> Result<SidecarHost, Box<dyn std::error::Error>> {
@@ -28,7 +28,13 @@ fn start_with(
     scratch: &Scratch,
     args: Vec<OsString>,
 ) -> Result<SidecarHost, Box<dyn std::error::Error>> {
-    let host = SidecarHost::start(fake_sidecar_path(), args, scratch.path(), TEST_HANDSHAKE)
+    let index_dir = scratch.file("index");
+    let dirs = SidecarDirs {
+        log_dir: scratch.path(),
+        index_dir: &index_dir,
+        vault_dir: None,
+    };
+    let host = SidecarHost::start(fake_sidecar_path(), args, &dirs, TEST_HANDSHAKE)
         .map_err(|kind| format!("the host did not start: {kind:?}"))?;
     Ok(host)
 }
@@ -195,10 +201,16 @@ fn a_stopped_sidecar_is_not_running() -> TestResult {
 #[test]
 fn a_program_that_does_not_exist_is_a_spawn_failure_not_a_panic() -> TestResult {
     let scratch = Scratch::new("host_missing")?;
+    let index_dir = scratch.file("index");
+    let dirs = SidecarDirs {
+        log_dir: scratch.path(),
+        index_dir: &index_dir,
+        vault_dir: None,
+    };
     let result = SidecarHost::start(
         scratch.file("no_such_program.exe"),
         Vec::new(),
-        scratch.path(),
+        &dirs,
         TEST_HANDSHAKE,
     );
     assert_eq!(result.err(), Some(FailureKind::SpawnFailed));

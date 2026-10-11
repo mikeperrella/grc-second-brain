@@ -2,7 +2,7 @@
 
 import sys
 
-from grc_sidecar.config import load_settings
+from grc_sidecar.config import load_settings, validate_runtime_dirs
 from grc_sidecar.errors import ConfigurationError, GrcError
 from grc_sidecar.logging_config import configure_logging
 from grc_sidecar.main import bind_loopback_socket, serve
@@ -22,7 +22,7 @@ def main() -> int:
         # Before anything that can start a process (uvicorn's platform check does on Windows).
         # The one native library it may load is the vendored sqlite-vec (ADR-007 amendment).
         install_process_guard(vec_extension_path())
-        settings = load_settings()
+        settings = validate_runtime_dirs(load_settings())
         configure_logging(settings)
         try:
             sock = bind_loopback_socket()

@@ -48,6 +48,9 @@ BATCH_SIZE: Final = 16
 # time on a cold machine, so it gets a much longer read timeout than every later call.
 DEFAULT_TIMEOUT: Final = Timeout(connect=5.0, read=30.0, write=30.0, pool=5.0)
 FIRST_CALL_TIMEOUT: Final = Timeout(connect=5.0, read=180.0, write=30.0, pool=5.0)
+# The model gate's `GET /api/tags` is only a listing, so it gets a short timeout of its own: an
+# unresponsive Ollama must show up as "unreachable" in seconds, not hold a caller for 30 s.
+TAGS_CHECK_TIMEOUT: Final = Timeout(connect=2.0, read=3.0, write=3.0, pool=2.0)
 
 _PROBE_TEXT: Final = f"{EMBED_DOCUMENT_PREFIX}dimension probe"
 
@@ -64,16 +67,31 @@ class EmbedResult:
     prompt_eval_count: int | None  # tokens Ollama counted; None if it did not say
 
 
-def _model_names(model: str) -> set[str]:
+def model_names(model: str) -> set[str]:
     """`nomic-embed-text` and `nomic-embed-text:latest` are the same installed model."""
     return {model, model if ":" in model else f"{model}:latest"}
+
+
+def _installed_names(tags: object) -> frozenset[str]:
+    """Every name Ollama lists for an installed model. A bad shape is an error, never a guess."""
+    if not isinstance(tags, dict) or not isinstance(tags.get("models"), list):
+        raise EmbeddingResponseError
+    names: set[str] = set()
+    for entry in tags["models"]:
+        if not isinstance(entry, dict):
+            raise EmbeddingResponseError
+        found = [value for value in (entry.get("name"), entry.get("model")) if value]
+        if not found or not all(isinstance(value, str) for value in found):
+            raise EmbeddingResponseError
+        names.update(found)
+    return frozenset(names)
 
 
 def _digest_of_installed(tags: object, model: str) -> str | None:
     """The digest of the installed model, None if it is not installed. Bad shapes are errors."""
     if not isinstance(tags, dict) or not isinstance(tags.get("models"), list):
         raise EmbeddingResponseError
-    wanted = _model_names(model)
+    wanted = model_names(model)
     for entry in tags["models"]:
         if not isinstance(entry, dict):
             raise EmbeddingResponseError
@@ -188,6 +206,14 @@ class OllamaEmbeddingClient:
             else:
                 total_tokens = None
         return EmbedResult(vectors=vectors, prompt_eval_count=total_tokens)
+
+    async def installed_models(self) -> frozenset[str]:
+        """The names of the models installed in Ollama (`GET /api/tags`, the model gate's input).
+
+        Uses the same restricted client as everything else (no new endpoint) and a short timeout.
+        Raises EmbeddingUnavailableError or EmbeddingResponseError, with fixed messages.
+        """
+        return _installed_names(await self._call("GET", TAGS_PATH, None, TAGS_CHECK_TIMEOUT))
 
     # ----- the EmbeddingClient protocol ------------------------------------------------------
 

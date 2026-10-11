@@ -13,8 +13,9 @@ from typing import Literal
 from pydantic import Field, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from grc_sidecar.errors import ConfigurationError
+from grc_sidecar.errors import ConfigurationError, GrcError
 from grc_sidecar.security.net import validate_loopback_url
+from grc_sidecar.security.paths import resolve_within
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -70,6 +71,9 @@ class Settings(BaseSettings):
     # Bundled framework packs (ADR-008). Whether it exists is checked when packs are loaded.
     packs_dir: Path | None = None
     embedding_model: str = "nomic-embed-text"
+    # The model M5 will use to answer questions. Nothing generates text in M4; it is listed here
+    # because the startup model check (ADR-011) reports on every model the app needs.
+    generation_model: str = Field(default="llama3.1:8b", min_length=1)
     # The vector size the model must produce. A probe embed at startup measures the real size and
     # the run fails closed (before any database write) if it differs from this.
     embedding_dimension: int = Field(default=768, gt=0, le=8192)
@@ -108,6 +112,49 @@ def resolve_index_dir(settings: Settings) -> Path:
     if settings.vault_dir is not None and _is_inside(index_dir, settings.vault_dir):
         raise ConfigurationError("Invalid configuration for: index_dir")
     return index_dir
+
+
+def _existing_directory(path: Path | None, name: str) -> Path | None:
+    """The resolved, existing directory behind a setting, or None if the setting is unset.
+
+    `resolve_within(".", path)` resolves the path strictly (every symlink and junction is followed)
+    and requires a directory. The error names the setting only, never the path, and is raised
+    after the `except` block so no chained error can carry the path.
+    """
+    if path is None:
+        return None
+    resolved: Path | None = None
+    try:
+        resolved = resolve_within(".", path)
+    except GrcError:
+        resolved = None
+    if resolved is None:
+        raise ConfigurationError(f"Invalid configuration for: {name}")
+    return resolved
+
+
+def validate_runtime_dirs(settings: Settings) -> Settings:
+    """Check the vault and index folders the host handed over, and use their resolved paths.
+
+    The lexical rule in `Settings` ("index_dir is not inside vault_dir") cannot see a symlink or
+    junction, so it is repeated here on the RESOLVED paths, in both directions: an index folder
+    that is a link into the vault is rejected, and so is a vault inside the index folder. A vault
+    root that is itself a symlink is accepted (the scanner's rule, ADR-009: only links INSIDE the
+    vault are refused, per file); the real path behind it is what the rest of the sidecar uses.
+
+    An unset setting is fine (no vault until the folder picker exists, M6; the index default is
+    worked out lazily, ADR-009). A set but invalid one is a host bug, so the caller exits 2.
+    """
+    vault = _existing_directory(settings.vault_dir, "vault_dir")
+    index = _existing_directory(settings.index_dir, "index_dir")
+    nested = (
+        vault is not None
+        and index is not None
+        and (_is_inside(index, vault) or _is_inside(vault, index))
+    )
+    if nested:
+        raise ConfigurationError("Invalid configuration for: index_dir")
+    return settings.model_copy(update={"vault_dir": vault, "index_dir": index})
 
 
 def load_settings() -> Settings:

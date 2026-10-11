@@ -124,6 +124,39 @@ def test_exactly_one_line_is_ever_written_to_stdout(tmp_path: Path, token: str) 
     )
 
 
+def test_ready_line_does_not_wait_for_stuck_ollama(tmp_path: Path, token: str) -> None:  # [NEG]
+    # A listener that accepts a connection and never answers stands in for an Ollama that hangs.
+    # The model check starts at startup (ADR-011); the host gives the sidecar a fixed time to print
+    # the ready line, so that line must not wait for it. The check's read timeout is 3 s. If
+    # startup awaited the check, the sidecar would have given up and closed the connection before
+    # printing the ready line; here the connection is still open (nothing sent, nothing closed)
+    # when the ready line has been read.
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    try:
+        env = _env(tmp_path, token)
+        env["GRC_OLLAMA_BASE_URL"] = f"http://127.0.0.1:{listener.getsockname()[1]}"
+        stderr_path = tmp_path / "stderr.txt"
+        with running_python(
+            ["-m", "grc_sidecar"], env=env, cwd=tmp_path, stderr_path=stderr_path
+        ) as (_proc, out):
+            _line, port = _read_ready(out, stderr_path)
+            listener.settimeout(10)
+            connection, _address = listener.accept()  # the model check really started
+            with connection:
+                connection.settimeout(10)
+                request = connection.recv(4096)
+                assert request.startswith(b"GET /api/tags "), request[:40]
+                connection.settimeout(0.2)
+                with pytest.raises(TimeoutError):  # still open and unanswered: no EOF, no data
+                    connection.recv(1, socket.MSG_PEEK)
+            response = _get_health(port, {"X-GRC-Auth": token})
+            assert response.status_code == 200
+    finally:
+        listener.close()
+
+
 def test_real_server_rejects_missing_and_wrong_tokens(tmp_path: Path, token: str) -> None:  # [NEG]
     wrong = token[:-1] + ("0" if token[-1] != "0" else "1")
     with _sidecar(tmp_path, token) as (_line, port, _out):

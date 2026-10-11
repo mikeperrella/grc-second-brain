@@ -56,7 +56,7 @@ The owner (Mike) must be able to explain every design decision and every line of
    - Port handshake: after binding, the sidecar prints exactly one JSON line to stdout, `{"event":"ready","port":<int>}`. Rust reads it with a timeout and kills the sidecar if it never arrives.
 5. **No shell execution.** Never use `shell=True`, `os.system`, `eval`, `exec`, or invoke `cmd.exe`, `powershell`, or `bash` from app code. Use `subprocess.run([...], shell=False, timeout=..., env=<explicit minimal env>)`. The child env must NOT contain `GRC_AUTH_TOKEN`. In Rust, use `std::process::Command` with explicit args or the Tauri sidecar API with a scoped capability. The sidecar enforces this at runtime with a process-creation audit hook (ADR-007); M7 extends its allowlist, never removes it.
 6. **Safe filesystem.** Every path from the user or the frontend is canonicalized with `Path.resolve(strict=True)` and checked with `candidate.is_relative_to(approved_root)`. Reject anything that escapes, including via `..` or symlinks. Rust performs the same check (`canonicalize` + `starts_with`) before forwarding. Defense in depth: both layers check.
-7. **Models are provisioned by a human.** At startup the sidecar calls Ollama `GET /api/tags` and fails closed with a clear error if a required model is missing. The app never calls `/api/pull`.
+7. **Models are provisioned by a human.** At startup the sidecar calls Ollama `GET /api/tags` (through the restricted client) and records which required models are present. A missing model or an unreachable Ollama does not stop the sidecar from starting: it reports a typed degraded state on an authenticated endpoint, and every model-dependent operation fails closed with a typed error until the models are present. The app never calls `/api/pull`.
 8. **Egress guard test.** A session-wide pytest fixture patches `socket.socket.connect` to raise on any non-loopback address. The full suite must pass with it enabled.
 
 ---
@@ -121,9 +121,9 @@ Run from the directory shown. On Windows, call the venv Python directly (no acti
 
 **Python** (from `sidecar/`):
 ```
-.venv/Scripts/python -m ruff check .
-.venv/Scripts/python -m ruff format --check .
-.venv/Scripts/python -m mypy --strict src
+.venv/Scripts/python -m ruff check . ../tools --config pyproject.toml
+.venv/Scripts/python -m ruff format --check . ../tools --config pyproject.toml
+.venv/Scripts/python -m mypy --strict src ../tools
 .venv/Scripts/python -m pytest
 ```
 
@@ -249,7 +249,7 @@ When a MUST rule changes, update this file first, then the Cursor rule and `.cod
 | Control | Where | Gate (required to merge from M9) |
 |---|---|---|
 | Custom air-gap rules | `.semgrep/grc-airgap.yml`, with `semgrep --test` fixtures in `.semgrep/fixtures/` | Yes |
-| Python SAST | Bandit on `sidecar/src`, `sidecar/ci` and `.github/scripts`. Semgrep and Bandit do not scan tests; ruff `S` rules and gitleaks cover them | Yes |
+| Python SAST | Bandit on `sidecar/src`, `sidecar/ci`, `.github/scripts` and `tools`. Semgrep and Bandit do not scan tests; ruff `S` rules and gitleaks cover them | Yes |
 | Rust / TS SAST | Semgrep registry rulesets, `clippy -D warnings`, ESLint `no-explicit-any` | Yes |
 | Secrets | gitleaks pre-commit hook (local), GitHub push protection (server; enable at M9), gitleaks in CI | Yes |
 | Dependencies | Dependabot (pip, npm, cargo, docker, github-actions), `cargo deny`, `pip-audit`, `pnpm audit`; also run weekly (`audit.yml`) | Yes for known vulns |

@@ -8,8 +8,8 @@ use std::fs;
 use std::num::NonZeroU16;
 
 use common::{
-    assert_exits, fake_spec, Reaper, Scratch, TestResult, FAKE_PORT, SETTLE_SLACK, TEST_HANDSHAKE,
-    TIMEOUT_TEST_HANDSHAKE,
+    assert_exits, fake_spec, fake_spec_with_vault, Reaper, Scratch, TestResult, FAKE_PORT,
+    SETTLE_SLACK, TEST_HANDSHAKE, TIMEOUT_TEST_HANDSHAKE,
 };
 use desktop_lib::child_env::ALLOWED_ENV_KEYS;
 use desktop_lib::sidecar::supervisor::{FailureKind, SidecarState, Supervisor};
@@ -125,17 +125,35 @@ fn output_after_the_ready_line_fails_closed() -> TestResult {
     )
 }
 
-#[test]
-fn the_child_environment_is_exactly_the_allowlist() -> TestResult {
-    // The fake writes the NAMES of the variables it finds, which proves that `env_clear()` took
-    // effect and that Windows injected nothing else.
-    let scratch = Scratch::new("env_report")?;
+/// Variables set in the HOST process that the child must never see. The names are made up or
+/// well-known inherited ones; none is in the allowlist.
+const HOST_ONLY_VARIABLES: [(&str, &str); 4] = [
+    ("GRC_M4B_NOT_ALLOWLISTED", "1"),
+    ("HTTPS_PROXY", "http://127.0.0.1:9"),
+    ("PYTHONPATH", "C:\\not\\for\\the\\child"),
+    ("GRC_AUTH_TOKEN_COPY", "not-a-token"),
+];
+
+/// Start the fake in `env-report` mode and return the variable NAMES it found, sorted.
+///
+/// The fake writes only names, which proves that `env_clear()` took effect and that Windows
+/// injected nothing else. The host process first gets `HOST_ONLY_VARIABLES`, so a build that
+/// inherited the parent's environment would show them.
+fn reported_env_names(
+    name: &str,
+    vault: Option<&std::path::Path>,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    for (key, value) in HOST_ONLY_VARIABLES {
+        std::env::set_var(key, value);
+    }
+    let scratch = Scratch::new(name)?;
     let report = scratch.file("env.txt");
-    let supervisor = Supervisor::start(fake_spec(
+    let supervisor = Supervisor::start(fake_spec_with_vault(
         &scratch,
         "env-report",
         Some(&report),
         TEST_HANDSHAKE,
+        vault,
     )?)?;
     let mut reaper = Reaper::new();
     reaper.add(supervisor.child_pid());
@@ -144,9 +162,36 @@ fn the_child_environment_is_exactly_the_allowlist() -> TestResult {
     assert_eq!(state, SidecarState::Ready { port: fake_port()? });
 
     let text = fs::read_to_string(&report)?;
-    let found: BTreeSet<&str> = text.lines().collect();
+    supervisor.shutdown()?;
+    Ok(text.lines().map(str::to_owned).collect())
+}
+
+#[test]
+fn the_child_environment_is_exactly_the_allowlist() -> TestResult {
+    let scratch_vault = Scratch::new("env_report_vault_dir")?;
+    let names = reported_env_names("env_report", Some(scratch_vault.path()))?;
+
+    let found: BTreeSet<&str> = names.iter().map(String::as_str).collect();
     let allowed: BTreeSet<&str> = ALLOWED_ENV_KEYS.into_iter().collect();
     assert_eq!(found, allowed, "the child saw a different environment");
-    supervisor.shutdown()?;
+    for (key, _value) in HOST_ONLY_VARIABLES {
+        assert!(!found.contains(key), "{key} reached the child");
+    }
+    Ok(())
+}
+
+#[test]
+fn with_no_vault_the_child_sees_every_allowlisted_key_but_the_vault_key() -> TestResult {
+    let names = reported_env_names("env_report_no_vault", None)?;
+
+    let found: BTreeSet<&str> = names.iter().map(String::as_str).collect();
+    let expected: BTreeSet<&str> = ALLOWED_ENV_KEYS
+        .into_iter()
+        .filter(|key| *key != "GRC_VAULT_DIR")
+        .collect();
+    assert_eq!(found, expected, "the child saw a different environment");
+    for (key, _value) in HOST_ONLY_VARIABLES {
+        assert!(!found.contains(key), "{key} reached the child");
+    }
     Ok(())
 }

@@ -161,8 +161,8 @@ class _Renderer:
             title = f"{_PART_TITLES[name]}: " if name in _PART_TITLES else ""
             lines.append(f"{prefix}{marker}{title}{text}".rstrip())
         elif text:
-            title = _PART_TITLES.get(name)
-            lines.extend(["", f"**{title}.** {text}" if title else text])
+            heading = _PART_TITLES.get(name)
+            lines.extend(["", f"**{heading}.** {text}" if heading else text])
         for sub in part.get("parts", []):
             lines.extend(self.part_lines(sub, depth + 1 if name == "item" else depth))
         return lines

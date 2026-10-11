@@ -212,6 +212,21 @@ class ModelMissingError(GrcError):
     )
 
 
+class ModelsUnavailableError(GrcError):
+    """A model-dependent operation was refused because a required model is not confirmed present.
+
+    Raised by the model gate (CLAUDE.md 3.7, ADR-011), before any request to a model is made.
+    `missing` lists model names only (our own configuration, never response text). Empty means
+    the gate itself is not set up.
+    """
+
+    default_message = "A required model is not available"
+
+    def __init__(self, missing: tuple[str, ...] = ()) -> None:
+        super().__init__()
+        self.missing = missing
+
+
 class EmbeddingUnavailableError(GrcError):
     """Ollama could not be reached, timed out, or answered with a server-side failure.
 

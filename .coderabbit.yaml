@@ -87,6 +87,10 @@ reviews:
         Prompt construction. Untrusted content (vault notes, vendor docs, questionnaire cells) must be wrapped in
         labeled delimiters and never concatenated into system instructions. The model must not be given tools.
         Every generation must pass a JSON schema via Ollama `format` and be validated with Pydantic.
+        Models are provisioned by a human (CLAUDE.md 3.7, ADR-011). Flag a model-dependent call (embed or generate)
+        that is not preceded by `ModelGate.require(<model>)`, any startup path that exits or refuses to serve because
+        a model or Ollama is missing (the sidecar must start and report a degraded state), a model check with no
+        explicit short timeout, and any call to an Ollama endpoint other than `GET /api/tags` and `POST /api/embed`.
 
     - path: "sidecar/tests/**/*.py"
       instructions: |
