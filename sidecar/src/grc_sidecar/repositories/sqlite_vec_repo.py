@@ -42,6 +42,7 @@ from grc_sidecar.errors import (
     VectorDimensionError,
 )
 from grc_sidecar.repositories.base import (
+    DocInfo,
     DocState,
     EmbeddingProfile,
     IndexedDocument,
@@ -556,6 +557,24 @@ class _SqliteStore:
         )
         return [LexicalHit(chunk=_chunk_from_row(row), bm25=float(row[9])) for row in rows]
 
+    def documents_info(self, source_paths: Sequence[str]) -> dict[str, DocInfo]:
+        found: dict[str, DocInfo] = {}
+        for path in dict.fromkeys(source_paths):
+            row = self._con.execute(
+                "SELECT source_path, collection, doc_id, type, review_by "
+                "FROM documents WHERE source_path = ?",
+                (path,),
+            ).fetchone()
+            if row is not None:
+                found[path] = DocInfo(
+                    source_path=row[0],
+                    collection=row[1],
+                    doc_id=row[2],
+                    type=row[3],
+                    review_by=row[4],
+                )
+        return found
+
     def chunks_for(self, source_path: str) -> list[Chunk]:
         rows = self._con.execute(
             "SELECT c.chunk_id, c.source_path, c.doc_id, c.start_line, c.end_line, "
@@ -732,6 +751,10 @@ class SqliteVecRepository:
     async def lexical_search(self, match: str, k: int) -> list[LexicalHit]:
         store = self._store()
         return await self._run(lambda: store.lexical_search(match, k))
+
+    async def documents_info(self, source_paths: Sequence[str]) -> dict[str, DocInfo]:
+        store = self._store()
+        return await self._run(lambda: store.documents_info(source_paths))
 
     async def chunks_for(self, source_path: str) -> list[Chunk]:
         store = self._store()

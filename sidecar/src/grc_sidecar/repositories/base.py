@@ -64,6 +64,16 @@ class IndexedDocument(_Frozen):
     review_by: str | None = None  # ISO date text, or None
 
 
+class DocInfo(_Frozen):
+    """What a retrieval result needs to know about the document a chunk came from."""
+
+    source_path: str
+    collection: str  # "vault" for the user's own documents, "pack:<id>" for a framework pack
+    doc_id: str
+    type: str
+    review_by: str | None  # ISO date text, or None
+
+
 class ScanSnapshot(_Frozen):
     """The result of a vault scan, reduced to what `begin_sync` needs."""
 
@@ -153,6 +163,9 @@ class VectorRepository(Protocol):
         `match` must come from `retrieval.query.build_lexical_query`: every word quoted, so user
         text can never change the meaning of the query. An empty string returns no chunks.
         """
+
+    async def documents_info(self, source_paths: Sequence[str]) -> dict[str, DocInfo]:
+        """The `documents` row of each path that has one (unknown paths are simply absent)."""
 
     async def chunks_for(self, source_path: str) -> list[Chunk]: ...
 
