@@ -222,6 +222,37 @@ Live check A found failures; the owner decided no label, prompt or vault change 
 
 The index used by those runs was checked first (read-only): the dev work index has 64 chunks in 16 documents and no chunk of the live check A canary note (`test_a_canary_in_a_vault_note_is_not_in_ollamas_logs` uses its own work folder, `grc-live-answer-canary`, `test_answer_live.py:268`), so the canary did not affect the runs.
 
+## Live check B results: the held-out split, three runs (2026-10-12)
+
+Counts only, read from the owner's result files (`lcb-1-env.txt`, `lcb-2-heldout-run1.txt` to `lcb-2-heldout-run3.txt`), which are outside the repository. Nothing was run to write this section. Pre-registered above: three runs, all reported, none selected or averaged away.
+
+**Environment.** Ollama 0.40.3; `llama3.1:8b` (ID `46e0c10c039e`) and `nomic-embed-text:latest` (ID `0a109f422b47`). `OLLAMA_DEBUG` and `OLLAMA_DEBUG_LOG_REQUESTS` empty at Process, User and Machine scope, and the env check listed no `ollama-request-logs-*` directory. Every run header shows the same model digest `46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`, template hash prefix `3de5c706b14ae3cd` (the live check A template, tuning log entry 3), `num_ctx` 11264, `num_predict` 1900, `seed` 42. The held-out split has 18 items: 9 answer-labeled and 9 blank-labeled.
+
+| Measure | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Answer-labeled items answered (of 9) | 9 | 9 | 9 |
+| Right citation, among those 9 (cited lines inside the labeled evidence) | 7 | 8 | 7 |
+| Blank-labeled items answered (of 9) | 4 | 5 | 3 |
+| Exact values correct (of 3) | 3 | 3 | 3 |
+| Identifier-only items blank (of 2; the held-out split holds two) | 2 | 2 | 2 |
+| Of those, blanked by a code check (rest by the model's own `no_evidence`) | 0 | 1 | 1 |
+| Statuses (SUPPORTED / PARTIAL / NEEDS_REVIEW) | 11 / 2 / 5 | 10 / 4 / 4 | 11 / 1 / 6 |
+| Overdue item (EV-114) ended PARTIAL with `review_overdue` | no | yes | no |
+| Acceptance criterion (every blank-labeled item ends blank) | FAIL | FAIL | FAIL |
+| Wall time (the pytest final total) | 1148.53 s (0:19:08) | 1113.86 s (0:18:33) | 1250.23 s (0:20:50) |
+
+The wall times are the pytest totals at the foot of each file; each file also prints a sum of per-question seconds (1144.2, 1111.5, 1245.7), which is a different measure. In each file the pytest line reads "1 failed" because the acceptance assertion failed; that assertion is the criterion above, and the harness's printed report is the result. Blank-labeled items answered, by run: run 1 EV-108, EV-109, EV-113, EV-116; run 2 EV-108, EV-109, EV-113, EV-115, EV-116; run 3 EV-109, EV-113, EV-116. **Labeled blank and answered in all three runs: EV-109 (framework bait, SUPPORTED, `data-retention-policy.md` lines 15 to 15), EV-113 (the planted 35-vs-30-day backup conflict, SUPPORTED, `backup-and-recovery-standard.md` line 14) and EV-116 (near miss, PARTIAL, `backup-and-recovery-standard.md` line 14).** EV-113 stays labeled blank under section 2a and is the evidence for M5.5's contradiction detector.
+
+### Findings (open defects, not excused)
+
+1. **EV-105 (exact value): right value from the wrong document in all three runs.** The answer contained the expected "twice a year" every time and the status was SUPPORTED every time, but the cited lines were `security-awareness-standard.md` line 18 (doc ID `MQ-STD-0002`), outside the labeled acceptable evidence. The result files show this: the cited column of each run, and the problem line "cited MQ-STD-0002:18-18, outside the acceptable evidence" in each. A right answer with a wrong source.
+2. **EV-114 (overdue vendor policy): a current document was cited and the overdue flag was missed in 2 of 3 runs.** Runs 1 and 3 answered SUPPORTED from `incident-response-plan.md` line 30 (`MQ-PRC-002`) with no `review_overdue`, where the label expects PARTIAL with `review_overdue`. The result files show this too (the cited column, and the problem lines "status SUPPORTED is not one of ['PARTIAL']", "missing required reasons ['review_overdue']" and "cited MQ-PRC-002:30-30, outside the acceptable evidence" in runs 1 and 3). Run 2 cited `vendor-management-policy.md` line 19 and ended PARTIAL with `review_overdue`, as labeled.
+3. **Demo D-07 (live check B demo spreadsheet, ADR-014): cited `mfa-enrollment` instead of the backup standard.** The answer was right and the document was wrong. This is the owner's observation from inspecting the output; the result files hold statuses only and do not show which document was cited, so it is not independently traceable to them.
+
+### What this means
+
+Tuning stays stopped (tuning log entry 3). These findings, and the three blank-labeled items answered in every run, feed the deferred (a), (d) and (b) work after M6. **The held-out split is now spent and must not be used for further tuning.** At M5n the brief's "Honest blanks" wording must match these counts (blank-labeled items answered: 4, 5 and 3 of 9).
+
 ## What M5e built, and four things it settled
 
 Code: `questionnaire/grounding.py` (the quote checks), `questionnaire/status.py` (`judge`, `finalize_rejection`, `lower_for_changed_source`), `questionnaire/models.py` (`AnswerResult`, `Rejection`, `Citation`, the reason codes and their fixed order), and `file_sha256` on `RetrievedChunk` and `DocInfo`. Tests: `test_grounding.py`, `test_status.py`, and two tests in `test_retrieval_golden.py`.

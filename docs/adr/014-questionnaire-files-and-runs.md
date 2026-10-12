@@ -207,6 +207,28 @@ Same method. Files restored with matching sha256 (`runs.py` `a2e0271c...c23bc`, 
 | 69 | The reopen check compares numbers as numbers | the float branch of `_stored_as_intended` back to `type(stored) is float and stored == intended` (the old behaviour) | 6 failed, 66 passed: `test_a_whole_number_confidence_is_written_and_verified[0.0]` and `[1.0]`, `test_the_reopen_comparison_is_exact_in_value_and_kind[0-0.0-True]` and `[1-1.0-True]`, and both end-to-end runs (`write_verify_failed`). Restored; `writer.py` sha256 matches the pre-mutation hash. |
 | 70 | The kit refuses a non-live run at port 11434 | `if False and ...` in front of the port check in `_refuse_real_ollama_unless_live` (retried with the owner's approval after a first denial) | 1 failed: `test_an_offline_scenario_refuses_the_real_ollama_port`. Restored; `e2ekit.py` sha256 matches the pre-mutation hash. |
 
+## Live check B results: the real sidecar, the demo workbook (2026-10-12)
+
+Read from the owner's result files (`lcb-3-demo.txt`, `lcb-4-hash-before-excel.txt`, `lcb-4-hash-after-excel.txt`, `lcb-5-excel-notes.txt`, `lcb-6-wifi-off.txt`, `lcb-7-excel-copy.txt`, `lcb-7-hash-before.txt`, `lcb-7-hash-after.txt`), which are outside the repository. Nothing was run to write this section. Every run used `llama3.1:8b` with digest `46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e` before and after, the real sidecar as a child process, 15 questions, 15 progress events, `complete`, no dropped parts and no warnings. Where a file shows more than one timing, the figure below is the pytest final total, and the run's own `seconds` is given beside it.
+
+| Run | Test result | Pytest total | Run's own seconds | Status counts (SUPPORTED / PARTIAL / NEEDS_REVIEW) |
+|---|---|---|---|---|
+| a. Demo end to end | 1 passed | 771.88 s (0:12:51) | 765.2 | 11 / 2 / 2 |
+| b. Wi-Fi off | 1 passed | 654.82 s (0:10:54) | 647.6 | 9 / 3 / 3 |
+| c. Excel-saved copy | 1 passed | 662.12 s (0:11:02) | 655.9 | 11 / 3 / 1 |
+
+**a. Demo e2e over the real sidecar.** The stream was read live: first progress event 71.5 s after it opened, last at 764.6 s, done at 765.2 s. The test reports the input hash equal before and after the run (`True`). Separately, the owner hashed the demo input (the file in the run's `questionnaires` folder) before and after opening the output in Excel, and both hash files read `B76037E643A35C0A70F9DC4ED48059DDA9E0F5665A2F520AF0F48C2F1525A5DF`: **equal**. The path column in those two files is truncated by the terminal, so the file named is only the one under `...\grc-live-e2e\a349c771\questionnaires\`, the work folder of this run.
+
+**b. Wi-Fi off.** Passed (first progress event 49.2 s, done 647.6 s; input hash equal before and after, `True`). The owner's offline statement, verbatim: "Wi-Fi was turned off by hand; the network test result was not captured". So this run shows the engine completing with Wi-Fi off; it does not show, by any captured output, that the machine had no route out.
+
+**c. Excel-saved copy.** The input was `excel-saved-copy.xlsx`, a copy saved by Excel (the original is only read). It loaded and ran: no refusal, no dropped parts, no warnings (first progress event 58.4 s, done 655.9 s). Input hash before the run `0186B101C724A2B7963CC1B277A6FC6871549F6990D603ED7FA553BC2B0CCB70`, after `0186B101C724A2B7963CC1B277A6FC6871549F6990D603ED7FA553BC2B0CCB70`: **equal**, and the test reports `True`. Output file `excel-saved-copy-UNREVIEWED-DRAFT-bf2b4934.xlsx`. The result files do not say whether this copy contains an empty chart sheet, so they do not show whether the known limit in decision 3 was exercised.
+
+**d. Part G, manual inspection** (the owner, by eye, `lcb-5-excel-notes.txt`; the owner confirmed it was run a's output, the demo e2e run whose input was hashed before and after opening it in Excel): original columns and text unchanged; six new columns present (GRC Answer, Confidence, Status, Reason, Evidence, Review); the Status header carries the UNREVIEWED DRAFT label; the Evidence column filled for answered rows; the Review column says "unreviewed" on every row; the About sheet preserved; no Excel repair prompt or security warning on open. **Not recorded in the notes:** the F2-then-Enter check on a formula-trigger cell, merged cells and drop-downs by name, and the LibreOffice open.
+
+**e. Run-to-run difference.** The three runs of the same 15 questions ended with different status counts (11 / 2 / 2, 9 / 3 / 3 and 11 / 3 / 1), because CPU inference is not bit-for-bit repeatable even with seed 42 and temperature 0.
+
+Demo question D-06 (the planted 90-vs-365-day conflict, expected blank) ended SUPPORTED in runs a and c and NEEDS_REVIEW with `possible_conflict` in run b; the expectation notes are notes, not promises (decision 18). The held-out results and the model-dependence they show are in ADR-013, "Live check B results".
+
 ## Limits of the writing half
 
 - A visible apostrophe survives a CSV export; the quote prefix does not (decision 11).
@@ -217,7 +239,7 @@ Same method. Files restored with matching sha256 (`runs.py` `a2e0271c...c23bc`, 
 
 ## Limits of the runs and routes (M5k)
 
-- **Nothing here has been run against a real Ollama.** Every test uses a scripted answerer or a mock transport. How a real model, the real index and a real workbook behave together is what live check B (M5l) is for.
+- **As of M5k, nothing here had been run against a real Ollama** (live check B has since run it; see "Live check B results"). Every unit test uses a scripted answerer or a mock transport. How a real model, the real index and a real workbook behave together is what live check B (M5l) is for.
 - **No route builds the index** (decision 17), and the folders come from the environment until the pickers exist (M6); the host does not pass them yet.
 - **Runs live in memory.** A restart forgets the last 20 runs (their output files stay). The event stream has no heartbeat and no resume position: a client that reconnects reads the events again from the first.
 - **The HTTP test transport buffers a whole response**, so the tests read a stream after the run it describes has ended, and test concurrency (a held run, `/health`, a second start) with separate requests. A real client reading the stream live is exercised only at live check B.
