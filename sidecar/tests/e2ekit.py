@@ -311,27 +311,61 @@ def report_lines(run: DemoRun, folders: Folders, tool: ModuleType) -> list[str]:
     return lines
 
 
+def place_input(questionnaires: Path, input_file: Path) -> str:
+    """Copy a given .xlsx into the questionnaires folder and return its file name.
+
+    The original is only read (once, then closed) and never written, renamed or moved. The copy
+    is created exclusively, so nothing already in the folder is overwritten. The file must be the
+    demo workbook saved under another name (for example by Excel): the checks that follow expect
+    the demo's sheet and questions.
+    """
+    source = input_file.resolve(strict=True)
+    if not source.is_file():
+        raise ValueError(f"not a file: {input_file}")
+    if source.suffix.lower() != ".xlsx":
+        raise ValueError(f"not an .xlsx file: {input_file}")
+    data = source.read_bytes()
+    with (questionnaires / source.name).open("xb") as copy:
+        copy.write(data)
+    return source.name
+
+
 def run_demo(
-    base_url: str, work: Path, *, live: bool, build_index: bool = True
+    base_url: str,
+    work: Path,
+    *,
+    live: bool,
+    build_index: bool = True,
+    input_file: Path | None = None,
 ) -> tuple[DemoRun, Folders, ModuleType]:
-    """The whole scenario. Returns the run, the folders and the tool module (for the checks)."""
+    """The whole scenario. Returns the run, the folders and the tool module (for the checks).
+
+    With `input_file`, that workbook is copied in instead of generating the demo one.
+    """
     _refuse_real_ollama_unless_live(base_url, live)
     tool = load_demo_tool()
     folders = Folders.under(work)
-    tool.write_demo(folders.questionnaires)
+    original_sha = sha256_of(input_file) if input_file is not None else None
+    if input_file is None:
+        tool.write_demo(folders.questionnaires)
+        file_name = tool.FILE_NAME
+    else:
+        file_name = place_input(folders.questionnaires, input_file)
     if build_index:
         asyncio.run(build_demo_index(base_url, folders.index, live=live))
     token = secrets.token_hex(32)
     with running_sidecar(folders, base_url, token) as port:
         timeout = 7200 if live else 120
         run = asyncio.run(
-            asyncio.wait_for(drive_demo_run(port, token, folders, tool.FILE_NAME), timeout)
+            asyncio.wait_for(drive_demo_run(port, token, folders, file_name), timeout)
         )
     outputs = sorted(folders.exports.iterdir())
     run.problems = check_run(run, folders, tool)
+    if input_file is not None and sha256_of(input_file) != original_sha:
+        run.problems.append("the original input file changed")
     if len(outputs) == 1:
         run.output = outputs[0]
-        run.problems += check_output(run.output, folders.questionnaires / tool.FILE_NAME, tool)
+        run.problems += check_output(run.output, folders.questionnaires / file_name, tool)
     else:
         failure = run.status.get("failure")
         run.problems.append(f"{len(outputs)} files in the export folder; run failure={failure}")

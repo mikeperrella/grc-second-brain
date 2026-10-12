@@ -18,11 +18,17 @@ no question text in the stream, the input file's hash unchanged). The report pri
 status and reasons next to a note of what was expected. Those notes are not asserted: a model's
 answers vary (ADR-013, 2a), and this is not the held-out evaluation.
 
+To run a copy of the demo workbook that Excel saved under another name instead of a generated one,
+set `ALIBI_E2E_INPUT` to its full path (an .xlsx; the original is only read, the engine works on a
+copy in the work folder, and the run fails if the original's hash changes). It must be the demo
+workbook, not an answers file: the checks expect the demo's sheet and 15 questions.
+
 Only the vault-demo notes are indexed (no framework packs), so the framework-text questions have no
 framework text to find. After the run, open the output file in Excel and in LibreOffice (live check
 B lists what to look for) and keep the folder that is printed at the top.
 """
 
+import os
 import tempfile
 import uuid
 from pathlib import Path
@@ -35,12 +41,17 @@ pytestmark = pytest.mark.ollama
 
 BASE_URL = "http://127.0.0.1:11434"
 WORK = Path(tempfile.gettempdir()) / "grc-live-e2e"
+INPUT_VAR = "ALIBI_E2E_INPUT"
 
 
 def test_the_demo_spreadsheet_end_to_end_with_the_real_models() -> None:
     work = WORK / uuid.uuid4().hex[:8]  # a fresh folder: exactly one output file per run
     print(f"\nwork folder: {work}", flush=True)
-    run, folders, tool = run_demo(BASE_URL, work, live=True)
+    given = os.environ.get(INPUT_VAR)
+    input_file = Path(given) if given else None
+    if input_file is not None:
+        print(f"input: {input_file} (copied, the original is only read)", flush=True)
+    run, folders, tool = run_demo(BASE_URL, work, live=True, input_file=input_file)
     print("\n".join(report_lines(run, folders, tool)))
     print(f"\noutput: {run.output}")
     print("event arrival (seconds after the stream opened):")

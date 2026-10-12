@@ -26,9 +26,11 @@ from .e2ekit import (
     Folders,
     _refuse_real_ollama_unless_live,
     load_demo_tool,
+    place_input,
     report_lines,
     run_demo,
     running_sidecar,
+    sha256_of,
 )
 from .test_answer_live_wiring import FakeOllamaServer, fake_ollama
 
@@ -63,6 +65,55 @@ def test_the_demo_run_end_to_end_over_http(tmp_path: Path) -> None:
     for body in FakeOllamaServer.chat_bodies:
         assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert "ref" in "\n".join(report_lines(run, folders, tool))
+
+
+def _demo_copy_under_another_name(folder: Path, name: str) -> Path:
+    """The demo workbook as a file with another name, standing in for an Excel-saved copy."""
+    folder.mkdir()
+    tool = load_demo_tool()
+    tool.write_demo(folder)
+    return (folder / tool.FILE_NAME).rename(folder / name)
+
+
+def test_a_given_workbook_is_copied_in_and_the_original_is_only_read(tmp_path: Path) -> None:
+    given = _demo_copy_under_another_name(tmp_path / "given", "demo-saved-by-excel.xlsx")
+    sha, mtime = sha256_of(given), given.stat().st_mtime_ns
+    with fake_ollama() as url:
+        run, folders, _ = run_demo(url, tmp_path / "work", live=False, input_file=given)
+    assert not run.problems, "\n".join(run.problems)
+    copy = folders.questionnaires / given.name
+    assert copy.is_file() and copy != given and sha256_of(copy) == sha
+    assert [p.name for p in folders.questionnaires.iterdir()] == [given.name]  # nothing generated
+    assert run.output is not None
+    assert run.output.name.startswith("demo-saved-by-excel-UNREVIEWED-DRAFT-")
+    assert (sha256_of(given), given.stat().st_mtime_ns) == (sha, mtime)  # the original untouched
+    assert run.input_sha_before == sha  # the engine read the copy, byte for byte the original
+
+
+@pytest.mark.parametrize("bad", ["missing.xlsx", "folder", "notes.txt", "old.xls"])
+def test_a_bad_input_path_is_refused_before_anything_is_copied(  # [NEG]
+    tmp_path: Path, bad: str
+) -> None:
+    (tmp_path / "folder").mkdir()
+    (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "old.xls").write_bytes(b"x")
+    target = tmp_path / "questionnaires"
+    target.mkdir()
+    with pytest.raises((OSError, ValueError)):
+        place_input(target, tmp_path / bad)
+    assert list(target.iterdir()) == []
+
+
+def test_an_existing_file_in_the_questionnaires_folder_is_never_overwritten(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    given = _demo_copy_under_another_name(tmp_path / "given", "same-name.xlsx")
+    target = tmp_path / "questionnaires"
+    target.mkdir()
+    (target / "same-name.xlsx").write_bytes(b"precious")
+    with pytest.raises(FileExistsError):
+        place_input(target, given)
+    assert (target / "same-name.xlsx").read_bytes() == b"precious"
 
 
 def test_no_question_text_reaches_the_sidecar_log(tmp_path: Path) -> None:  # [NEG]
