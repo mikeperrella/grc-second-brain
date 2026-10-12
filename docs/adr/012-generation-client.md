@@ -118,6 +118,16 @@ Honest limits:
 - **The instruction "do not start the answer with `=`, `+`, `-` or `@`" is a request.** The control is the writer's formula neutralization (M5j), which does not trust the model.
 - **Nothing here has been run against a real model.** Whether llama3.1:8b follows these instructions, copies quotes exactly, or says "no evidence" when it should is measured at live check A. The template may be edited until the freeze (M5g) without a log entry; after it, every edit is logged.
 
+## What httpx and httpcore log (M5f, measured)
+
+Measured with `tests/test_generation_logging.py`, which starts a small HTTP server on 127.0.0.1 so that the client's real transport and httpcore run (the other tests use `httpx.MockTransport`, which skips the connection layer). The test sends a prompt, a question and a reply that each carry a canary string, with every logger at DEBUG. The same canaries are first shown to reach the server, so the absence below is not for lack of travel.
+
+- **INFO:** httpx writes exactly one line per request: `HTTP Request: POST http://127.0.0.1:<port>/api/chat "HTTP/1.0 200 OK"` (the version is the test server's; Ollama answers HTTP/1.1). Method, URL, status. No body. httpcore writes nothing at INFO.
+- **DEBUG:** httpcore writes event lines and no payload: `connect_tcp.started host='127.0.0.1' port=... timeout=5.0`, `connect_tcp.complete`, `send_request_headers.started/complete`, `send_request_body.started/complete`, `receive_response_headers.started/complete` (this one lists the response header names and values), `receive_response_body.started/complete`, `response_closed.started/complete`. The request line shows `request=<Request [b'POST']>`, the method only.
+- **No canary** from the prompt, the question or the reply appears in any record of any logger. The first-party code logs only counts and reason codes (`answered: status=... reasons=[...] attempts=N sources=N`, and `attempt N accepted|rejected` at DEBUG).
+- **Not measured here:** openpyxl's logging (M5i), and what Ollama itself logs (live check A searches `server.log` for a canary).
+- The response header values httpcore logs at DEBUG come from the server. A rogue listener on port 11434 (threat model F8-2) could put text in a header, and that text would reach a DEBUG log. It is not document content, and the default level is INFO.
+
 ## Mutation proofs (M5d)
 
 Same procedure as above. Originals: `llm/prompt.py` = `a3ae91b490c09fc9b5f56624f195b57097337620edb1b6e919dfbb26ec59314f`, `llm/retry.py` = `c6977e48a68236dcbf143a8fc3b79572285a7a36ee8422d999e7e378f7b19e1d`, `llm/schemas.py` = `5db7effd6592d30a9d42a997b837ebee2a091780f2e1ae47c3b85026807e69cd`. Every restore matched.

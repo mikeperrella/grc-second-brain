@@ -101,7 +101,20 @@ Code: `questionnaire/grounding.py` (the quote checks), `questionnaire/status.py`
 
 `file_sha256` was added to `RetrievedChunk` as approved at the plan review. Proof that no existing field changed: before the change, the complete output of 13 golden retrieval queries (every field of every result and chunk, sorted-key JSON) was hashed and pinned in `test_m4_golden_results_identical_with_file_sha256`; after the change, the same test, which removes only the new `file_sha256` key before hashing, passed unchanged. Rows 19 and 20 below show each side can fail on its own.
 
-## Mutation proofs (M5e)
+## The answer service and the evaluation harness (M5f)
+
+`questionnaire/service.py` (`AnswerService.answer`) is where the pieces meet and it adds no decision of its own: retrieval supplies the context and the facts about it, the prompt builder wraps the question and the sources as data, the generation client calls the model as exactly two messages, `judge` decides, and `with_retries` spends one shared budget of two attempts. Choices a reader may ask about:
+
+- **Three kinds of failure, three behaviours.** A failure about *this question* (an oversize prompt, a reply that never verifies, output cut off) blanks this cell with a reason (`prompt_too_large`, `quote_not_verified` and its kin, `output_truncated`). A failure of *the model* (Ollama unreachable, a refused or non-local model, an unusable reply) blanks this cell with `model_unavailable` and sets a flag so the run that is asking can stop instead of failing every remaining question one by one (decision 11). A failure of *the index* (not built, cannot be certified fresh) is **not answered**: it propagates, because no question can be answered without retrieval, and the run refuses to start in that state (ADR-014).
+- **An empty context is no evidence and the model is not asked.** There is nothing to cite, so asking would only invite a made-up answer. The result is `no_evidence`, plus `evidence_withheld` and `lexical_only` where they apply.
+- **The model sees source ids only.** `S1` to `S5` are assigned in retrieval order; the id-to-chunk map used for judging is the same map used to build the prompt (mutation 27 shows what a wrong map does).
+- **Every attempt has a fresh boundary** (mutation 28), and attempt 2 is the same two messages with the error block added.
+- **Measurements, never text.** The outcome carries the attempts, the summed `prompt_eval_count` and `eval_count`, the characters sent, the stop reasons, the retrieval mode, the number of sources and the duration from the injected clock. The one INFO line is `answered: status=... reasons=[...] attempts=N sources=N`.
+- **The service returns the model's words as they are.** A formula or a link in the answer is the writer's problem (M5j), which does not trust the model; `test_a_formula_in_the_answer_is_not_neutralized_here_the_writer_does_it` keeps that visible so nobody assumes the service did it.
+
+The evaluation harness is `tests/answerlivekit.py` (grading, the per-item table, the counts-only report and the acceptance result) and `tests/test_answer_live.py` (four tests behind the `ollama` marker: the chosen split, the oversize probe, a canary searched for in Ollama's own logs, and the run with Ollama stopped). `tests/test_answer_eval_harness.py` runs the same grading and report offline, including over real eval items and a scripted model that answers one blank-labeled item, so that the acceptance check is shown to be able to fail. The held-out split cannot be started by accident: it needs two environment variables and the test says so.
+
+## Mutation proofs (M5e, rows 1 to 20; M5f, rows 21 to 31)
 
 Procedure as in ADR-009 and ADR-011 (back up and record sha256, apply one named break, run the named tests, require "N failed", restore with the inverse edit, show the sha256 equals the original, show the tests pass again). Originals: `questionnaire/grounding.py` = `533809f2983693ef6b18d1208e8384b8487b14be4c40b5a6bc7f11ec9921a533`, `questionnaire/status.py` = `3c9d0a81a19b3157d8130165539560bece3cb5456fbe9a39b85849bec87e4049`, `questionnaire/models.py` = `55b1b8fe8f384dfa5533c6decc275f32fbfa5f7ae59feccafecf687088fd98ef`, `retrieval/service.py` = `ed79ed30ebedea4cf8c6396f1cf68e5db320f17d82d67e83bf134a3b9cb40600` (taken after the one added line `file_sha256=document.file_sha256`, which is the whole difference from the committed M4 file). Every restore matched.
 
@@ -128,6 +141,20 @@ Procedure as in ADR-009 and ADR-011 (back up and record sha256, apply one named 
 | 18 | `evidence_withheld` leads `no_evidence` | the two swapped in `REASON_ORDER` | `::test_no_evidence_with_a_withheld_file_leads_with_evidence_withheld`, `::test_the_reason_order_covers_every_reason_exactly_once` | 2 failed, 66 passed |
 | 19 | `file_sha256` carries the file's hash | filled with the chunk's own `text_sha256` | `test_retrieval_golden.py::test_every_chunk_carries_the_hash_of_the_file_it_came_from` (the golden snapshot still passes, as it should: it excludes this field) | 1 failed, 1 passed |
 | 20 | No existing retrieval field changed | `heading_path` upper-cased in `_chunk_of` | `test_retrieval_golden.py::test_m4_golden_results_identical_with_file_sha256` (the hash test still passes) | 1 failed, 1 passed |
+
+| 21 | An empty retrieval result is no evidence, and the model is not asked | the empty-context shortcut disabled | `test_answer_service.py::test_empty_retrieval_means_no_evidence_without_asking_the_model`, `::test_empty_retrieval_in_keyword_only_mode_with_a_withheld_file` | 2 failed, 53 passed |
+| 22 | An empty or over-long question is blank before retrieval or the model | both pre-checks disabled | `::test_a_bad_question_is_blank_without_retrieval_or_model` (3 cases), `::test_a_hostile_cell_is_data_and_changes_nothing_the_code_computes[CELL-ADV-10]` (the over-long cell), `::test_a_blank_question_makes_no_measurements` | 5 failed, 50 passed |
+| 23 | A model that cannot be used tells the run to stop | the flag set to false | `::test_a_model_that_cannot_be_used_blanks_the_cell_and_tells_the_run_to_stop` (5 error types), `::test_the_model_failing_on_the_second_attempt_still_blanks_the_cell` | 6 failed, 49 passed |
+| 24 | An index error is not answered | `IndexNotBuiltError` caught and turned into a blank result | `::test_an_index_error_is_not_answered_it_propagates[IndexNotBuiltError]` (the other 54 passed). **This run took 915 s against about 13 s for the same file before and after; I did not find out why and make no claim about it. The result is the measured one** | 1 failed, 54 passed |
+| 25 | A schema failure after a grounding failure is `retry_exhausted`, not the old grounding reason | the stale rejection is not cleared | `::test_a_grounding_failure_then_a_schema_failure_is_retry_exhausted` | 1 failed, 54 passed |
+| 26 | Attempt 2 is shown why attempt 1 failed | the retry message replaced by an empty string | `::test_a_quote_that_does_not_verify_gets_one_retry_with_the_exact_failure`, `::test_a_framework_quote_never_becomes_an_answer` | 2 failed, 53 passed |
+| 27 | A source id maps to the right chunk when judging | ids mapped to the chunks in reverse order | 13 tests: the supported end to end case, both retry cases, the two partial caps, the framework case, the formula case and both canary tests among them | 13 failed, 42 passed |
+| 28 | Every attempt has its own boundary | one boundary reused for both attempts | `::test_a_quote_that_does_not_verify_gets_one_retry_with_the_exact_failure` | 1 failed, 54 passed |
+| 29 | Retrieval limits are kept when the model fails | the limits left out of a model-failure result | `::test_the_retrieval_limits_are_kept_on_a_model_failure` | 1 failed, 54 passed |
+| 30 | The question is never logged | `_log.info("question: %s", question)` added | `::test_no_canary_reaches_the_log_at_info`, `::test_no_canary_reaches_the_log_even_at_debug` | 2 failed |
+| 31 | The model's reply is never logged, even at DEBUG | `_log.debug("reply: %s", ...)` added | `::test_no_canary_reaches_the_log_even_at_debug` (the INFO test still passes: the break is below its level) | 1 failed, 1 passed |
+
+Originals for rows 21 to 31: `questionnaire/service.py` = `fe348c6182631c59539238c8d92eb6a5ba3d52e137992f5e96044fa6eeb80173`. Every restore matched.
 
 Notes and known limits:
 
