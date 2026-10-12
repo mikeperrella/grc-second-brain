@@ -9,9 +9,9 @@ description = "Local-first, air-gapped intelligence sidecar for GRC Second Brain
 requires-python = ">=3.11,<3.12"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
-    "fastapi==0.142.2",
+    "fastapi==0.143.0",
     "uvicorn==0.54.0",
-    "pydantic==2.13.5",
+    "pydantic==2.14.0",
     "pydantic-settings==2.15.0",
     "httpx==0.28.1",
     "PyYAML==6.0.3",
