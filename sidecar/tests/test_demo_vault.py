@@ -18,6 +18,7 @@ from grc_sidecar.vault.links import ResolutionIndex, extract_links, resolve_link
 from grc_sidecar.vault.models import ParsedDocument
 from grc_sidecar.vault.scan import scan_vault
 
+from .evalkit import load_eval_set
 from .fakes import FakeEmbeddingClient
 from .indexkit import sync_once
 from .repokit import table_counts
@@ -55,7 +56,8 @@ MAPPING_SHAPES = {
     "SOC2": re.compile(r"^SOC2:(CC|A|C|PI|P)\d+\.\d+$"),
     "NIST-800-53": re.compile(r"^NIST-800-53:[A-Z]{2}-\d+(\(\d+\))?$"),
 }
-EVAL_CLOCK = FixedClock(date(2026, 10, 10))
+# The one pinned date lives in the eval file (`clock_today`); every user of it reads it from there.
+EVAL_CLOCK = FixedClock(load_eval_set(EVAL_SET).clock_today)
 
 
 def _scan(root: Path) -> dict[str, ParsedDocument]:
@@ -135,7 +137,7 @@ def test_the_security_log_contradiction_is_present(demo: dict[str, ParsedDocumen
 
 
 def test_the_backup_contradiction_is_present(demo: dict[str, ParsedDocument]) -> None:
-    assert "Backups are overwritten after 30 days" in _text(demo["MQ-POL-003"])
+    assert "Database backups are overwritten after 30 days" in _text(demo["MQ-POL-003"])
     assert "Backups are encrypted and kept for 35 days" in _text(demo["MQ-STD-001"])
 
 
@@ -145,6 +147,20 @@ def test_exactly_one_demo_document_is_overdue_under_the_evaluation_clock(
     today = EVAL_CLOCK.today()
     overdue = {i for i, d in demo.items() if is_stale(d.frontmatter.review_by, today)}
     assert overdue == {"MQ-POL-004"}
+
+
+def test_every_non_overdue_review_date_is_far_enough_out_that_the_demo_does_not_rot(
+    demo: dict[str, ParsedDocument], hostile: dict[str, ParsedDocument]
+) -> None:  # [NEG] the demo spreadsheet (live check B) runs with the real system clock
+    """Only the vendor policy is overdue. Every other date is in 2030 or later, so running the
+    demo with the real date does not change which documents are overdue for years."""
+    for doc_id, doc in {**demo, **hostile}.items():
+        review = doc.frontmatter.review_by
+        assert review is not None
+        if doc_id == "MQ-POL-004":
+            assert review < date(2026, 1, 1)
+        else:
+            assert review >= date(2030, 1, 1), (doc_id, review)
 
 
 def test_the_overdue_result_depends_on_the_injected_clock_only(

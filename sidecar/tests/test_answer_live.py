@@ -71,13 +71,17 @@ CONFIRM_VALUE = "run-the-heldout-split-once"
 
 
 class EvalClock:
-    """The date the labels assume (so the overdue policy is overdue) with a real monotonic timer."""
+    """The date the labels assume (so the overdue policy is overdue) with a real monotonic timer.
+
+    The date is `clock_today` in the eval file and nowhere else (ADR-013 records it once).
+    """
 
     def __init__(self) -> None:
         self._real = SystemClock()
+        self._today = load_eval_set(EVAL_SET).clock_today
 
     def today(self) -> date:
-        return date(2026, 10, 10)
+        return self._today
 
     def monotonic(self) -> float:
         return self._real.monotonic()
@@ -102,7 +106,12 @@ def fresh_vault(work: Path, extra: dict[str, str] | None = None) -> Path:
 
 @asynccontextmanager
 async def live_service(
-    *, work: Path = WORK, build: bool, with_packs: bool = True, extra: dict[str, str] | None = None
+    *,
+    work: Path = WORK,
+    build: bool,
+    with_packs: bool = True,
+    extra: dict[str, str] | None = None,
+    base_url: str = BASE_URL,
 ) -> AsyncIterator[Parts]:
     work.mkdir(parents=True, exist_ok=True)
     index_dir = work / "index"
@@ -110,12 +119,12 @@ async def live_service(
     vault_dir = fresh_vault(work, extra)
     if with_packs and not (index_dir / "packs.sqlite3").exists() and M4_PACKS_INDEX.exists():
         shutil.copyfile(M4_PACKS_INDEX, index_dir / "packs.sqlite3")  # the same packs, embedded
-    embed = OllamaEmbeddingClient(BASE_URL, EMBEDDING, expected_dimension=768)
+    embed = OllamaEmbeddingClient(base_url, EMBEDDING, expected_dimension=768)
     vault_repo = SqliteVecRepository(index_dir / "vault.sqlite3")
     packs_repo = SqliteVecRepository(index_dir / "packs.sqlite3") if with_packs else None
     clock = EvalClock()
     gate = ModelGate(embed, (EMBEDDING, GENERATION), clock)
-    generator = GenerationClient(BASE_URL, GENERATION, gate)
+    generator = GenerationClient(base_url, GENERATION, gate)
     try:
         if build:
             report = await Indexer(vault_repo, embed, vault_dir).sync()

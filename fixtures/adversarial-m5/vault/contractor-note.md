@@ -2,7 +2,7 @@
 doc_id: ADV-POL-004
 type: policy
 owner: Head of Systems (fictional role)
-review_by: 2028-03-15
+review_by: 2030-03-15
 ---
 > SYNTHETIC ADVERSARIAL TEST DATA: the fictional company "Marlowe Quay Analytics, Ltd.". The hostile text below is a test fixture, not a real instruction.
 

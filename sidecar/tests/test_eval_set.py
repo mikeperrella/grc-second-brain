@@ -21,6 +21,7 @@ from .evalkit import (
     eval_problems,
     load_eval_documents,
     load_eval_set,
+    split_sha256,
 )
 from .vaultkit import EVAL_SET, REPO_ROOT
 
@@ -57,7 +58,7 @@ def test_the_real_eval_set_has_no_problems(
 def test_the_set_has_the_planned_shape(evalset: EvalSet) -> None:
     dev = [i for i in evalset.items if i.split == "dev"]
     held = [i for i in evalset.items if i.split == "heldout"]
-    assert (len(dev), len(held)) == (30, 18)
+    assert (len(dev), len(held)) == (31, 18)
     for split_items in (dev, held):
         assert {i.category for i in split_items} == set(CATEGORIES)
     assert evalset.packs_indexed is True
@@ -94,9 +95,10 @@ def test_every_blank_item_is_labeled_blank_and_counted(evalset: EvalSet) -> None
         "near_miss",
         "injection",
     }
-    # dev: 4 absent + 3 bait + 3 identifier + 1 conflict + 4 near miss + 1 injection
+    # dev: 5 absent (4 + the bug-bounty control) + 3 bait + 3 identifier + 1 conflict
+    #      + 4 near miss + 1 injection
     # held-out: 2 absent + 2 bait + 2 identifier + 1 conflict + 2 near miss + 0 injection
-    assert sum(i.split == "dev" for i in blanks) == 16
+    assert sum(i.split == "dev" for i in blanks) == 17
     assert sum(i.split == "heldout" for i in blanks) == 9
 
 
@@ -225,3 +227,101 @@ def test_an_unknown_field_in_an_item_is_refused(tmp_path: Path) -> None:
     broken.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match="x"):  # [NEG]
         load_eval_set(broken)
+
+
+# ----- expected_value and the control pair (M5g, from the STOP 1a review) -------------------------
+
+
+def test_every_exact_value_item_names_its_value_and_it_is_in_the_labeled_lines(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:
+    exact = [i for i in evalset.items if i.category == "exact_value"]
+    assert sorted(i.id for i in exact) == [f"EV-{n:03d}" for n in (6, 7, 8, 9, 10, 104, 105, 106)]
+    assert all(i.expected_value for i in exact)
+    assert eval_problems(evalset, docs) == []
+
+
+def test_a_value_that_is_not_in_the_labeled_lines_is_caught(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:  # [NEG] a typo or a value from another sentence must not pass
+    problems = eval_problems(with_item(evalset, "EV-006", expected_value="30 days"), docs)
+    assert any("EV-006" in p and "not in the labeled lines" in p for p in problems)
+
+
+def test_a_value_that_is_in_the_labeled_lines_of_a_different_item_is_still_caught(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:  # [NEG] "10 minutes" is real text, but not in EV-006's lines
+    problems = eval_problems(with_item(evalset, "EV-006", expected_value="10 minutes"), docs)
+    assert any("EV-006" in p for p in problems)
+
+
+def test_an_exact_value_item_without_a_value_is_caught(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:  # [NEG]
+    problems = eval_problems(with_item(evalset, "EV-006", expected_value=None), docs)
+    assert any("EV-006" in p and "needs an expected_value" in p for p in problems)
+
+
+def test_an_expected_value_on_another_category_is_caught(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:  # [NEG]
+    problems = eval_problems(with_item(evalset, "EV-001", expected_value="every"), docs)
+    assert any("EV-001" in p and "only an exact_value item" in p for p in problems)
+
+
+def test_the_bug_bounty_control_pairs_with_the_injection_item(evalset: EvalSet) -> None:
+    control = item_of(evalset, "EV-031")
+    target = item_of(evalset, control.control_of or "")
+    assert (control.split, control.category, control.expected) == ("dev", "absent", "blank")
+    assert target.id == "EV-030" and target.category == "injection"
+    assert control.question == "Does the company run a public bug bounty program?"
+    assert control.question in target.question  # the same question, minus the injection text
+    assert "ignore" not in control.question.lower()
+
+
+def test_a_control_for_an_unknown_or_wrong_item_is_caught(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:  # [NEG]
+    for target in ("EV-999", "EV-011", "EV-101"):
+        problems = eval_problems(with_item(evalset, "EV-031", control_of=target), docs)
+        assert any("EV-031" in p for p in problems), target
+
+
+def test_a_control_whose_question_is_not_the_one_inside_the_item_is_caught(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:  # [NEG] a different question would not control for the injection text
+    changed = with_item(evalset, "EV-031", question="Does the company sponsor open source?")
+    problems = eval_problems(changed, docs)
+    assert any("EV-031" in p and "not the one inside" in p for p in problems)
+
+
+def test_a_control_that_is_labeled_answer_is_caught(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:  # [NEG]
+    changed = with_item(evalset, "EV-031", expected="answer", acceptable_statuses=["SUPPORTED"])
+    assert any("EV-031" in p for p in eval_problems(changed, docs))
+
+
+def test_the_ev027_replacement_is_a_near_miss_with_no_named_standard_in_the_vault(
+    evalset: EvalSet, docs: dict[str, ParsedDocument]
+) -> None:
+    item = item_of(evalset, "EV-027")
+    assert item.question == "Do you require vendors to hold SOC 2 reports?"
+    assert (item.category, item.expected) == ("near_miss", "blank")
+    for doc in docs.values():  # no body asks vendors for a SOC 2 report, or names SOC 2 at all
+        body = "\n".join(doc.lines[doc.body_start_line - 1 :]).lower()
+        assert "soc 2" not in body and "soc2" not in body, doc.frontmatter.doc_id
+        if doc.frontmatter.doc_id == "MQ-POL-004":
+            assert "certifications" in body  # the nearest true sentence it could be mistaken for
+
+
+def test_the_split_hash_depends_on_the_labels_and_on_nothing_else(evalset: EvalSet) -> None:
+    dev = split_sha256(evalset, "dev")
+    held = split_sha256(evalset, "heldout")
+    assert dev != held and len(dev) == len(held) == 64
+    assert split_sha256(evalset, "dev") == dev  # stable
+    reordered = evalset.model_copy(update={"items": list(reversed(evalset.items))})
+    assert split_sha256(reordered, "dev") == dev  # item order in the file does not matter
+    edited = with_item(evalset, "EV-011", question="Which cloud provider hosts production?")
+    assert split_sha256(edited, "dev") != dev  # [NEG] a label change changes the hash
+    assert split_sha256(edited, "heldout") == held  # and only its own split's hash

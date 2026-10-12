@@ -94,6 +94,86 @@ def format_row(row: Row) -> str:
     )
 
 
+# Reasons that come from a deterministic check in our code, as opposed to the model's own verdict.
+CODE_REASONS = (
+    "identifier_not_in_source",
+    "framework_only",
+    "quote_not_verified",
+    "quote_too_short",
+    "source_not_in_context",
+    "source_changed",
+)
+
+
+def blanked_by(outcome: AnswerOutcome) -> str:
+    """What made a result blank: a check in our code, the model's own 'no evidence', or nothing
+    (the item was answered). `other` covers limits such as a model failure."""
+    result = outcome.result
+    if result.answer is not None:
+        return "ANSWERED"
+    code = [reason for reason in result.reasons if reason in CODE_REASONS]
+    if code:
+        return "code: " + "+".join(code)
+    if "no_evidence" in result.reasons:
+        return "model: no_evidence"
+    return "other: " + (",".join(result.reasons) or "-")
+
+
+def value_found(row: Row) -> bool | None:
+    """For an answered exact_value item: does the answer text contain the expected value?
+    None for any other item. A measurement only: it never changes a status or the acceptance."""
+    item, result = row.item, row.outcome.result
+    if item.category != "exact_value" or not item.expected_value or result.answer is None:
+        return None
+    return (
+        " ".join(item.expected_value.split()).casefold()
+        in " ".join(result.answer.split()).casefold()
+    )
+
+
+def _side_by_side(rows: Sequence[Row]) -> list[str]:
+    """Every control next to the item it controls (EV-030 and its bug-bounty control)."""
+    by_id = {row.item.id: row for row in rows}
+    out: list[str] = []
+    for row in rows:
+        target = by_id.get(row.item.control_of or "")
+        if target is None:
+            continue
+        out.append(f"  {'':<8}{'id':<8}{'status':<13}{'blanked by':<34}question")
+        for label, pair in (("control", row), ("tested", target)):
+            result = pair.outcome.result
+            out.append(
+                f"  {label:<8}{pair.item.id:<8}{result.status:<13}{blanked_by(pair.outcome):<34.34}"
+                f"{pair.item.question[:60]}"
+            )
+        same = target.outcome.result.status == row.outcome.result.status
+        out.append(f"  -> {'same outcome' if same else 'DIFFERENT outcomes'}")
+    return out
+
+
+def _identifier_section(rows: Sequence[Row]) -> list[str]:
+    identifier = [row for row in rows if row.item.category == "identifier_only"]
+    out = [
+        "IDENTIFIER-ONLY items (a code check should blank these; reported apart from the model):"
+    ]
+    if not identifier:
+        return [*out, "  none in this split"]
+    for row in identifier:
+        result = row.outcome.result
+        reasons = ",".join(result.reasons) or "-"
+        out.append(
+            f"  {row.item.id:<8}{row.item.question:<10.10}{result.status:<13}"
+            f"{blanked_by(row.outcome):<48}reasons={reasons}"
+        )
+    counts = Counter(blanked_by(row.outcome).split(":")[0] for row in identifier)
+    out.append(
+        f"  blanked by a code check: {counts.get('code', 0)} of {len(identifier)}; "
+        f"by the model: {counts.get('model', 0)}; answered: {counts.get('ANSWERED', 0)}; "
+        f"other: {counts.get('other', 0)}"
+    )
+    return out
+
+
 def acceptance_problems(rows: Sequence[Row]) -> list[str]:
     """The ids of blank-labeled items that were answered: the product brief's criterion."""
     return [
@@ -132,6 +212,39 @@ def format_report(rows: Sequence[Row], *, header: str = "") -> str:
     answers = [row for row in rows if row.item.expected == "answer"]
     went_blank = [row for row in answers if row.outcome.result.status == "NEEDS_REVIEW"]
     out.append(f"answer-labeled items that ended blank: {len(went_blank)} of {len(answers)}")
+    out.append("")
+    out.extend(_identifier_section(rows))
+    others = [
+        r for r in rows if r.item.expected == "blank" and r.item.category != "identifier_only"
+    ]
+    how = Counter(blanked_by(row.outcome).split(":")[0] for row in others)
+    out.append(
+        "MODEL-DEPENDENT blank-labeled items (absent, bait, conflict, near miss, injection): "
+        f"{len(others)}; ended blank by the model's own no_evidence: {how.get('model', 0)}, "
+        f"by a code check: {how.get('code', 0)}, answered: {how.get('ANSWERED', 0)}, "
+        f"other: {how.get('other', 0)}"
+    )
+    pairs = _side_by_side(rows)
+    if pairs:
+        out.append("")
+        out.append("CONTROL PAIRS (an injection item next to its control with no injection text):")
+        out.extend(pairs)
+    exact = [row for row in rows if row.item.category == "exact_value"]
+    if exact:
+        answered_exact = [row for row in exact if value_found(row) is not None]
+        found = [row for row in answered_exact if value_found(row)]
+        out.append("")
+        out.append(
+            "EXACT VALUE (a measurement, not a status gate and not an acceptance criterion): "
+            f"answer text contains the expected value in {len(found)} of {len(answered_exact)} "
+            f"answered exact_value items ({len(exact) - len(answered_exact)} ended blank)"
+        )
+        out.extend(
+            f"  {row.item.id}: expected {row.item.expected_value!r}, "
+            f"{'found' if value_found(row) else 'NOT found'} in the answer"
+            for row in answered_exact
+        )
+    out.append("")
     ratios = [
         row.outcome.prompt_chars / row.outcome.prompt_eval_count
         for row in rows

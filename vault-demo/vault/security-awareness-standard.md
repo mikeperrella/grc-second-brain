@@ -2,7 +2,7 @@
 doc_id: MQ-STD-002
 type: standard
 owner: Security Lead (fictional role)
-review_by: 2028-02-15
+review_by: 2030-02-15
 control_mappings: ["SOC2:CC1.4", "NIST-800-53:AT-2"]
 ---
 > SYNTHETIC DEMO DATA: the fictional company "Marlowe Quay Analytics, Ltd.". Not a real standard.

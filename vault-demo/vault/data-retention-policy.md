@@ -2,7 +2,7 @@
 doc_id: MQ-POL-003
 type: policy
 owner: Data Protection Lead (fictional role)
-review_by: 2028-01-31
+review_by: 2030-01-31
 control_mappings: ["SOC2:CC6.5", "NIST-800-53:SI-12"]
 links: ["[[vendor-management-policy]]"]
 ---
@@ -25,7 +25,7 @@ Marlowe Quay keeps data only while there is a business or legal need for it, the
 
 ## Deletion
 
-Customer data is deleted from production within 45 days after a contract ends. Backups are overwritten after 30 days. Vendors that hold company data must delete it on request, as the [[vendor-management-policy]] requires.
+Customer data is deleted from production within 45 days after a contract ends. Database backups are overwritten after 30 days. Vendors that hold company data must delete it on request, as the [[vendor-management-policy]] requires.
 
 ## Legal holds
 

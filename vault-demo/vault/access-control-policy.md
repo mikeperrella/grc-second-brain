@@ -2,7 +2,7 @@
 doc_id: MQ-POL-001
 type: policy
 owner: Head of Systems (fictional role)
-review_by: 2028-03-15
+review_by: 2030-03-15
 control_mappings: ["SOC2:CC6.1", "NIST-800-53:AC-2", "NIST-800-53:IA-2"]
 links: ["[[mfa-enrollment-procedure]]"]
 ---

@@ -6,6 +6,8 @@ exists, lies in the body (not the frontmatter), and really contains the phrase t
 The same loader is used by the live answer test (M5f), so a malformed file fails there too.
 """
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
@@ -66,6 +68,10 @@ class EvalItem(BaseModel):
     acceptable_statuses: list[Status] = Field(min_length=1)
     expected_reasons: list[str] = Field(default_factory=list)
     acceptable_evidence: list[EvidenceRef]
+    # exact_value items only: the value an answer should state. A measurement, not a gate.
+    expected_value: str | None = None
+    # A control for the named item: the same underlying question with no injection text.
+    control_of: str | None = None
 
 
 class EvalSet(BaseModel):
@@ -153,6 +159,8 @@ def eval_problems(evalset: EvalSet, docs: Mapping[str, ParsedDocument]) -> list[
             problems.append(f"{item.id}: question longer than {MAX_QUESTION_CHARS} characters")
         problems.extend(_consistency_problems(item, docs, evalset.clock_today))
         problems.extend(_evidence_problems(item, docs))
+        problems.extend(_expected_value_problems(item, docs))
+        problems.extend(_control_problems(item, evalset))
         if item.category == "identifier_only":
             problems.extend(_identifier_problems(item, docs))
     for split in ("dev", "heldout"):
@@ -190,6 +198,57 @@ def _consistency_problems(
         if item.expected_reasons:
             problems.append(f"{item.id}: required reasons are only used by overdue items")
     return problems
+
+
+def _expected_value_problems(item: EvalItem, docs: Mapping[str, ParsedDocument]) -> list[str]:
+    """An exact_value item names the value it expects, and that value is in the labeled lines."""
+    if item.category != "exact_value":
+        return (
+            [f"{item.id}: only an exact_value item has an expected_value"]
+            if item.expected_value
+            else []
+        )
+    if not item.expected_value:
+        return [f"{item.id}: an exact_value item needs an expected_value"]
+    wanted = normalize(item.expected_value)
+    for ref in item.acceptable_evidence:
+        doc = docs.get(ref.doc_id)
+        if doc is None or ref.end_line > len(doc.lines):
+            continue  # reported by the evidence check
+        if wanted in normalize(" ".join(doc.lines[ref.start_line - 1 : ref.end_line])):
+            return []
+    return [f"{item.id}: expected_value {item.expected_value!r} is not in the labeled lines"]
+
+
+def _control_problems(item: EvalItem, evalset: EvalSet) -> list[str]:
+    """A control sits in the same split as the item it controls, which is an injection item, and
+    is itself a blank-labeled absent-topic question with no injection text of its own."""
+    if item.control_of is None:
+        return []
+    target = next((i for i in evalset.items if i.id == item.control_of), None)
+    if target is None:
+        return [f"{item.id}: control_of names unknown item {item.control_of}"]
+    problems: list[str] = []
+    if target.split != item.split:
+        problems.append(f"{item.id}: control and controlled item are in different splits")
+    if target.category != "injection":
+        problems.append(f"{item.id}: control_of must name an injection item")
+    if item.category != "absent" or item.expected != "blank":
+        problems.append(f"{item.id}: a control must be an absent, blank-labeled item")
+    if normalize(item.question).casefold() not in normalize(target.question).casefold():
+        problems.append(f"{item.id}: the control's question is not the one inside {target.id}")
+    return problems
+
+
+def split_sha256(evalset: EvalSet, split: Split) -> str:
+    """sha256 of one split's labels: canonical JSON of its items sorted by id. Independent of
+    line endings and key order in the file, so it is the same on every platform."""
+    items = sorted(
+        (i.model_dump(mode="json") for i in evalset.items if i.split == split),
+        key=lambda d: str(d["id"]),
+    )
+    text = json.dumps(items, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(text.encode("ascii")).hexdigest()
 
 
 def _identifier_problems(item: EvalItem, docs: Mapping[str, ParsedDocument]) -> list[str]:

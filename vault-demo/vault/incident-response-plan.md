@@ -2,7 +2,7 @@
 doc_id: MQ-PRC-002
 type: procedure
 owner: Security Lead (fictional role)
-review_by: 2028-01-31
+review_by: 2030-01-31
 control_mappings: ["SOC2:CC7.4", "NIST-800-53:IR-4"]
 links: ["[[data-retention-policy]]", "[[access-control-policy]]"]
 ---
