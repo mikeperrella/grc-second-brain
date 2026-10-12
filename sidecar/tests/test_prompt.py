@@ -8,7 +8,6 @@ only the control it names can make it pass.
 """
 
 import hashlib
-import os
 import re
 
 import pytest
@@ -116,20 +115,9 @@ def test_the_template_hash_is_recorded_and_pinned() -> None:  # [NEG] any prompt
     needs a tuning-log entry and the owner's approval, and this literal is updated with it."""
     computed = hashlib.sha256(SYSTEM_TEMPLATE.encode("utf-8")).hexdigest()
     recorded = PROMPT_TEMPLATE_SHA256
-    pinned = "9a6f76528c967e1075a3c9f44f300d6e0eb49f39f85255daadf904f06b943532"
+    pinned = "3de5c706b14ae3cd040105533c37985b3b7fd30ea14ef59ee3cd88e0ef3d8b90"
     assert recorded == computed
     assert computed == pinned
-
-
-def test_the_per_request_boundary_comes_after_the_long_static_prefix() -> None:
-    """Variant (c): Ollama's prompt cache reuses an identical prefix, so the random boundary must
-    not appear until the static instructions are done. Two requests differ only after it."""
-    first = build_prompt("q?", [company(1, "t")], boundary=B).system
-    second = build_prompt("q?", [company(1, "t")], boundary="BND-ffffffffffffffffffffffff").system
-    shared = len(os.path.commonprefix([first, second]))
-    # the two boundaries themselves share their "BND-" prefix, so the match runs that far in
-    assert shared == SYSTEM_TEMPLATE.index("{boundary}") + len("BND-")
-    assert shared > len(SYSTEM_TEMPLATE) * 0.7
 
 
 def test_the_system_message_fits_its_cap_with_a_real_boundary() -> None:

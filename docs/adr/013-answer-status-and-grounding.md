@@ -134,7 +134,7 @@ fixtures/adversarial-m5/vault guest-wifi-note.md 5daa261ea2d5a87b99e64fcbc05e9dd
 fixtures/adversarial-m5/vault printer-note.md bea57bb2f7932e4a1145beca1cdc5bb2ca38776a0b1f126e6cb7a456ea870806
 ```
 
-Hostile cell texts (`fixtures/adversarial-m5/questionnaire-cells.json`, canonical JSON): `b24369af4d5932e4c82a6b3c4b7c8dda68d4052500e1154a5866f16d7a4ec169`. The prompt template is pinned separately: `3de5c706b14ae3cd040105533c37985b3b7fd30ea14ef59ee3cd88e0ef3d8b90` at the freeze (ADR-012); after tuning variant (c) it is `9a6f76528c967e1075a3c9f44f300d6e0eb49f39f85255daadf904f06b943532` (see the tuning log).
+Hostile cell texts (`fixtures/adversarial-m5/questionnaire-cells.json`, canonical JSON): `b24369af4d5932e4c82a6b3c4b7c8dda68d4052500e1154a5866f16d7a4ec169`. The prompt template is pinned separately: `3de5c706b14ae3cd040105533c37985b3b7fd30ea14ef59ee3cd88e0ef3d8b90` (ADR-012).
 
 **Enforced by tests, not by this paragraph.** `tests/test_eval_freeze.py` pins all of the above, so a changed label, note, cell text or clock fails it, and `tests/test_prompt.py` pins the template. Failing one of them after the first live run means a tuning-log entry and the owner's approval, and the pin is updated in the same commit. **Mutation proofs (M5g):** one word of `encryption-policy.md` changed (caught by `test_no_vault_note_has_changed_since_the_freeze`, and also by two eval-set tests because EV-104's labeled phrase no longer exists), one label's question reworded (caught by `test_a_split_has_not_changed_since_the_freeze[dev]`, 1 failed, 4 passed), one hostile cell text changed (caught by `test_the_hostile_cell_texts_have_not_changed_since_the_freeze`, 1 failed, 4 passed). Each file was restored and its raw sha256 matched the value taken before the break (`encryption-policy.md` `0ac9ea47...26d3`, `eval-set.json` `56e8d849...d6e2`, `questionnaire-cells.json` `2d3f0961...a1f4`). Five further proofs cover the new checker and report: the expected-value-in-lines check always passing (2 failed), the control-question check disabled (1 failed), `identifier_not_in_source` no longer counted as a code check (2 failed), `value_found` always returning true (2 failed), and the control pair always saying "same outcome" (1 failed); each restored with a matching hash.
 
@@ -212,13 +212,7 @@ In the owner's decided order, each variant measured alone:
 
 ## Tuning log
 
-Live check A found failures; the owner decided no label, prompt or vault change is made now (labels frozen by `test_eval_freeze.py`; template pinned by `test_prompt.py`). Any label edit or prompt change after live check A is recorded here with the reason and the owner's approval, and the pinned hash is updated in the same commit.
-
-| # | Variant | Reason | Approved by | Old template hash | New template hash |
-|---|---|---|---|---|---|
-| 1 | (c) Reorder the system template: the section "How the user message is built" (the only place the per-request boundary appears) moves from the top to the end, after Sources, the reply fields and Rules. | Speed. The static text before the first boundary grows from about 330 to 2,094 of 2,601 template characters, so Ollama's prompt cache can reuse that prefix between requests. | Owner | `3de5c706b14ae3cd040105533c37985b3b7fd30ea14ef59ee3cd88e0ef3d8b90` | `9a6f76528c967e1075a3c9f44f300d6e0eb49f39f85255daadf904f06b943532` |
-
-Variant (c) changes no word of the instructions, only their order. Unchanged: the boundary is random per request and appears in the template exactly twice, data stays inside boundary-marked blocks of the user message, the labels, the vault and the grounding rules. New test: `test_the_per_request_boundary_comes_after_the_long_static_prefix`. **Not measured yet:** whether it saves time, and whether answers change (the order of instructions can change a model's behaviour); both are for the owner's three dev runs. Nothing was run against Ollama.
+Live check A found failures; the owner decided no label, prompt or vault change is made now (labels frozen by `test_eval_freeze.py`; template pinned by `test_prompt.py`). No entries yet. Any label edit or prompt change after live check A is recorded here with the reason and the owner's approval, and the pinned hash is updated in the same commit.
 
 ## What M5e built, and four things it settled
 
