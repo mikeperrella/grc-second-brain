@@ -16,9 +16,21 @@ Each command selects ONE test with `-k`:
     # (stop Ollama, then) every answer must be blank and say the model is unavailable
     .venv/Scripts/python -m pytest -m ollama -s -rN tests/test_answer_live.py -k stopped
 
-THE HELD-OUT SPLIT is run once, at live check B. It needs both
+STOPPING OLLAMA ON WINDOWS. Never use the `ollama` command (not even `ollama list`) while stopping
+or checking: on Windows the CLI starts the server again if it is stopped, which is why the first
+attempts at this step failed with "Ollama is running" (ADR-012). Stop it and check it like this
+(PowerShell), then run the stopped test:
+
+    Get-Process *ollama* | Stop-Process -Force
+    Get-Process *ollama* -ErrorAction SilentlyContinue      # must print nothing
+    netstat -ano | findstr 11434                            # must show no LISTENING line
+
+THE HELD-OUT SPLIT is run 3 times at live check B, and all three runs are reported in full with the
+acceptance criterion for each (ADR-013, pre-registration update: a single dev run varied from 7 to
+10 answered blank items, so no run is discarded or selected). It needs both
 `ALIBI_EVAL_SPLIT=heldout` and `ALIBI_EVAL_HELDOUT_CONFIRM=run-the-heldout-split-once`, so it cannot
-be started by accident, and the command and its full output go in the ADR.
+be started by accident, and the commands and their full output go in the ADR. Only the owner starts
+a live run.
 
 The first run indexes the evaluation vaults and every pack with the real embedding model into a
 folder under your temp directory (a few minutes; later runs embed only what changed). The grading
@@ -174,7 +186,7 @@ def chosen_split() -> str:
         pytest.fail(f"{SPLIT_VAR} must be dev or heldout, not {split!r}")
     if split == "heldout" and os.environ.get(CONFIRM_VAR) != CONFIRM_VALUE:
         pytest.fail(
-            "The held-out split is run once, at live check B. To run it, set "
+            "The held-out split is run 3 times, at live check B, by the owner. To run it, set "
             f"{CONFIRM_VAR}={CONFIRM_VALUE} (and say so in the ADR). Not run."
         )
     return split
@@ -296,7 +308,11 @@ def test_with_ollama_stopped_every_answer_is_blank_and_says_the_model_is_unavail
         return True
 
     if asyncio.run(ollama_is_running()):
-        pytest.fail("Ollama is running. Stop it first, then run this test again.")
+        pytest.fail(
+            "Ollama is running. Stop it with `Get-Process *ollama* | Stop-Process -Force`, check "
+            "with `Get-Process *ollama*` and `netstat -ano | findstr 11434`, and do NOT use the "
+            "`ollama` command (on Windows it restarts the server). Then run this test again."
+        )
     items = [i for i in load_eval_set(EVAL_SET).items if i.split == "dev"][:12]
 
     async def scenario() -> list[Row]:

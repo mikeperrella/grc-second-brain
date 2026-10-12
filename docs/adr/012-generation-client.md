@@ -28,9 +28,9 @@ It is a lightweight tag: the object is the commit itself, so there is nothing to
 | 6 | What the response reports | `Metrics` (`api/types.go:562-570`): `total_duration`, `load_duration`, `prompt_eval_count`, `prompt_eval_cached_count` (a pointer), `prompt_eval_duration`, `eval_count`, `eval_duration`. `ChatResponse` (525-554) adds `done_reason` and has **no digest**. | Verbatim |
 | 7 | Updates | `UpdateCheckInterval = 60 * 60 * time.Second` (`app/updater/updater.go:35`); a ticker (374); the comment "Always check for updates" (388); `if !settings.AutoUpdateEnabled {` (401): the download is gated by that setting and the check is not. No environment variable was found. Where the setting is stored in 0.40.3, and its UI toggle, were not read. | Verbatim lines; storage unverified |
 
-**Unverified, and tested black-box at live check A instead of being assumed:**
+**Unverified when this ADR was written, and tested black-box at live check A instead of being assumed** (what live check A found is in "Live check A results (M5h)" below):
 
-- whether chat with `"shift": false` really returns the 400 for an oversize prompt (the code path in row 4 is `completionPromptForRequest`; whether the chat path reaches it was not read);
+- whether chat with `"shift": false` really returns the 400 for an oversize prompt (the code path in row 4 is `completionPromptForRequest`; whether the chat path reaches it was not read). **Tested at live check A: it does.**
 - whether `prompt_eval_count` includes cached tokens (there is a separate `prompt_eval_cached_count`);
 - whether cloud-named models appear in `GET /api/tags`;
 - whether `server.log` contains prompt text at any level;
@@ -58,11 +58,68 @@ Positive: the generation path has the same restrictions as the embedding path, a
 
 Negative or risky:
 
-- The truncation control depends on an unverified assumption until live check A (the chat path honouring `shift: false`). If check A shows a silent cut, the decision is re-opened, not worked around.
+- The truncation control depended on an unverified assumption (the chat path honouring `shift: false`). Live check A tested it with one oversize prompt on Ollama 0.40.3 and got the 400 (see below). It is one probe on one version: it must be repeated if Ollama is updated.
 - The response-side remote check (c) cannot prevent a leak.
 - Every number in decision 4 is derived from a tokenizer that is not the generation model's. They are starting values, kept honest by the post-check and the live probe.
 - Treating a refused model as "missing" makes the message less specific. A user who configured `llama3.1:cloud` sees a missing model, and the log says why.
 - Ollama may write full request bodies to its temp directory if a user sets `OLLAMA_DEBUG_LOG_REQUESTS`. Threat-model Section 7 records it; live checks A and B look for the directory.
+
+## Live check A results (M5h)
+
+Run by the owner on 2026-10-11 and saved as `live-check-a.txt` outside the repository (never committed). Everything in this section is quoted or counted from that file unless it says "assistant probe". The evaluation part (the dev split) is recorded in ADR-013.
+
+**Versions, before and after.** `ollama --version` printed `ollama version is 0.40.3` before the run and again after it. `ollama list` printed the same two models both times: `nomic-embed-text:latest` `0a109f422b47` 274 MB and `llama3.1:8b` `46e0c10c039e` 4.9 GB, both "6 days ago". Nothing changed during the check. The run header gives the full digest of the generation model: `46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`.
+
+**Environment (threat model Section 8, claim 11).** `OLLAMA_DEBUG` and `OLLAMA_DEBUG_LOG_REQUESTS` were empty at Process, User and Machine scope, and the search of `$env:TEMP`, `$env:TMP` and `C:\Windows\Temp` for `ollama-request-logs-*` printed nothing.
+
+**The oversize probe (decision 3, row 4).** The test sent about 30,000 tokens (`"word " * 30_000` as the user message) with `shift: false`, `num_ctx` 11,264 and `num_predict` 8, past the client's own size check, straight to `POST /api/chat`. Result, verbatim:
+
+```
+status: 400
+body (first 400 characters): {"error":"the prompt is longer than the context length currently available to the model; shorten the prompt, adjust the context length in settings, or use a model with a longer context length"}
+RESULT: the over-long prompt was REFUSED with an error (what ADR-012 expects)
+```
+
+It took 0.61 s. So on Ollama 0.40.3 the chat path honours `shift: false` and refuses instead of cutting, which is the behaviour decision 3 rests on. **Limits:** one probe, one prompt shape (a single very long user message, which is the shape this client sends), one version. It does not show what happens at a prompt just above the window, and it was not repeated after the model and the options changed.
+
+**The canary in Ollama's own logs.** A vault note carrying the string `ALIBI-CANARY-d32f898691d0` was indexed (65 chunks, one more than the 64 of the dev run) and one question about it was answered (`status=SUPPORTED reasons=[]`). The test then searched for the string:
+
+```
+searched C:\Users\miker\AppData\Local\Ollama\server.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
+searched C:\Users\miker\AppData\Local\Ollama\app.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
+```
+
+It also looks for `ollama-request-logs-*` folders and found none to search. **Limits:** this is at Ollama's default log level (`OLLAMA_DEBUG` was empty); it says nothing about DEBUG or TRACE logging, and the prompt text would have been in the log only if Ollama wrote prompts at the default level. Zero occurrences in two files after one question is evidence that it does not, not proof.
+
+**Stopping Ollama on Windows: what failed first.** Step 5 needs Ollama stopped. The owner reports that the first two attempts failed with `Failed: Ollama is running. Stop it first, then run this test again.`; the saved file contains one of them. Between stopping Ollama and the test, the owner had run `ollama list`, and the test's own reachability check then found a running server. **Finding: on Windows, running the `ollama` command line (for example `ollama list`) starts the server again if it is stopped.** The stop was then verified without the CLI:
+
+```
+PS> Get-Process *ollama* | Stop-Process -Force
+PS> Get-Process *ollama* -ErrorAction SilentlyContinue
+(nothing printed)
+PS> netstat -ano | findstr 11434
+  TCP    127.0.0.1:61418        127.0.0.1:11434        TIME_WAIT       0
+```
+
+`Get-Process` listed no process, and netstat showed no LISTENING line, only one connection in TIME_WAIT. From then on the instructions say to stop and check with `Get-Process *ollama*` and `netstat -ano | findstr 11434` and never to run `ollama list` or any `ollama` command (the `tests/test_answer_live.py` docstring and its failure message say so). I confirm the same finding from my own session: I ran `ollama ps` once while the server was running, which is safe, and used `tasklist` and `netstat` for everything else.
+
+**The official step 5 run, with Ollama stopped (the retry that passed).**
+
+```
+model gate: state=degraded ollama=unreachable missing=('nomic-embed-text', 'llama3.1:8b')
+EV-001 ... EV-012: every row  NEEDS_REVIEW  model_unavailable,lexical_only   0 attempts, 0.0 to 0.2 s
+12 of 12 questions had a context and so reached the model gate
+1 passed, 3 deselected in 5.89s
+```
+
+All 12 dev questions ended `NEEDS_REVIEW` with `model_unavailable` (and `lexical_only`, because the embedding model was unreachable too, so retrieval was keyword-only). The ten rows labeled `answer` print `PROBLEM: status NEEDS_REVIEW is not one of ['SUPPORTED', 'PARTIAL']`: that is the harness grading against the labels, and it is the expected, correct behaviour when no model exists (the test asserts blank and `model_unavailable`, not the labels). Decision 13 holds: no answer is written, no error escapes, and the reason says why.
+
+**Findings that bear on the design (recorded; nothing was changed).**
+
+1. **The read timeout and a long output.** The client's read timeout is 120 s after the first call and 180 s for the first (`generation_client.py:73-74`). With `stream: false`, that read timeout covers the whole generation. On this CPU-only machine decode ran at about 5.8 tokens per second (assistant probe below), so an output of the maximum the schema allows (`num_predict` 1,900 tokens) would take about 330 s and would hit the timeout, which the client reports as `GenerationUnavailableError`, which the service reports as `model_unavailable`, which tells a run to stop. In the dev run the longest single question took 165.8 s with two attempts and no call timed out, and the largest output of one question was 408 tokens over two attempts, so it did not happen. It could happen on a slower machine or with a longer answer, and it would fail closed but stop a run. Decision 9 said the timeouts would be "tuned from live check A"; this is the evidence for doing it, and the owner has decided the fix: not in M5h, but in M5k before live check B, the read timeout is derived from `num_predict` and the measured decode speed (about 5.8 tokens per second, roughly 600 s with margin) as a test-asserted constant with a mutation proof, recorded here when it is built in M5k. A timeout mid-run must still fail closed per D13. Not changed in M5h.
+2. **Seed determinism.** Decision 4 recorded that a fixed seed does not guarantee identical output across machines. Live check A and the assistant's re-run (ADR-013, "Second observation") ran the same code, model digest, seed and temperature 0 on the same machine and gave different answers: 7 and 10 answered blank-labeled dev items. Same-machine repeatability is therefore also not guaranteed, and a single run is not a stable measurement.
+3. **The sizing assumption.** Observed prompt characters per token were 3.63 to 4.40 (median 3.99) over 31 questions, against the 1.38 assumed in `limits.py`. The assumption is very conservative; real prompts stayed at or under 3,318 tokens summed over two attempts, against a window of 11,264.
+4. **Throughput (assistant probe).** I ran one controlled timing against the owner's Ollama (the owner has since ruled that I do not do this without being asked): `ollama ps` showed `llama3.1:8b` on `100% CPU`. A 1,527-token prompt took 47.1 s to prefill cold at `num_ctx` 11,264 and 43.4 s at 4,096 (that run also included a 14 s model reload), decode ran at 5.8 and 4.9 tokens per second, and the same prompt sent again prefilled in 0.2 s (prompt cache). So `num_ctx` is not what costs time; prefill and decode on CPU are. The random boundary near the start of the system message limits prefix caching of the rest of it.
 
 ## Mutation proofs (M5c)
 
