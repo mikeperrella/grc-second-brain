@@ -1,6 +1,6 @@
 # ADR-014: Questionnaire files and runs
 
-Status: Accepted (M5i, the reading half; M5j, the writing half; M5k, the runs and the routes). Facts about the packages and the numbers below were checked on 2026-10-12 on the Windows development machine.
+Status: Accepted, final for M5 (M5i, the reading half; M5j, the writing half; M5k, the runs and the routes; M5l, the demo and end-to-end run; live check B done). Facts about the packages and the numbers below were checked on 2026-10-12 on the Windows development machine.
 
 ## Context
 
@@ -245,3 +245,7 @@ Demo question D-06 (the planted 90-vs-365-day conflict, expected blank) ended SU
 - **The HTTP test transport buffers a whole response**, so the tests read a stream after the run it describes has ended, and test concurrency (a held run, `/health`, a second start) with separate requests. A real client reading the stream live is exercised only at live check B.
 - **One timeout measurement** (ADR-012, "The read timeout, derived (M5k)").
 - **`ConfigurationError` is mapped to `questionnaire_root_unusable`** (503) for every route; today only the questionnaire routes can raise it.
+
+## A test that failed only in the air-gap container (found at M5n)
+
+When the M5n local checks ran the full suite in the `--network none` container (the CI `airgap` job's own command), one test failed: `test_source_hygiene.py::test_no_file_in_the_repository_contains_a_direction_control`. It had been added in `39aa7cd` and had never run under CI (billing block). It found its repository root by counting two folders above the test file; in the image the tests live in `/app/tests`, so that root was `/`, the walk covered the whole filesystem, and it read a hostile fixture another test had written into pytest's temp folder (`hostile/rtl.md`, which holds a direction control on purpose). On Windows the count points at the real repository, so the test passed there and the mistake was invisible. The fix (commit `e709d77`) finds the root by markers (`CLAUDE.md` and `sidecar/pyproject.toml`, never a filesystem root); with no root the test skips with an explicit reason, which only the `airgap` job allows, and negative tests cover a missing marker. Mutation proof: with the marker check changed from "all" to "any", `test_no_root_is_returned_when_a_marker_is_missing` fails for the two single-marker cases (2 failed, 18 passed); restored, the file hash matches. Limit: the separate guard against a filesystem root has no mutation proof, because without it the marker check alone still returns nothing there.

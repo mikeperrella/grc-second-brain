@@ -1,6 +1,6 @@
 # ADR-012: Generation client, and what Ollama v0.40.3 does with a chat request
 
-Status: Accepted (M5a). Amends CLAUDE.md 3.7 (non-local models are refused) and 8.3 (exactly two messages per request, one shared retry budget). This ADR records the decisions and the evidence they rest on. The client and the gate's non-local refusal are built in M5c; the prompt builder, the output schema and the retry loop in M5d. Each has its mutation proofs at the end.
+Status: Accepted, final for M5 (live checks A and B done; M5m stopped, no further change in M5). Amends CLAUDE.md 3.7 (non-local models are refused) and 8.3 (exactly two messages per request, one shared retry budget). This ADR records the decisions and the evidence they rest on. The client and the gate's non-local refusal are built in M5c; the prompt builder, the output schema and the retry loop in M5d. Each has its mutation proofs at the end.
 
 ## Context
 

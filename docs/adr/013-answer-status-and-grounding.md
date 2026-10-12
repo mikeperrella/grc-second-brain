@@ -1,6 +1,6 @@
 # ADR-013: Answer status and grounding
 
-Status: Accepted (M5a). Revisits CLAUDE.md 8.4 (the status bands are replaced), amends 8.3 (one shared retry budget) and Section 11 (the SUPPORTED rule). The code is built in M5e and M5f. The evidence freeze (hashes of the eval set and the vault) is filled in at M5g; the live results are filled in at M5h.
+Status: Accepted, final for M5 (live checks A and B done; M5m stopped after variant (c), the held-out split is spent). Revisits CLAUDE.md 8.4 (the status bands are replaced), amends 8.3 (one shared retry budget) and Section 11 (the SUPPORTED rule). The code is built in M5e and M5f. The evidence freeze (hashes of the eval set and the vault) is filled in at M5g; the live results are filled in at M5h.
 
 ## Context
 
