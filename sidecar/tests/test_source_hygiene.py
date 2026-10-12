@@ -12,7 +12,28 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# Folders that must both exist for a folder to count as the repository root.
+ROOT_MARKERS = ("CLAUDE.md", "sidecar/pyproject.toml")
+# The skip reason when there is no repository. check_junit_skips.py matches it exactly, and the
+# air-gap job lists it in its --allow arguments; the Windows run and python.yml allow nothing.
+NO_ROOT_REASON = "Repository root not found (air-gap container holds only sidecar/)"
+
+
+def find_repository_root(start: Path) -> Path | None:
+    """The nearest folder above `start` that holds every marker, or None.
+
+    Counting parent folders is wrong in the air-gap container, where the tests live in
+    /app/tests and "two folders up" is the filesystem root. A filesystem root is never accepted.
+    """
+    for folder in (start, *start.parents):
+        if folder == folder.parent:
+            return None
+        if all((folder / marker).is_file() for marker in ROOT_MARKERS):
+            return folder
+    return None
+
+
+REPO_ROOT = find_repository_root(Path(__file__).resolve())
 SUFFIXES = {".py", ".md", ".yml", ".yaml", ".rs", ".ts", ".tsx", ".json", ".toml"}
 SKIPPED_DIRS = {".git", "node_modules", "target", ".venv", "__pycache__", "dist", "fixtures-out"}
 
@@ -31,19 +52,21 @@ def offenders(text: str) -> list[int]:
     ]
 
 
-def tracked_text_files() -> list[Path]:
+def tracked_text_files(root: Path) -> list[Path]:
     found: list[Path] = []
-    for path in REPO_ROOT.rglob("*"):
+    for path in root.rglob("*"):
         if path.suffix not in SUFFIXES or not path.is_file():
             continue
-        if SKIPPED_DIRS & set(path.relative_to(REPO_ROOT).parts):
+        if SKIPPED_DIRS & set(path.relative_to(root).parts):
             continue
         found.append(path)
     return found
 
 
 def test_no_file_in_the_repository_contains_a_direction_control() -> None:  # [NEG]
-    files = tracked_text_files()
+    if REPO_ROOT is None:
+        pytest.skip(NO_ROOT_REASON)  # never walk anything without a root
+    files = tracked_text_files(REPO_ROOT)
     assert len(files) > 100  # the walk found the repository, so an empty result means something
     found: dict[str, list[int]] = {}
     for path in files:
@@ -54,6 +77,46 @@ def test_no_file_in_the_repository_contains_a_direction_control() -> None:  # [N
         if lines := offenders(text):
             found[str(path.relative_to(REPO_ROOT))] = lines
     assert found == {}
+
+
+def make_root(folder: Path, markers: tuple[str, ...]) -> None:
+    for marker in markers:
+        target = folder / marker
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x", encoding="utf-8")
+
+
+def test_the_root_is_found_by_its_markers_from_any_depth(tmp_path: Path) -> None:
+    make_root(tmp_path / "repo", ROOT_MARKERS)
+    deep = tmp_path / "repo" / "sidecar" / "tests" / "nested"
+    deep.mkdir(parents=True)
+    assert find_repository_root(deep) == tmp_path / "repo"
+
+
+def test_the_real_repository_has_a_root_here_or_the_walk_is_skipped() -> None:
+    # On a checkout the root is found, so the walk really runs; in the container it is None.
+    assert REPO_ROOT is None or all((REPO_ROOT / m).is_file() for m in ROOT_MARKERS)
+
+
+@pytest.mark.parametrize(
+    "markers",
+    [(), ("CLAUDE.md",), ("sidecar/pyproject.toml",)],
+    ids=["no-marker", "only-CLAUDE.md", "only-sidecar-pyproject"],
+)
+def test_no_root_is_returned_when_a_marker_is_missing(
+    tmp_path: Path, markers: tuple[str, ...]
+) -> None:  # [NEG]
+    make_root(tmp_path / "partial", markers)
+    start = tmp_path / "partial" / "sidecar" / "tests"
+    start.mkdir(parents=True, exist_ok=True)
+    assert find_repository_root(start) is None
+
+
+def test_a_filesystem_root_is_never_returned(tmp_path: Path) -> None:  # [NEG]
+    anchor = Path(tmp_path.anchor)
+    for start in (anchor, tmp_path):
+        found = find_repository_root(start)
+        assert found is None or found != found.parent  # never "/" or a drive root
 
 
 @pytest.mark.parametrize("point", sorted(DIRECTION_CONTROLS))
