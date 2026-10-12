@@ -25,6 +25,8 @@ apps/desktop/src-tauri/binaries/
 *.db
 data/
 output/
+# Generated demo spreadsheet (tools/make_demo_xlsx.py) and the live test's run folders
+fixtures-out/
 *.log
 
 # Secrets and local overrides

@@ -54,6 +54,45 @@ NUM_CTX: Final = (
     * _CONTEXT_ROUNDING
 )
 
+# ----- the read timeout, from the output cap and the measured decode speed -----------------------
+# A reply is not streamed (`stream: false`), so the client's read timeout covers the whole
+# generation: reading the prompt, then writing every token. Live check A (2026-10-11, the owner's
+# CPU-only machine, Ollama 0.40.3) measured about 5.8 tokens per second while writing; a reply of
+# the maximum size, NUM_PREDICT tokens, therefore takes about 328 seconds. The former starting
+# value of 120 seconds would have cut that off, which the client reports as "generation
+# unavailable" and a run treats as "Ollama is gone" and stops. ADR-012, decision 9 and "Live check
+# A results", finding 1.
+#
+# The timeout is derived, not typed in: the decode time of a maximal reply, doubled (the doubling
+# covers reading the prompt, which the assistant's own one-machine probe put at about 32 tokens per
+# second, and machines slower than this one), rounded up to whole minutes. A test asserts the
+# result, so changing NUM_PREDICT or the speed cannot leave a stale timeout behind.
+MEASURED_DECODE_TOKENS_PER_SECOND_TENTHS: Final = 58  # 5.8 tokens per second, as tenths
+READ_TIMEOUT_MARGIN_FACTOR: Final = 2
+_TIMEOUT_ROUNDING_SECONDS: Final = 60
+
+
+def decode_seconds(output_tokens: int, tokens_per_second_tenths: int) -> int:
+    """Whole seconds to write `output_tokens` at the given speed (in tenths), rounded up."""
+    return math.ceil(output_tokens * 10 / tokens_per_second_tenths)
+
+
+def derive_read_timeout(output_tokens: int, tokens_per_second_tenths: int, margin: int) -> int:
+    """The decode time of a maximal reply times the margin, rounded up to whole minutes."""
+    seconds = decode_seconds(output_tokens, tokens_per_second_tenths) * margin
+    return math.ceil(seconds / _TIMEOUT_ROUNDING_SECONDS) * _TIMEOUT_ROUNDING_SECONDS
+
+
+DECODE_SECONDS_AT_MAX_OUTPUT: Final = decode_seconds(
+    NUM_PREDICT, MEASURED_DECODE_TOKENS_PER_SECOND_TENTHS
+)
+READ_TIMEOUT_SECONDS: Final = derive_read_timeout(
+    NUM_PREDICT, MEASURED_DECODE_TOKENS_PER_SECOND_TENTHS, READ_TIMEOUT_MARGIN_FACTOR
+)
+# The first call also makes Ollama load the model into memory (14 seconds at live check A).
+FIRST_CALL_EXTRA_SECONDS: Final = 60
+FIRST_CALL_READ_TIMEOUT_SECONDS: Final = READ_TIMEOUT_SECONDS + FIRST_CALL_EXTRA_SECONDS
+
 # ----- decoding ----------------------------------------------------------------------------------
 TEMPERATURE: Final = 0
 # A fixed seed makes a run repeatable on one machine. It does NOT guarantee identical output across

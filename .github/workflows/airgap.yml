@@ -45,7 +45,9 @@ jobs:
       # -p no:cacheprovider: the root filesystem is read-only, so pytest cannot write .pytest_cache.
       # The junit file goes to /tmp (in memory); the skip check is mounted read-only from the repo
       # and runs in the same container, because the container and its /tmp are gone afterwards.
-      # Linux accepts only the Windows-only path skips, as in python.yml.
+      # Linux accepts the Windows-only path skips, as in python.yml, and one more here: the
+      # repository-wide hygiene walk skips itself because the image holds only sidecar/ (no
+      # CLAUDE.md), so there is no repository root to walk. python.yml and windows.yml allow no such skip.
       # The vault tests read the synthetic vaults (vault-sample, vault-demo) and the adversarial
       # and evaluation fixtures from the repo root.
       # In the image the tests live in /app/tests, so "two directories above tests" is "/": the
@@ -64,7 +66,7 @@ jobs:
             grc-airgap sh -c '
             python -m pytest -rs -p no:cacheprovider --junitxml=/tmp/junit.xml
             pytest_status=$?
-            python /ci-scripts/check_junit_skips.py /tmp/junit.xml --allow "Windows-only path behavior"
+            python /ci-scripts/check_junit_skips.py /tmp/junit.xml --allow "Windows-only path behavior" --allow "Repository root not found (air-gap container holds only sidecar/)"
             skips_status=$?
             [ "$pytest_status" -eq 0 ] && [ "$skips_status" -eq 0 ]
           '

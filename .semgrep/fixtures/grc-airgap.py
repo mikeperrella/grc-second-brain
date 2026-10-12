@@ -142,6 +142,90 @@ chat_longer_word = "/api/chatter"
 # ok: grc-py-chat-endpoint-outside-generation-client
 chat_prose = "the support chat is open"
 
+# ---------- grc-py-load-workbook-outside-loader ----------
+# ruleid: grc-py-load-workbook-outside-loader
+from openpyxl import load_workbook
+# ruleid: grc-py-load-workbook-outside-loader
+book = openpyxl.load_workbook(path)
+# ruleid: grc-py-load-workbook-outside-loader
+book = load_workbook(BytesIO(data), read_only=False)
+# ruleid: grc-py-load-workbook-outside-loader
+from openpyxl.reader.excel import load_workbook as read_book
+# ok: grc-py-load-workbook-outside-loader
+book_count = len(workbooks)
+# ok: grc-py-load-workbook-outside-loader
+loaders = load_workbooks_report
+# ok: grc-py-load-workbook-outside-loader
+loader = questionnaire_loader.load_questionnaire(data)
+
+# ---------- grc-py-workbook-save-outside-writer ----------
+# ruleid: grc-py-workbook-save-outside-writer
+workbook.save(buffer)
+# ruleid: grc-py-workbook-save-outside-writer
+loaded.workbook.save(path)
+# ok: grc-py-workbook-save-outside-writer
+saved_flag = True
+# ok: grc-py-workbook-save-outside-writer
+autosave_every = 30
+
+# ---------- grc-py-questionnaire-file-write-call ----------
+# ruleid: grc-py-questionnaire-file-write-call
+target.write_bytes(data)
+# ruleid: grc-py-questionnaire-file-write-call
+target.write_text(text, encoding="utf-8")
+# ruleid: grc-py-questionnaire-file-write-call
+os.replace(temp_name, final_name)
+# ruleid: grc-py-questionnaire-file-write-call
+os.rename(temp_name, final_name)
+# ruleid: grc-py-questionnaire-file-write-call
+shutil.copyfile(source, destination)
+# ruleid: grc-py-questionnaire-file-write-call
+shutil.copy2(source, destination)
+# ruleid: grc-py-questionnaire-file-write-call
+shutil.move(source, destination)
+# ok: grc-py-questionnaire-file-write-call
+data = target.read_bytes()
+# ok: grc-py-questionnaire-file-write-call
+exists = os.path.exists(target)
+# ok: grc-py-questionnaire-file-write-call
+renamed_count = 0
+
+# ---------- grc-py-questionnaire-open-mode ----------
+# ruleid: grc-py-questionnaire-open-mode
+handle = open(path, "wb")
+# ruleid: grc-py-questionnaire-open-mode
+handle = open(path, "w", encoding="utf-8")
+# ruleid: grc-py-questionnaire-open-mode
+handle = open(Path(root) / name, mode="ab")
+# ruleid: grc-py-questionnaire-open-mode
+handle = open(path, 'r+b')
+# ruleid: grc-py-questionnaire-open-mode
+handle = path.open("w")
+# ok: grc-py-questionnaire-open-mode
+handle = open(path, "rb")
+# ok: grc-py-questionnaire-open-mode
+handle = open(path, "xb")
+# ok: grc-py-questionnaire-open-mode
+handle = open(Path(root) / name, mode="xb")
+# ok: grc-py-questionnaire-open-mode
+stream = archive.open(info)
+# ok: grc-py-questionnaire-open-mode
+text = open(path).read()
+
+# ---------- grc-py-questionnaire-delete-outside-writer ----------
+# ruleid: grc-py-questionnaire-delete-outside-writer
+os.remove(path)
+# ruleid: grc-py-questionnaire-delete-outside-writer
+os.unlink(path)
+# ruleid: grc-py-questionnaire-delete-outside-writer
+path.unlink()
+# ruleid: grc-py-questionnaire-delete-outside-writer
+path.unlink(missing_ok=True)
+# ok: grc-py-questionnaire-delete-outside-writer
+unlinked_total = 0
+# ok: grc-py-questionnaire-delete-outside-writer
+removed = items.remove_all
+
 # ---------- grc-py-yaml-unsafe-load ----------
 # ruleid: grc-py-yaml-unsafe-load
 yaml.load(text)

@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     # directory, and startup must not fail over a setting nothing uses yet (same reasoning as
     # ADR-009's deviation from CLAUDE.md 3.7).
     index_dir: Path | None = None
+    # Where questionnaire workbooks are read from and where answers files are written (ADR-014).
+    # Both are chosen only here until the folder pickers exist (M6). Neither may be inside or
+    # contain the vault or the index: ALIBI never writes into the vault (CLAUDE.md 8.1), and an
+    # export folder that held the index would put a workbook next to derived state. Unset means
+    # the questionnaire routes refuse with a typed error (M5k), not that a default is guessed.
+    questionnaire_dir: Path | None = None
+    export_dir: Path | None = None
     # Bundled framework packs (ADR-008). Whether it exists is checked when packs are loaded.
     packs_dir: Path | None = None
     embedding_model: str = "nomic-embed-text"
@@ -78,7 +85,22 @@ class Settings(BaseSettings):
     # the run fails closed (before any database write) if it differs from this.
     embedding_dimension: int = Field(default=768, gt=0, le=8192)
 
-    @field_validator("log_dir", "vault_dir", "index_dir", "packs_dir")
+    @field_validator("questionnaire_dir", "export_dir")
+    @classmethod
+    def _questionnaire_dirs_must_not_overlap_vault_or_index(
+        cls, value: Path | None, info: ValidationInfo
+    ) -> Path | None:
+        if value is None:
+            return None
+        for other_name in ("vault_dir", "index_dir"):
+            other = info.data.get(other_name)  # declared above, so already validated
+            if other is not None and (_is_inside(value, other) or _is_inside(other, value)):
+                raise ValueError(f"{info.field_name} must not overlap {other_name}")
+        return value
+
+    @field_validator(
+        "log_dir", "vault_dir", "index_dir", "packs_dir", "questionnaire_dir", "export_dir"
+    )
     @classmethod
     def _dirs_must_be_absolute(cls, value: Path | None) -> Path | None:
         if value is not None and not value.is_absolute():
@@ -154,7 +176,25 @@ def validate_runtime_dirs(settings: Settings) -> Settings:
     )
     if nested:
         raise ConfigurationError("Invalid configuration for: index_dir")
-    return settings.model_copy(update={"vault_dir": vault, "index_dir": index})
+    questionnaire = _existing_directory(settings.questionnaire_dir, "questionnaire_dir")
+    export = _existing_directory(settings.export_dir, "export_dir")
+    for name, folder in (("questionnaire_dir", questionnaire), ("export_dir", export)):
+        for other in (vault, index):
+            overlaps = (
+                folder is not None
+                and other is not None
+                and (_is_inside(folder, other) or _is_inside(other, folder))
+            )
+            if overlaps:
+                raise ConfigurationError(f"Invalid configuration for: {name}")
+    return settings.model_copy(
+        update={
+            "vault_dir": vault,
+            "index_dir": index,
+            "questionnaire_dir": questionnaire,
+            "export_dir": export,
+        }
+    )
 
 
 def load_settings() -> Settings:

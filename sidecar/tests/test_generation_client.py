@@ -524,6 +524,9 @@ def test_the_default_timeouts_are_explicit_and_the_first_call_is_longer() -> Non
         assert None not in (timeout.connect, timeout.read, timeout.write, timeout.pool)
     assert FIRST_CALL_TIMEOUT.read is not None and DEFAULT_TIMEOUT.read is not None
     assert FIRST_CALL_TIMEOUT.read > DEFAULT_TIMEOUT.read
+    # The values are the derived ones (limits.py), not typed in again: 660 and 720 seconds.
+    assert DEFAULT_TIMEOUT.read == float(limits.READ_TIMEOUT_SECONDS) == 660.0
+    assert FIRST_CALL_TIMEOUT.read == float(limits.FIRST_CALL_READ_TIMEOUT_SECONDS) == 720.0
 
 
 def test_the_first_call_gets_the_longer_timeout_and_later_calls_the_normal_one() -> None:

@@ -6,6 +6,8 @@ and error text ends up in logs. Mapping these errors to HTTP responses happens i
 one place, added with the first router.
 """
 
+from typing import Literal
+
 
 class GrcError(Exception):
     """Base class for all sidecar domain errors."""
@@ -362,6 +364,123 @@ class NonLocalModelError(GrcError):
     """
 
     default_message = "The model answered from a non-local host"
+
+
+WorkbookRefusal = Literal[
+    # size caps (ADR-014)
+    "file_too_large",
+    "uncompressed_too_large",
+    "too_many_parts",
+    "ratio_too_high",
+    # not a workbook ALIBI can read
+    "not_a_zip",
+    "legacy_or_encrypted",
+    "unsupported_type",
+    "no_workbook_part",
+    "unreadable",
+    # content refused for safety
+    "doctype",
+    "entity",
+    "utf32",
+    "encoding_not_allowed",
+    "duplicate_part",
+]
+
+QuestionMappingRefusal = Literal[
+    "no_mapping",
+    "sheet_not_found",
+    "bad_position",
+    "sheet_too_large",
+    "too_many_questions",
+    "already_has_answer_columns",
+]
+
+
+class WorkbookRefusedError(GrcError):
+    """An input workbook was refused before or while it was read (ADR-014).
+
+    `code` is one of a fixed set of words, never text taken from the file, so the message is safe
+    to show and to log. The file is untrusted: a refusal says which rule fired, not what the file
+    contains.
+    """
+
+    default_message = "The workbook was refused"
+
+    def __init__(self, code: WorkbookRefusal) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: WorkbookRefusal = code
+
+
+WorkbookWriteRefusal = Literal[
+    "answers_incomplete",  # a question has no result to write
+    "bad_output_name",  # the source file name or run id cannot make a safe output name
+    "target_not_empty",  # an output cell is not empty or lies in a merged range
+    "input_changed",  # the input file differs from the bytes that were read and answered
+    "verify_failed",  # the saved workbook, read back from memory, differs from what was intended
+    "output_exists",  # exclusive create failed: a file by that name is already there
+    "write_failed",  # the file could not be written
+    "readback_mismatch",  # the file on disk does not hash like what was written (it is removed)
+]
+
+
+class WorkbookWriteError(GrcError):
+    """The answers file could not be written, and nothing was left behind (ADR-014).
+
+    `code` is a fixed word, never a path or text from the workbook. The input file is never
+    touched, and a file that was created and then found wrong is removed before this is raised.
+    """
+
+    default_message = "The answers file was not written"
+
+    def __init__(self, code: WorkbookWriteRefusal) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: WorkbookWriteRefusal = code
+
+
+class QuestionnaireNotConfiguredError(GrcError):
+    """The questionnaire routes were asked for a run but the folders are not configured.
+
+    A questionnaire run needs the vault, the questionnaire folder and the export folder. Until the
+    folder pickers exist (M6) they come from `GRC_VAULT_DIR`, `GRC_QUESTIONNAIRE_DIR` and
+    `GRC_EXPORT_DIR`; with any of them unset the routes refuse instead of guessing a folder.
+    """
+
+    default_message = "The questionnaire folders are not configured"
+
+
+class RunInProgressError(GrcError):
+    """A questionnaire run is already going. One run at a time (ADR-014)."""
+
+    default_message = "A questionnaire run is already in progress"
+
+
+class RunNotFoundError(GrcError):
+    """No run has this id (or it is older than the few kept in memory)."""
+
+    default_message = "No such questionnaire run"
+
+
+class VaultChangedError(GrcError):
+    """Vault files changed after they were indexed, so a run refuses to start (ADR-014).
+
+    Answers must not be drafted from an index that is known to be behind the vault. The remedy is
+    to re-index. The files are not named: the caller is a UI that already knows its vault.
+    """
+
+    default_message = "The vault changed after it was indexed; index it again before running"
+
+
+class QuestionMappingError(GrcError):
+    """The chosen question columns do not fit the workbook, or the workbook is too big to map.
+
+    `code` is a fixed word, as for `WorkbookRefusedError`.
+    """
+
+    default_message = "The question mapping was refused"
+
+    def __init__(self, code: QuestionMappingRefusal) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: QuestionMappingRefusal = code
 
 
 class PackIntegrityError(GrcError):
