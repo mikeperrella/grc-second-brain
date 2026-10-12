@@ -14,6 +14,7 @@ from pathlib import Path
 
 from grc_sidecar.errors import EmbeddingUnavailableError
 from grc_sidecar.llm.model_gate import ModelGate
+from grc_sidecar.llm.ollama_embeddings import ModelEntry
 from grc_sidecar.packs.loader import PACK_FILE, content_sha256, index_packs
 from grc_sidecar.repositories.sqlite_vec_repo import SqliteVecRepository
 from grc_sidecar.retrieval.service import Retriever
@@ -54,15 +55,24 @@ def write_pack(packs_dir: Path, pack_id: str, files: dict[str, str]) -> Path:
 
 
 class FakeLister:
-    """The model listing the gate asks for. `models=None` means Ollama is unreachable."""
+    """The model listing the gate asks for. `models=None` means Ollama is unreachable.
 
-    def __init__(self, models: tuple[str, ...] | None = BOTH_INSTALLED) -> None:
+    Names in `remote` are listed with a `remote_host`, as Ollama lists a model it forwards.
+    """
+
+    def __init__(
+        self, models: tuple[str, ...] | None = BOTH_INSTALLED, *, remote: tuple[str, ...] = ()
+    ) -> None:
         self.models = models
+        self.remote = remote
 
-    async def installed_models(self) -> frozenset[str]:
+    async def installed_models(self) -> tuple[ModelEntry, ...]:
         if self.models is None:
             raise EmbeddingUnavailableError
-        return frozenset(self.models)
+        return tuple(
+            ModelEntry(names=frozenset({name}), digest="sha256:fake", remote=name in self.remote)
+            for name in self.models
+        )
 
 
 @dataclass

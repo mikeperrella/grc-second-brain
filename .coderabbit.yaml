@@ -64,10 +64,13 @@ reviews:
 
     - path: "sidecar/src/**/questionnaire/**/*.py"
       instructions: |
-        Questionnaire engine (CLAUDE.md 8.4). Flag: writing to original question cells, overwriting the input
-        workbook, `data_only=True`, missing `keep_vba=True` handling for .xlsm, and any path that marks an answer
-        SUPPORTED without a verified verbatim `exact_quote` substring check. Status must be computed by backend
-        logic, never copied from model confidence alone. Confidence below 0.40 must yield NEEDS_REVIEW.
+        Questionnaire engine (CLAUDE.md 8.4, ADR-013). Flag: writing to original question cells, inserting rows,
+        overwriting any existing file (output must be created exclusively), `data_only=True`, missing
+        `keep_vba=True` handling for macro-enabled packages, and any path that marks an answer SUPPORTED without
+        every 8.4 check (verbatim `exact_quote` in the cited chunk, chunk was in the context, `company_policy`
+        source, review not overdue, cited file unchanged, identifier guard). Status must be computed by backend
+        logic; model output may only lower a status, never raise it. NEEDS_REVIEW must leave the answer cell
+        blank. A cell value starting with `=`, `+`, `-`, `@`, tab or CR must be written as a string, never a formula.
 
     - path: "sidecar/src/**/remediation/**/*.py"
       instructions: |
@@ -90,7 +93,9 @@ reviews:
         Models are provisioned by a human (CLAUDE.md 3.7, ADR-011). Flag a model-dependent call (embed or generate)
         that is not preceded by `ModelGate.require(<model>)`, any startup path that exits or refuses to serve because
         a model or Ollama is missing (the sidecar must start and report a degraded state), a model check with no
-        explicit short timeout, and any call to an Ollama endpoint other than `GET /api/tags` and `POST /api/embed`.
+        explicit short timeout, and any call to an Ollama endpoint other than `GET /api/tags`, `POST /api/embed`
+        and `POST /api/chat`. Every generation request must be exactly one system message and one user message
+        (CLAUDE.md 8.3, ADR-012), set `shift: false`, and never target a non-local (cloud or remote) model.
 
     - path: "sidecar/tests/**/*.py"
       instructions: |

@@ -14,6 +14,10 @@ Three rules keep this cheap and honest:
   run at the same time, and a caller that waited on the lock sees the result of the check it
   waited for instead of sending a second request.
 
+The gate also refuses non-local models (CLAUDE.md 3.7, ADR-012): Ollama can forward a cloud-named
+model, or one whose listing carries `remote_host` or `remote_model`, to ollama.com. Such a model is
+reported as missing, so the same typed refusal applies and no request is sent to it.
+
 The status holds only model names from our own configuration and fixed words, never anything
 Ollama said.
 """
@@ -25,7 +29,12 @@ from typing import Final, Literal, Protocol
 from pydantic import BaseModel, ConfigDict
 
 from grc_sidecar.errors import EmbeddingResponseError, GrcError, ModelsUnavailableError
-from grc_sidecar.llm.ollama_embeddings import model_names
+from grc_sidecar.llm.ollama_embeddings import (
+    ModelEntry,
+    find_local_entry,
+    is_cloud_model_name,
+    model_names,
+)
 from grc_sidecar.vault.clock import Clock
 
 RECHECK_MIN_INTERVAL: Final = 5.0  # seconds between two checks that are not the first
@@ -37,8 +46,8 @@ OllamaState = Literal["unknown", "reachable", "unreachable", "bad_response"]
 
 
 class ModelLister(Protocol):
-    async def installed_models(self) -> frozenset[str]:
-        """Names of the installed models. Raises GrcError subclasses with fixed messages."""
+    async def installed_models(self) -> tuple[ModelEntry, ...]:
+        """The installed models. Raises GrcError subclasses with fixed messages."""
 
 
 class ModelStatus(BaseModel):
@@ -66,13 +75,21 @@ class ModelGate:
         self._min_interval = min_interval
         self._lock = asyncio.Lock()
         self._last_check: float | None = None
-        self._installed: frozenset[str] = frozenset()
+        self._installed: tuple[ModelEntry, ...] = ()
         self._status = ModelStatus(state="checking", models_missing=(), ollama="unknown")
 
     @property
     def status(self) -> ModelStatus:
         """The last recorded status. Does not contact Ollama."""
         return self._status
+
+    def local_entry(self, model: str) -> ModelEntry | None:
+        """The last-seen LOCAL listing entry for `model` (its digest, for the run record), or None.
+
+        None means not installed, cloud-named, or listed as remote. Does not contact Ollama; call
+        `require` or `refresh` first to make it current.
+        """
+        return find_local_entry(self._installed, model)
 
     async def refresh(self) -> ModelStatus:
         """Check now, unless a check already ran within the minimum interval. Returns the status.
@@ -105,7 +122,7 @@ class ModelGate:
     # ----- internals -------------------------------------------------------------------------
 
     def _missing(self, models: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(m for m in models if not model_names(m) & self._installed)
+        return tuple(m for m in models if self.local_entry(m) is None)
 
     def _may_check(self) -> bool:
         if self._last_check is None:
@@ -115,7 +132,7 @@ class ModelGate:
     async def _check(self) -> None:
         """One listing; the caller holds the lock. Never raises a listing failure."""
         ollama: OllamaState = "reachable"
-        installed: frozenset[str] = frozenset()
+        installed: tuple[ModelEntry, ...] = ()
         try:
             installed = await self._lister.installed_models()
         except EmbeddingResponseError:
@@ -130,3 +147,13 @@ class ModelGate:
             missing = self._required  # nothing can be confirmed
         self._status = ModelStatus(state=state, models_missing=missing, ollama=ollama)
         _log.info("model check: state=%s ollama=%s missing=%s", state, ollama, list(missing))
+        refused = tuple(m for m in self._required if m in missing and self._is_non_local(m))
+        if refused:  # configured names only, never anything Ollama said
+            _log.info("model refused as non-local: %s", list(refused))
+
+    def _is_non_local(self, model: str) -> bool:
+        """Installed as far as the listing goes, but Ollama would run it elsewhere."""
+        if is_cloud_model_name(model):
+            return True
+        wanted = model_names(model)
+        return any(entry.remote and entry.names & wanted for entry in self._installed)

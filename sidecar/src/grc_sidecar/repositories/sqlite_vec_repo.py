@@ -561,7 +561,7 @@ class _SqliteStore:
         found: dict[str, DocInfo] = {}
         for path in dict.fromkeys(source_paths):
             row = self._con.execute(
-                "SELECT source_path, collection, doc_id, type, review_by "
+                "SELECT source_path, collection, doc_id, type, review_by, file_sha256 "
                 "FROM documents WHERE source_path = ?",
                 (path,),
             ).fetchone()
@@ -572,6 +572,7 @@ class _SqliteStore:
                     doc_id=row[2],
                     type=row[3],
                     review_by=row[4],
+                    file_sha256=row[5],
                 )
         return found
 

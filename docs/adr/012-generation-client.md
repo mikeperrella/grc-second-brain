@@ -1,0 +1,217 @@
+# ADR-012: Generation client, and what Ollama v0.40.3 does with a chat request
+
+Status: Accepted (M5a). Amends CLAUDE.md 3.7 (non-local models are refused) and 8.3 (exactly two messages per request, one shared retry budget). This ADR records the decisions and the evidence they rest on. The client and the gate's non-local refusal are built in M5c; the prompt builder, the output schema and the retry loop in M5d. Each has its mutation proofs at the end.
+
+## Context
+
+M5 is the first time ALIBI asks a model to write text. Retrieval (M4) only embeds. A generation call sends retrieved policy text out of the sidecar and brings model output back in, so it needs the same restrictions as the embedding client (ADR-009): built by the `security/net.py` factory, loopback only, no proxy, no redirects, an endpoint allowlist enforced by a request hook, fixed error messages, explicit timeouts. It also needs answers to questions the embedding client never had: can a chat request pull a model, does Ollama log prompts, what happens when a prompt is longer than the context window, and can a model that runs on ollama.com be called through the local API.
+
+## Evidence (Step 0)
+
+**Version and commit.** The user runs Ollama 0.40.3. The tag was checked from raw GitHub API JSON on 2026-10-11T17:12:09Z (`gh api repos/ollama/ollama/git/ref/tags/v0.40.3`):
+
+```
+{"ref":"refs/tags/v0.40.3","node_id":"REF_kwDOJ0Z1PrFyZWZzL3RhZ3MvdjAuNDAuMw","url":"https://api.github.com/repos/ollama/ollama/git/refs/tags/v0.40.3","object":{"sha":"eab97e9f92b9a25c2d52d2cc6c1b1c99bd9fae21","type":"commit","url":"https://api.github.com/repos/ollama/ollama/git/commits/eab97e9f92b9a25c2d52d2cc6c1b1c99bd9fae21"}}
+```
+
+It is a lightweight tag: the object is the commit itself, so there is nothing to dereference. The commit (`gh api repos/ollama/ollama/commits/eab97e9f92b9a25c2d52d2cc6c1b1c99bd9fae21`) is dated 2026-10-09T17:36:11Z, message "server: skip local model compatibility migration (#18908)". This is the commit that threat-model Section 8 pinned as `main` when v0.40.2 was the newest release, so no Section 8 claim differs at v0.40.3 (by commit identity; claims 2, 3 and 8 were not re-read). The release page says v0.40.3 was published 2026-10-11T01:39:04Z with `target_commitish: main`; that field reached us through a summarising fetch tool, not as raw JSON.
+
+**Method.** "Verbatim" below means the file was downloaded raw with `gh api repos/ollama/ollama/contents/<path>?ref=eab97e9f... -H "Accept: application/vnd.github.raw"` and the cited lines were read in that file. "Search" means the file was searched for a pattern and the matches (or their absence) were read. "Summarized" means a fetch tool paraphrased the file; those findings are not relied on for any decision here.
+
+| # | Question | Finding | Basis |
+|---|---|---|---|
+| 1 | Can `/api/chat` pull a missing model? | `ChatHandler` (`server/routes.go:2912`): when `GetModelForRunner` returns `os.IsNotExist`, the reply is `c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model '%s' not found", req.Model)})` (lines 2976-2977). A name that cannot be parsed gets 400 `"model is required"` (2943, 2969). `GetModelForRunner` (`server/images.go:712-867`): lines 712-760 read verbatim (parse the name, `manifest.ParseNamedManifestForRunner`, open the local config blob); lines 760-867 searched for `Pull`, `http.`, `registry`, `Download`, `makeRequest` and `net.` with no match. A search of `ChatHandler` (2912-3581) for `PullModel`, `PullHandler` and `pullModel` also finds nothing. `PullModel` is a separate function (`images.go:1149`). | Verbatim (handler lines); search (callee bodies). **Not read:** `manifest.ParseNamedManifestForRunner` and the rest of the manifest package. The conclusion "chat does not pull" is a search result, not a proof. |
+| 2 | Can a model on ollama.com be reached through the local chat API? | Yes, in two ways. (a) A name that parses as cloud (`modelRef.Source == modelSourceCloud`) is forwarded: `proxyCloudJSONRequest(c, req, cloudErrRemoteInferenceUnavailable)` (2947-2954), with no local manifest needed. (b) A model whose manifest names a `RemoteHost` and `RemoteModel` is forwarded to that host if `envconfig.Remotes()` contains it (3012-3032); the response carries `remote_model` and `remote_host` (3063-3064). A model with a *local* source and a remote manifest is refused with the same 404 as a missing model (2993-2996). The cloud name rule (`internal/modelref/modelref.go:106-113`): a `:cloud` suffix, or a tag without `/` that ends in `-cloud`. `ChatResponse` has `remote_model` and `remote_host` (`api/types.go:530,533`); `ListModelResponse` carries the same two fields from the manifest config (`server/model_list.go:187-188`). `GenerateHandler` (306) has its own copy of this logic (386). | Verbatim |
+| 3 | Does the server log prompts? | Request bodies are written to disk when `OLLAMA_DEBUG_LOG_REQUESTS` is set: the gate is `envconfig.DebugLogRequests()` (`server/inference_request_log.go:34`), the directory is `os.MkdirTemp("", "ollama-request-logs-*")` (25) in the temp directory of the **Ollama process**, and the files are the full body (`os.WriteFile(bodyPath, body, 0o600)`, 112) plus a replay script (119). No other line that writes prompt text was found in the files read (coverage is partial: `routes.go` and `llama_server.go` were searched, not every file). What `OLLAMA_DEBUG` turns on, and what `%LOCALAPPDATA%\Ollama\server.log` contains, rest on docs and a summary. | Verbatim (request log); the rest summarized |
+| 4 | A prompt longer than `num_ctx` | `chatPrompt` (`server/prompt.go:21-23`, `35-84`): with `truncate` on, it removes messages from the front until the prompt fits, and always keeps the system messages and the last message. With exactly one system and one user message nothing is removable. `completionPromptForRequest` (`llm/llama_server.go:282-320`): if `Truncate` is on and the token count exceeds `NumCtx-1`, then with context shift **off** it returns a 400 ("the prompt is longer than the context length currently available to the model; shorten the prompt, ..."), and with context shift **on** it cuts the middle of the prompt and only calls `slog.Warn("truncating input prompt", ...)`. `resolveContextShift` (`server/sched.go:139-145`): an explicit `shift` in the request wins, otherwise it depends on the model. `ChatHandler` passes `Shift: req.Shift == nil \|\| *req.Shift` and `Truncate: truncate` (3258-3259). The default context length ("4k/32k/256k by VRAM") is summarized only. | Verbatim, except the default context length |
+| 5 | `format` with a JSON schema | `Format json.RawMessage`; `Completion` sets a `JsonSchema` when the format starts with `{`. Whether llama-server enforces it during decoding was not read. | Summarized |
+| 6 | What the response reports | `Metrics` (`api/types.go:562-570`): `total_duration`, `load_duration`, `prompt_eval_count`, `prompt_eval_cached_count` (a pointer), `prompt_eval_duration`, `eval_count`, `eval_duration`. `ChatResponse` (525-554) adds `done_reason` and has **no digest**. | Verbatim |
+| 7 | Updates | `UpdateCheckInterval = 60 * 60 * time.Second` (`app/updater/updater.go:35`); a ticker (374); the comment "Always check for updates" (388); `if !settings.AutoUpdateEnabled {` (401): the download is gated by that setting and the check is not. No environment variable was found. Where the setting is stored in 0.40.3, and its UI toggle, were not read. | Verbatim lines; storage unverified |
+
+**Unverified when this ADR was written, and tested black-box at live check A instead of being assumed** (what live check A found is in "Live check A results (M5h)" below):
+
+- whether chat with `"shift": false` really returns the 400 for an oversize prompt (the code path in row 4 is `completionPromptForRequest`; whether the chat path reaches it was not read). **Tested at live check A: it does.**
+- whether `prompt_eval_count` includes cached tokens (there is a separate `prompt_eval_cached_count`);
+- whether cloud-named models appear in `GET /api/tags`;
+- whether `server.log` contains prompt text at any level;
+- whether a fixed seed with temperature 0 gives identical output (it does not across machines; see below);
+- where `AutoUpdateEnabled` is persisted and how a user turns it off;
+- whether llama-server enforces the JSON schema during decoding (if it does not, the strict Pydantic parse is the only control, which is what CLAUDE.md 8.3 already assumes);
+- whether `ParseNamedManifestForRunner` can touch the network (row 1).
+
+## Decision
+
+1. **Endpoint: `POST /api/chat` with `stream: false`.** Instructions go in a `system` message and untrusted text in a `user` message, which `/api/generate` (one prompt string) cannot express. The client's request hook allows exactly `("POST", "/api/chat")`, and `("GET", "/api/tags")` for the gate and the digest read, with an empty query string, the same shape as the embedding client (`ollama_embeddings.py:43-62`). It never calls `/api/pull`, `/api/show`, `/api/create`, `/api/delete` or any other management endpoint. A Semgrep rule (M5c) allows the literal `/api/chat` in one module only.
+2. **Every request, on every attempt, is exactly one `system` message and one `user` message.** Attempt 2 does not append an assistant reply and a new user turn: it rebuilds the user message with the error text inside its data block. Reason: `chatPrompt` drops messages from the front, so a four-message conversation can lose the user message that holds the sources, silently, before any context-shift check runs (row 4). With two messages, nothing is removable. **`shift: false` covers overflow completely only because of this rule**; if a later change ever sends more than two messages, this ADR's claim is void. A test asserts the two-message shape for every request of every attempt.
+3. **Truncation fails closed in three layers, in this order of importance.** (a) Every request sets `"shift": false` (with `truncate` left at its default of true), so an oversize prompt becomes an error instead of a cut (row 4). Live check A proves this on the real server. (b) The prompt is bounded by construction: a pre-flight character cap on the assembled messages. (c) After the response, `prompt_eval_count` (plus `prompt_eval_cached_count` if present) must be below `num_ctx - num_predict`, and `done_reason` must be `stop`. **Honest limit of (b) and (c):** a character cap is not a token bound for hostile text (non-Latin text and emoji can cost more than one token per character), and (c) only catches a cut that leaves the count near the window. They are secondary.
+4. **Sizing, derived in code from named constants and asserted by a test.** Prompt characters: system 3,000 + question 1,000 + sources 5,520 (the M4 `DEFAULT_CHAR_BUDGET`) + framing 1,000 + retry text 1,200 + template overhead 500 = 12,220. The 1.38 characters per token behind the 5,520 was measured with **nomic-embed-text's tokenizer on identifier-dense text** (`vault/chunker.py:39-43`, ADR-009), not with llama3.1's tokenizer, which differs: 12,220 / 1.38 rounded up is 8,856 tokens. `num_predict` is derived from the output schema's maximum (answer 1,200 + quote 400 + about 300 for the other fields and JSON overhead = 1,900 characters), assuming one token per character; that is an **assumption, not a bound**, and a longer output ends with `done_reason == "length"`, which is `output_truncated` and fails closed. `num_ctx` = 8,856 + 1,900 + 256 margin = 11,012, rounded up to a multiple of 1,024 = **11,264**. Temperature 0 and a fixed seed; a seed does not guarantee identical output across machines, GPUs or Ollama versions, and the run summary records the model digest, so a difference is explainable rather than prevented.
+5. **The gate refuses non-local models, for embedding and generation alike** (new text in CLAUDE.md 3.7). A model is refused when (a) its configured name matches the cloud rule in row 2, (b) its `GET /api/tags` entry carries a non-empty `remote_host` or `remote_model`, or (c) a chat response carries a non-empty `remote_host` or `remote_model`. (a) and (b) are controls: they run before the request is sent. (c) is a **tripwire only**: by then the prompt has already left the machine. A refused model is reported as missing (the same typed 503 and `/readiness` shape as ADR-011, so no host or window contract changes), and the INFO log line names the configured model, never content. The `ModelLister` returns `ModelEntry(name, digest, remote)` instead of names.
+6. **Every call goes through `ModelGate.require(generation_model)` first.** Row 1 means a model that disappears between the check and the call gets a 404, which the client maps to a typed `model_missing` and fails closed; no pull can happen. Row 1's caveat (the manifest package was not read) is why this ADR does not say "cannot pull": it says no pull call was found and the app never needs one.
+7. **The model digest is recorded per run**, read from `GET /api/tags` before the run and again after it (the chat response has no digest, row 6). A change between the two reads is recorded in the run summary, not hidden.
+8. **The JSON schema goes in `format` on every request, and the reply is parsed strictly with Pydantic** (CLAUDE.md 8.3). Whether the server enforces the schema while decoding is unverified (row 5), so the parse is the control.
+9. **Errors are fixed strings with nothing chained** (ADR-009): no response body, no exception chain, and domain errors are raised outside `except` blocks with a flag. **Timeouts are explicit**: a longer first call (cold model load) and a shorter later call, starting at 180 s and 120 s read, to be tuned from live check A.
+10. **Ollama's own behaviour is not ALIBI's control.** ALIBI cannot stop `OLLAMA_DEBUG_LOG_REQUESTS`, cannot turn off the hourly update check, and cannot fix the Ollama version. Live checks A and B print `ollama --version` and `ollama list` and record any difference between them.
+
+## Consequences
+
+Positive: the generation path has the same restrictions as the embedding path, and a model cannot silently run off the machine through a name that looks local. An oversize prompt is an error instead of a quiet cut, provided live check A confirms row 4.
+
+Negative or risky:
+
+- The truncation control depended on an unverified assumption (the chat path honouring `shift: false`). Live check A tested it with one oversize prompt on Ollama 0.40.3 and got the 400 (see below). It is one probe on one version: it must be repeated if Ollama is updated.
+- The response-side remote check (c) cannot prevent a leak.
+- Every number in decision 4 is derived from a tokenizer that is not the generation model's. They are starting values, kept honest by the post-check and the live probe.
+- Treating a refused model as "missing" makes the message less specific. A user who configured `llama3.1:cloud` sees a missing model, and the log says why.
+- Ollama may write full request bodies to its temp directory if a user sets `OLLAMA_DEBUG_LOG_REQUESTS`. Threat-model Section 7 records it; live checks A and B look for the directory.
+
+## Live check A results (M5h)
+
+Run by the owner on 2026-10-11 and saved as `live-check-a.txt` outside the repository (never committed). Everything in this section is quoted or counted from that file unless it says "assistant probe". The evaluation part (the dev split) is recorded in ADR-013.
+
+**Versions, before and after.** `ollama --version` printed `ollama version is 0.40.3` before the run and again after it. `ollama list` printed the same two models both times: `nomic-embed-text:latest` `0a109f422b47` 274 MB and `llama3.1:8b` `46e0c10c039e` 4.9 GB, both "6 days ago". Nothing changed during the check. The run header gives the full digest of the generation model: `46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`.
+
+**Environment (threat model Section 8, claim 11).** `OLLAMA_DEBUG` and `OLLAMA_DEBUG_LOG_REQUESTS` were empty at Process, User and Machine scope, and the search of `$env:TEMP`, `$env:TMP` and `C:\Windows\Temp` for `ollama-request-logs-*` printed nothing.
+
+**The oversize probe (decision 3, row 4).** The test sent about 30,000 tokens (`"word " * 30_000` as the user message) with `shift: false`, `num_ctx` 11,264 and `num_predict` 8, past the client's own size check, straight to `POST /api/chat`. Result, verbatim:
+
+```
+status: 400
+body (first 400 characters): {"error":"the prompt is longer than the context length currently available to the model; shorten the prompt, adjust the context length in settings, or use a model with a longer context length"}
+RESULT: the over-long prompt was REFUSED with an error (what ADR-012 expects)
+```
+
+It took 0.61 s. So on Ollama 0.40.3 the chat path honours `shift: false` and refuses instead of cutting, which is the behaviour decision 3 rests on. **Limits:** one probe, one prompt shape (a single very long user message, which is the shape this client sends), one version. It does not show what happens at a prompt just above the window, and it was not repeated after the model and the options changed.
+
+**The canary in Ollama's own logs.** A vault note carrying the string `ALIBI-CANARY-d32f898691d0` was indexed (65 chunks, one more than the 64 of the dev run) and one question about it was answered (`status=SUPPORTED reasons=[]`). The test then searched for the string:
+
+```
+searched C:\Users\miker\AppData\Local\Ollama\server.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
+searched C:\Users\miker\AppData\Local\Ollama\app.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
+```
+
+It also looks for `ollama-request-logs-*` folders and found none to search. **Limits:** this is at Ollama's default log level (`OLLAMA_DEBUG` was empty); it says nothing about DEBUG or TRACE logging, and the prompt text would have been in the log only if Ollama wrote prompts at the default level. Zero occurrences in two files after one question is evidence that it does not, not proof.
+
+**Stopping Ollama on Windows: what failed first.** Step 5 needs Ollama stopped. The owner reports that the first two attempts failed with `Failed: Ollama is running. Stop it first, then run this test again.`; the saved file contains one of them. Between stopping Ollama and the test, the owner had run `ollama list`, and the test's own reachability check then found a running server. **Finding: on Windows, running the `ollama` command line (for example `ollama list`) starts the server again if it is stopped.** The stop was then verified without the CLI:
+
+```
+PS> Get-Process *ollama* | Stop-Process -Force
+PS> Get-Process *ollama* -ErrorAction SilentlyContinue
+(nothing printed)
+PS> netstat -ano | findstr 11434
+  TCP    127.0.0.1:61418        127.0.0.1:11434        TIME_WAIT       0
+```
+
+`Get-Process` listed no process, and netstat showed no LISTENING line, only one connection in TIME_WAIT. From then on the instructions say to stop and check with `Get-Process *ollama*` and `netstat -ano | findstr 11434` and never to run `ollama list` or any `ollama` command (the `tests/test_answer_live.py` docstring and its failure message say so). I confirm the same finding from my own session: I ran `ollama ps` once while the server was running, which is safe, and used `tasklist` and `netstat` for everything else.
+
+**The official step 5 run, with Ollama stopped (the retry that passed).**
+
+```
+model gate: state=degraded ollama=unreachable missing=('nomic-embed-text', 'llama3.1:8b')
+EV-001 ... EV-012: every row  NEEDS_REVIEW  model_unavailable,lexical_only   0 attempts, 0.0 to 0.2 s
+12 of 12 questions had a context and so reached the model gate
+1 passed, 3 deselected in 5.89s
+```
+
+All 12 dev questions ended `NEEDS_REVIEW` with `model_unavailable` (and `lexical_only`, because the embedding model was unreachable too, so retrieval was keyword-only). The ten rows labeled `answer` print `PROBLEM: status NEEDS_REVIEW is not one of ['SUPPORTED', 'PARTIAL']`: that is the harness grading against the labels, and it is the expected, correct behaviour when no model exists (the test asserts blank and `model_unavailable`, not the labels). Decision 13 holds: no answer is written, no error escapes, and the reason says why.
+
+**Findings that bear on the design (recorded; nothing was changed).**
+
+1. **The read timeout and a long output.** The client's read timeout is 120 s after the first call and 180 s for the first (`generation_client.py:73-74`). With `stream: false`, that read timeout covers the whole generation. On this CPU-only machine decode ran at about 5.8 tokens per second (assistant probe below), so an output of the maximum the schema allows (`num_predict` 1,900 tokens) would take about 330 s and would hit the timeout, which the client reports as `GenerationUnavailableError`, which the service reports as `model_unavailable`, which tells a run to stop. In the dev run the longest single question took 165.8 s with two attempts and no call timed out, and the largest output of one question was 408 tokens over two attempts, so it did not happen. It could happen on a slower machine or with a longer answer, and it would fail closed but stop a run. Decision 9 said the timeouts would be "tuned from live check A"; this is the evidence for doing it, and the owner has decided the fix: not in M5h, but in M5k before live check B, the read timeout is derived from `num_predict` and the measured decode speed (about 5.8 tokens per second, roughly 600 s with margin) as a test-asserted constant with a mutation proof, recorded here when it is built in M5k. A timeout mid-run must still fail closed per D13. Not changed in M5h.
+2. **Seed determinism.** Decision 4 recorded that a fixed seed does not guarantee identical output across machines. Live check A and the assistant's re-run (ADR-013, "Second observation") ran the same code, model digest, seed and temperature 0 on the same machine and gave different answers: 7 and 10 answered blank-labeled dev items. Same-machine repeatability is therefore also not guaranteed, and a single run is not a stable measurement.
+3. **The sizing assumption.** Observed prompt characters per token were 3.63 to 4.40 (median 3.99) over 31 questions, against the 1.38 assumed in `limits.py`. The assumption is very conservative; real prompts stayed at or under 3,318 tokens summed over two attempts, against a window of 11,264.
+4. **Throughput (assistant probe).** I ran one controlled timing against the owner's Ollama (the owner has since ruled that I do not do this without being asked): `ollama ps` showed `llama3.1:8b` on `100% CPU`. A 1,527-token prompt took 47.1 s to prefill cold at `num_ctx` 11,264 and 43.4 s at 4,096 (that run also included a 14 s model reload), decode ran at 5.8 and 4.9 tokens per second, and the same prompt sent again prefilled in 0.2 s (prompt cache). So `num_ctx` is not what costs time; prefill and decode on CPU are. The random boundary near the start of the system message limits prefix caching of the rest of it.
+
+## Mutation proofs (M5c)
+
+Procedure (as in ADR-009 and ADR-011): back up the file outside the repo and record its sha256, apply the one named break with the edit tool, run the named tests, require "N failed", restore with the exact inverse edit, show the sha256 equals the original, and show the tests pass again. Originals: `llm/generation_client.py` = `056896dbdb6ea0ad0a2d9c9ee3a19c90203bd71039171c36034cddbc7423d744`, `llm/limits.py` = `e907f53556a0df6a10c332b9b59569aea03c8dd404658bf5e15571ab75ed0882`, `llm/ollama_embeddings.py` = `9f43409a9b5fb2053f64dcb945ff3b613d94c3ae35f95857d70f82b571a69bf6`, `llm/model_gate.py` = `bfc9a52a29bc75d3f6c30417c96ee85d3446ecd4ab98289e3491d12c013adff7`, `errors.py` = `8f9f5155aa53f1e2998bdd3a08c11c57a184844197685bd2a9af2e4372b78a61`. Every restore matched.
+
+| # | Control | Break | Tests that failed | Result |
+|---|---|---|---|---|
+| 1 | Endpoint allowlist | `("POST", "/api/show")` added to `ALLOWED_ENDPOINTS` | `test_generation_client.py::test_the_client_refuses_every_endpoint_but_chat_and_tags` | 1 failed (`DID NOT RAISE EndpointNotAllowedError`) |
+| 2 | Gate before the call | `await self._gate.require(...)` removed from `generate` | `::test_no_request_is_sent_when_the_model_is_not_installed`, `::test_no_request_is_sent_when_ollama_is_unreachable`, `::test_a_cloud_or_remote_model_is_refused_before_any_request` (3 cases) | 5 failed |
+| 3a | No Ollama text in errors | `raise GenerationResponseError(reason)` (the stop reason is Ollama's text) | `::test_an_ollama_error_body_never_appears_in_the_error_or_its_chain[chat_200_bad_reason]` | 1 failed, 7 passed |
+| 3b | Nothing chained | `except HTTPError as exc: raise GenerationUnavailableError from exc` | `::test_connection_problems_are_unavailable_errors_without_the_original` (4 cases) | 4 failed, 8 passed |
+| 4 | Explicit timeouts | the per-request `timeout=` removed | `::test_the_first_call_gets_the_longer_timeout_and_later_calls_the_normal_one`, `::test_a_failed_first_call_does_not_use_up_the_long_timeout`, `::test_the_digest_listing_uses_the_short_timeout` | 3 failed, 1 passed |
+| 5 | Schema on every request | `format` sent on the first request only | `::test_every_request_carries_the_schema_in_format` (drives three calls) | 1 failed |
+| 6 | `shift: false` | `"shift": True` | `::test_every_request_disables_context_shifting`, `::test_one_chat_request_with_the_exact_body` | 2 failed |
+| 7 | Exactly two messages | from the second request on, the body is `system, user, assistant, user` | `::test_every_request_is_exactly_one_system_and_one_user_message` | 1 failed |
+| 8 | Post-check on the reported token count | `raise ContextWindowReachedError` replaced by `pass` | `::test_a_prompt_count_that_reaches_the_window_fails_closed` (the 3 refuse cases; the 2 below-limit cases still pass) | 3 failed, 2 passed |
+| 9 | Remote-host tripwire on the reply | `raise NonLocalModelError` replaced by `pass` | `::test_a_reply_that_names_a_remote_host_is_a_tripwire`, `::test_an_ollama_error_body_never_appears_in_the_error_or_its_chain[chat_200_remote]` | 2 failed, 1 passed |
+| 10 | Pre-flight size check | `raise PromptTooLargeError` replaced by `pass` | `::test_oversize_messages_are_refused_before_anything_is_sent` (the at-the-cap case still passes) | 1 failed, 1 passed |
+| 11a | Non-local refusal: remote entries (`find_local_entry`, shared by the gate, the embedding client and the generation client) | `any(entry.remote ...)` removed | 15 tests in `test_model_entries.py`, `test_model_gate.py`, `test_generation_client.py` (lookup, `ensure_ready`, the gate for generation and embedding, `remote_model` only, odd values, `read_model_entry`) | 15 failed, 21 passed |
+| 11b | Non-local refusal: cloud names | the `is_cloud_model_name` check removed from `find_local_entry` | 6 tests (lookup, embedding `ensure_ready`, gate x2, generation client x2) | 6 failed, 18 passed |
+| 11c | A remote duplicate refuses the name | `any(...)` replaced by `matches[0].remote` | `test_model_entries.py::test_one_remote_duplicate_refuses_the_name_even_if_another_entry_is_local`, `test_model_gate.py::test_a_remote_duplicate_of_a_local_name_refuses_the_model` | 2 failed |
+| 11d | Odd remote values fail closed | `not in (None, "")` replaced by `bool(...)` (so `0`, `false`, `[]` pass as local) | `test_model_entries.py::test_any_other_remote_field_marks_the_entry_remote` (3 cases), `test_model_gate.py::test_an_odd_remote_value_fails_closed` (2 cases) | 5 failed, 13 passed |
+| 12 | Sizing is derived and pinned | `SYSTEM_MAX_CHARS` 3,000 changed to 4,000 | `test_generation_limits.py::test_the_message_and_prompt_caps_add_up`, `::test_the_token_bound_uses_the_worst_measured_ratio_with_independent_arithmetic`, `::test_num_ctx_is_derived_from_the_caps`, `test_generation_client.py::test_decoding_options_come_from_the_derived_limits` | 4 failed, 73 passed |
+| 13 | Only the generation client names the chat endpoint | the literal added to a docstring in `errors.py` | `test_chat_endpoint_hygiene.py::test_only_the_generation_client_names_the_chat_endpoint` (the scan names `errors.py`) | 1 failed, 2 passed |
+
+Verification of the full suite after the code and before the proofs: 1,318 passed, 9 deselected (the `ollama` marker), ruff and mypy clean.
+
+Notes and known limits:
+
+- **The tests use a fake Ollama.** They prove what our client sends and how it reacts, not what Ollama does. Everything in "Unverified" above is still unverified until live check A.
+- **Row 7** simulates "attempt 2" with the client's own call counter. The real retry (rebuilding the user message with the error text) is the prompt builder's job (M5d), which gets its own test; row 7 proves that the client cannot send anything but two messages whatever its caller does.
+- **Row 8's check is secondary** (decision 3): it can only catch a cut that leaves the reported count near the window. The control that matters, `shift: false` (row 6), is proven here only as "the request says it". That Ollama honours it on the chat path is the live oversize probe's job.
+- **Rows 9 and 11** are controls on different things. 11 refuses before a request is sent; 9 only notices afterwards, so it can never undo a leak.
+- **The Semgrep rule `grc-py-chat-endpoint-outside-generation-client`** (22 rules now) could not be run with `semgrep --test` locally, because Semgrep is not installed on this machine. I checked its regex against its own fixture annotations with Python's `re` (5 lines that must match did, 4 that must not did not), and `check_semgrep_rule_coverage.py` reports 22 rules, 22 annotated. On the M5c push the CI `semgrep` job, which runs `semgrep --test` on each fixture, the coverage check and a scan of the code, passed. Row 13's text scan is the second line of defence and was proven by mutation.
+- **Not wired into the app yet.** `main.py` does not construct a `GenerationClient`; the answer service (M5f) does.
+- The gate's `ModelLister` changed from names to `ModelEntry` objects; the existing gate, embedding and retrieval tests all passed unchanged apart from the retrieval test helper, which now returns entries.
+
+## Prompt builder, schema and retry (M5d)
+
+What was built, and the choices a reader may ask about. Code: `llm/prompt.py`, `llm/schemas.py`, `llm/retry.py`; tests: `test_prompt.py`, `test_schemas.py`, `test_retry.py`.
+
+- **Two messages, instructions and data apart.** The system message is a fixed template (2,601 characters, 2,637 with a boundary substituted; cap 3,000) holding instructions only. The user message holds only data, each part between marker lines that start with the boundary: the question, each source, and on a retry the error report. The template's sha256 (`3de5c706b14ae3cd040105533c37985b3b7fd30ea14ef59ee3cd88e0ef3d8b90`) is pinned in a test and recorded in every run summary, so a changed word fails a test and, after the freeze (ADR-013, decision 16), needs a tuning-log entry.
+- **The boundary** is `BND-` plus 24 hex digits (96 bits, 28 characters), random per request, injected as a callable so tests are exact. The first sketch used 32 hex digits; at that length the marker lines of five sources plus a retry cost slightly more than the 1,000 framing characters ADR-012 decision 4 assumes. `test_the_worst_case_framing_fits_its_cap` computes the real figure with a real boundary (five sources, two of them framework text, which have the longest header, and a retry) instead of trusting the arithmetic. 96 bits cannot be guessed by a note written in advance.
+- **A boundary found inside data is replaced** with `[removed]`, in the question, every source and the retry report, in any letter case. One pass is enough: the replacement contains no character that could join the text around it into a new boundary (tested with a boundary hidden inside itself). Source text is otherwise passed through unchanged, because the grounding check compares the model's quote with the raw chunk and not with this prompt.
+- **Framework text is labelled twice:** the header says `kind=framework_reference ... NOT-EVIDENCE-OF-COMPANY-PRACTICE`, and the instructions say it never shows what the company does. This is a request to the model; the control that does not depend on the model is the verifier's refusal of any quote from a framework source (ADR-013, check 3).
+- **The question cell is capped (1,000 characters) and refused, not cut,** with `EmptyQuestionError` or `QuestionTooLongError`; source ids must be `S1` to `Sn` in order; the source text total may not exceed the retrieval budget (5,520); and the two messages together may not exceed the message cap. All of these fail before anything is sent.
+- **The schema is written by hand,** with this request's ids as the only values `source_id` and `conflicting_source_ids` may take, `maxLength` on the answer (1,200) and the quote (400), and no `$defs`, `$ref` or `anyOf`. A test keeps it in step with the Pydantic model. Whether the server enforces a schema while decoding is unverified (ADR-012, row 5), so the strict parse is the control: JSON types must match exactly (a string is not a number or a boolean), unknown keys are refused, and an id the request did not offer is refused.
+- **Retries:** one shared budget of two attempts per question (`MAX_ATTEMPTS = 2`), whatever failed. Attempt 2 is the same two messages with the user message rebuilt, the exact error text inside an ERROR block (pydantic's documentation URL lines removed, capped at 1,200 characters, boundary neutralized). A failure that is not about the answer (Ollama unreachable, a refused model, an oversize prompt) is an exception and is not retried. Only the attempt number is logged, at DEBUG.
+
+Honest limits:
+
+- **The prompt can lower the chance that hidden text steers the model; it cannot remove it.** Injected text can still change the wording of a draft, and a true quote that does not answer the question passes the checks. The controls that do not depend on the model are in the verifier (M5e) and, above all, human approval (M6).
+- **The instruction "do not start the answer with `=`, `+`, `-` or `@`" is a request.** The control is the writer's formula neutralization (M5j), which does not trust the model.
+- **Nothing here has been run against a real model.** Whether llama3.1:8b follows these instructions, copies quotes exactly, or says "no evidence" when it should is measured at live check A. The template may be edited until the freeze (M5g) without a log entry; after it, every edit is logged.
+
+## What httpx and httpcore log (M5f, measured)
+
+Measured with `tests/test_generation_logging.py`, which starts a small HTTP server on 127.0.0.1 so that the client's real transport and httpcore run (the other tests use `httpx.MockTransport`, which skips the connection layer). The test sends a prompt, a question and a reply that each carry a canary string, with every logger at DEBUG. The same canaries are first shown to reach the server, so the absence below is not for lack of travel.
+
+- **INFO:** httpx writes exactly one line per request: `HTTP Request: POST http://127.0.0.1:<port>/api/chat "HTTP/1.0 200 OK"` (the version is the test server's; Ollama answers HTTP/1.1). Method, URL, status. No body. httpcore writes nothing at INFO.
+- **DEBUG:** httpcore writes event lines and no payload: `connect_tcp.started host='127.0.0.1' port=... timeout=5.0`, `connect_tcp.complete`, `send_request_headers.started/complete`, `send_request_body.started/complete`, `receive_response_headers.started/complete` (this one lists the response header names and values), `receive_response_body.started/complete`, `response_closed.started/complete`. The request line shows `request=<Request [b'POST']>`, the method only.
+- **No canary** from the prompt, the question or the reply appears in any record of any logger. The first-party code logs only counts and reason codes (`answered: status=... reasons=[...] attempts=N sources=N`, and `attempt N accepted|rejected` at DEBUG).
+- **Not measured here:** openpyxl's logging (M5i), and what Ollama itself logs (live check A searches `server.log` for a canary).
+- The response header values httpcore logs at DEBUG come from the server. A rogue listener on port 11434 (threat model F8-2) could put text in a header, and that text would reach a DEBUG log. It is not document content, and the default level is INFO.
+
+## Mutation proofs (M5d)
+
+Same procedure as above. Originals: `llm/prompt.py` = `a3ae91b490c09fc9b5f56624f195b57097337620edb1b6e919dfbb26ec59314f`, `llm/retry.py` = `c6977e48a68236dcbf143a8fc3b79572285a7a36ee8422d999e7e378f7b19e1d`, `llm/schemas.py` = `5db7effd6592d30a9d42a997b837ebee2a091780f2e1ae47c3b85026807e69cd`. Every restore matched.
+
+| # | Control | Break | Tests that failed | Result |
+|---|---|---|---|---|
+| 14 | Boundary found in data is neutralized | `neutralize` returns its input | `test_prompt.py::test_the_boundary_inside_a_source_is_neutralized` (4 letter-case variants), `::test_the_boundary_inside_the_question_is_neutralized`, `::test_the_boundary_inside_a_retry_error_is_neutralized`, `::test_neutralize_removes_every_occurrence_and_nothing_else`, `::test_a_boundary_split_around_a_removal_cannot_re_form` | 8 failed |
+| 15 | ... in any letter case | `re.IGNORECASE` removed | the 3 non-exact-case variants and the unit test (the exact-case variant still passes) | 4 failed, 4 passed |
+| 16 | Retry budget is two | `MAX_ATTEMPTS = 3` | `test_retry.py::test_the_budget_is_two`, `::test_two_rejections_end_in_a_failure_with_the_last_error_and_never_a_third_attempt`, `::test_a_schema_failure_and_a_grounding_failure_share_one_budget`, `::test_the_error_text_is_never_logged`, `::test_the_loop_ends_even_if_the_attempt_always_rejects` | 5 failed, 3 passed |
+| 17 | Attempt 2 carries the exact error | `attempt(None)` on every attempt | `::test_a_second_attempt_gets_the_exact_error_of_the_first`, `::test_two_rejections_end_in_a_failure_...` | 2 failed, 6 passed |
+| 18 | The retry error block is part of the rebuilt user message | the block is never built | `test_prompt.py::test_attempt_two_is_the_same_user_message_plus_an_error_block`, `::test_the_boundary_inside_a_retry_error_is_neutralized`, `::test_the_pydantic_documentation_url_is_never_shown`, `::test_an_empty_error_report_still_makes_a_block`, `::test_the_system_message_is_instructions_only` | 5 failed, 45 passed |
+| 19 | No pydantic documentation URL in what the model sees (prompt builder) | the URL-line filter removed from `sanitize_error` | `test_prompt.py::test_the_pydantic_documentation_url_is_never_shown` | 1 failed, 4 passed |
+| 20 | ... and in the rendered validation error | the filter removed from `render_validation_error` | `test_schemas.py::test_the_error_text_is_pydantics_own_minus_the_documentation_url` | 1 failed, 1 passed |
+| 21 | An empty question is refused | the check replaced by `pass` | `test_prompt.py::test_an_empty_question_is_refused` (3 cases) | 3 failed |
+| 22 | An over-long question is refused, not cut | the check replaced by `pass` | `::test_a_question_over_the_cap_is_refused_not_cut` (the sources-cap test still passes) | 1 failed, 1 passed |
+| 23 | Sources over the retrieval budget are refused | the cap multiplied by 100 | `::test_sources_over_the_cap_are_refused` (a total below the message cap, so only this check can refuse it) | 1 failed |
+| 24 | Framework text is labelled not-evidence | the label removed from the header | `::test_framework_text_is_labelled_as_not_evidence_and_never_as_company_policy` | 1 failed |
+| 25 | The system message holds instructions only | the question appended to it | `::test_the_system_message_is_instructions_only` | 1 failed, 2 passed |
+| 26 | A malformed boundary is refused | the shape check replaced by `pass` | `::test_a_malformed_boundary_is_refused` (6 cases) | 6 failed |
+| 27 | The template is pinned | one letter of one word changed in the template | `::test_the_template_hash_is_recorded_and_pinned` (the only failure) | 1 failed, 49 passed |
+| 28 | Strict parse | `strict=False` | `test_schemas.py::test_a_wrong_type_or_value_is_refused` (a string confidence, a string boolean, an integer boolean) | 3 failed, 61 passed |
+| 29 | An id this request did not offer is refused | the `source_id` check removed | `::test_an_id_that_is_not_in_this_request_is_refused` (5 of 7 cases), `::test_the_ids_of_a_request_decide_what_is_valid` (the 2 conflict-id cases still pass: that validator is separate) | 6 failed, 2 passed |
+| 30 | Unknown keys are refused | `extra="ignore"` | `::test_an_unknown_field_is_refused` | 1 failed |
+
+Notes and known limits:
+
+- The two-messages and schema-on-every-request controls live in the client and were proven in M5c (rows 5 and 7). Here, `BuiltPrompt` can hold nothing but `system` and `user`, and attempt 2's user message is proven to be attempt 1's plus the error block (row 18).
+- Row 27 is deliberate friction: a prompt edit before the freeze is allowed, but it must update the pinned hash in the same commit, so it cannot happen by accident.
+- Row 23's mutation raises the cap rather than deleting the check, because deleting it would leave the later message-cap check to refuse the same input and make the test pass for the wrong reason; with the cap raised, only the specific check is in play.
+- Row 15 shows the case-insensitivity is a separate control from the replacement itself (row 14).

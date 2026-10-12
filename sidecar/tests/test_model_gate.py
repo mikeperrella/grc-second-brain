@@ -5,6 +5,7 @@ requests and timeouts that would leave the process. Nothing here needs a network
 """
 
 import asyncio
+import logging
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
@@ -366,3 +367,138 @@ def test_model_dependent_call_refuses_when_degraded() -> None:  # [NEG] mutation
         run(model_call())
     assert not ran
     assert all(r.url.path != "/api/embed" for r in fake.requests)
+
+
+# ----- non-local models are refused (CLAUDE.md 3.7, ADR-012) -------------------------------------
+
+
+def tags_of(*entries: dict[str, Any]) -> Callable[[], httpx.Response]:
+    return lambda: httpx.Response(200, json={"models": list(entries)})
+
+
+def listed(name: str, **extra: Any) -> dict[str, Any]:
+    return {"name": name, "model": name, "digest": "sha256:abc", **extra}
+
+
+REMOTE_HOST = "https://ollama.com:443"
+
+
+def test_a_remote_generation_model_is_refused_while_embedding_still_works() -> None:  # [NEG]
+    fake = FakeOllama(
+        body=tags_of(listed(f"{EMBEDDING}:latest"), listed(GENERATION, remote_host=REMOTE_HOST))
+    )
+    gate, _ = make_gate(fake)
+    status = run(gate.refresh())
+    assert (status.state, status.models_missing, status.ollama) == (
+        "degraded",
+        (GENERATION,),
+        "reachable",
+    )
+    run(gate.require(EMBEDDING))  # a local model is unaffected
+    with pytest.raises(ModelsUnavailableError) as info:
+        run(gate.require(GENERATION))
+    assert info.value.missing == (GENERATION,)
+    assert only_tags_were_requested(fake)  # nothing was ever sent to the refused model
+
+
+def test_a_remote_embedding_model_is_refused_too() -> None:  # [NEG]
+    fake = FakeOllama(
+        body=tags_of(listed(f"{EMBEDDING}:latest", remote_host=REMOTE_HOST), listed(GENERATION))
+    )
+    gate, _ = make_gate(fake)
+    run(gate.refresh())
+    with pytest.raises(ModelsUnavailableError) as info:
+        run(gate.require(EMBEDDING))
+    assert info.value.missing == (EMBEDDING,)
+    run(gate.require(GENERATION))
+
+
+def test_a_listing_with_only_remote_model_set_is_refused() -> None:  # [NEG]
+    fake = FakeOllama(
+        body=tags_of(listed(f"{EMBEDDING}:latest"), listed(GENERATION, remote_model="gpt-oss:120b"))
+    )
+    gate, _ = make_gate(fake)
+    run(gate.refresh())
+    with pytest.raises(ModelsUnavailableError):
+        run(gate.require(GENERATION))
+
+
+@pytest.mark.parametrize("value", [REMOTE_HOST, {"a": 1}, 0, False, ["x"]])
+def test_an_odd_remote_value_fails_closed(value: object) -> None:  # [NEG]
+    fake = FakeOllama(
+        body=tags_of(listed(f"{EMBEDDING}:latest"), listed(GENERATION, remote_host=value))
+    )
+    gate, _ = make_gate(fake)
+    run(gate.refresh())
+    assert gate.status.models_missing == (GENERATION,)
+
+
+@pytest.mark.parametrize("value", ["", None])
+def test_an_empty_remote_field_does_not_refuse_a_local_model(value: object) -> None:
+    fake = FakeOllama(
+        body=tags_of(listed(f"{EMBEDDING}:latest"), listed(GENERATION, remote_host=value))
+    )
+    gate, _ = make_gate(fake)
+    assert run(gate.refresh()).state == "ready"
+
+
+@pytest.mark.parametrize("name", ["llama3.1:cloud", "gpt-oss:20b-cloud"])
+def test_a_cloud_named_model_is_refused_even_when_listed_as_ordinary(name: str) -> None:  # [NEG]
+    fake = FakeOllama(body=tags_of(listed(f"{EMBEDDING}:latest"), listed(name)))
+    client = OllamaEmbeddingClient(
+        BASE_URL, EMBEDDING, expected_dimension=4, transport=httpx.MockTransport(fake)
+    )
+    gate = ModelGate(client, (EMBEDDING, name), ManualClock())
+    status = run(gate.refresh())
+    assert status.models_missing == (name,)
+    with pytest.raises(ModelsUnavailableError):
+        run(gate.require(name))
+    assert only_tags_were_requested(fake)
+
+
+def test_a_remote_duplicate_of_a_local_name_refuses_the_model() -> None:  # [NEG]
+    fake = FakeOllama(
+        body=tags_of(
+            listed(f"{EMBEDDING}:latest"),
+            listed(GENERATION),
+            listed(GENERATION, remote_host=REMOTE_HOST),
+        )
+    )
+    gate, _ = make_gate(fake)
+    run(gate.refresh())
+    assert gate.status.models_missing == (GENERATION,)
+
+
+def test_the_refusal_is_logged_with_configured_names_only(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO)
+    fake = FakeOllama(
+        body=tags_of(listed(f"{EMBEDDING}:latest"), listed(GENERATION, remote_host=REMOTE_HOST))
+    )
+    gate, _ = make_gate(fake)
+    run(gate.refresh())
+    assert f"model refused as non-local: ['{GENERATION}']" in caplog.text
+    assert "ollama.com" not in caplog.text  # nothing Ollama said
+
+
+def test_a_plain_missing_model_is_not_logged_as_refused(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO)
+    gate, _ = make_gate(FakeOllama((f"{EMBEDDING}:latest",)))
+    run(gate.refresh())
+    assert "refused as non-local" not in caplog.text
+
+
+def test_local_entry_gives_the_digest_of_a_local_model_and_nothing_otherwise() -> None:
+    fake = FakeOllama(
+        body=tags_of(listed(f"{EMBEDDING}:latest", remote_host=REMOTE_HOST), listed(GENERATION))
+    )
+    gate, _ = make_gate(fake)
+    assert gate.local_entry(GENERATION) is None  # before the first check: nothing confirmed
+    run(gate.refresh())
+    entry = gate.local_entry(GENERATION)
+    assert entry is not None and entry.digest == "sha256:abc"
+    assert gate.local_entry(EMBEDDING) is None  # remote
+    assert gate.local_entry("never-installed") is None

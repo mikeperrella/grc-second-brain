@@ -72,6 +72,9 @@ class DocInfo(_Frozen):
     doc_id: str
     type: str
     review_by: str | None  # ISO date text, or None
+    # sha256 of the document's normalized text as indexed (the `documents` row). A later export
+    # compares it with the file's current hash, so a cited file that changed is noticed (ADR-013).
+    file_sha256: str
 
 
 class ScanSnapshot(_Frozen):

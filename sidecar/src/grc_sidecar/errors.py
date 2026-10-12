@@ -274,13 +274,94 @@ class EmbeddingDimensionError(GrcError):
 
 
 class EndpointNotAllowedError(GrcError):
-    """A request to an Ollama endpoint other than the two the app uses was refused.
+    """A request to an Ollama endpoint a client may not call was refused.
 
-    The client may only call `GET /api/tags` and `POST /api/embed`. This is the runtime control
-    behind "the app never downloads models".
+    The embedding client may only call `GET /api/tags` and `POST /api/embed`; the generation client
+    only the model listing and the chat endpoint (ADR-012). This is the runtime control behind
+    "the app never downloads models".
     """
 
     default_message = "This Ollama endpoint is not allowed"
+
+
+class EmptyQuestionError(GrcError):
+    """A questionnaire cell has no question in it (empty or only whitespace)."""
+
+    default_message = "The question is empty"
+
+
+class QuestionTooLongError(GrcError):
+    """A questionnaire cell is longer than a question may be.
+
+    The cell is untrusted data, so it is capped, never silently cut: a cut question could ask
+    something different from what the cell says (ADR-013, `question_too_long`).
+    """
+
+    default_message = "The question is too long"
+
+
+class GenerationUnavailableError(GrcError):
+    """Ollama could not be reached for a generation call, timed out, or failed on its side.
+
+    A connection-level problem: it is not about the question that was asked, so a run that meets
+    it stops asking and blanks the rest (ADR-013, "Ollama fails partway").
+    """
+
+    default_message = "Generation service is unavailable"
+
+
+class GenerationResponseError(GrcError):
+    """Ollama answered a generation call, but not with a usable reply (ADR-012).
+
+    Wrong shape, not JSON, a stop reason that is not "stop", or an HTTP status the client does
+    not expect. The message never contains the response body or any text that was sent.
+    """
+
+    default_message = "Generation response was not usable"
+
+
+class GenerationRejectedError(GrcError):
+    """Ollama refused the generation request itself (HTTP 400).
+
+    Requests are built by our own code, so the usual cause is a prompt longer than the context
+    window with context shifting disabled (ADR-012, row 4). The body is never read.
+    """
+
+    default_message = "Ollama rejected the generation request"
+
+
+class PromptTooLargeError(GrcError):
+    """The assembled prompt is larger than the generation limits allow.
+
+    Checked before anything is sent, so an oversize prompt never reaches the model.
+    """
+
+    default_message = "Prompt is larger than the generation limits"
+
+
+class ContextWindowReachedError(GrcError):
+    """The prompt token count Ollama reported reaches the context window, so text may be cut.
+
+    A secondary check (ADR-012, decision 3): the primary control is the request's `shift: false`.
+    """
+
+    default_message = "Prompt reached the context window"
+
+
+class OutputTruncatedError(GrcError):
+    """The model stopped at the output limit, so its JSON may be incomplete."""
+
+    default_message = "Generation output was cut off"
+
+
+class NonLocalModelError(GrcError):
+    """A generation reply says it came from a remote host.
+
+    A tripwire, not a control: by the time a reply arrives the prompt has already left the machine.
+    The controls are the gate's refusal of cloud names and remote listings, before any request.
+    """
+
+    default_message = "The model answered from a non-local host"
 
 
 class PackIntegrityError(GrcError):

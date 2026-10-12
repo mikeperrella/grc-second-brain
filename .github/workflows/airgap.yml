@@ -46,7 +46,8 @@ jobs:
       # The junit file goes to /tmp (in memory); the skip check is mounted read-only from the repo
       # and runs in the same container, because the container and its /tmp are gone afterwards.
       # Linux accepts only the Windows-only path skips, as in python.yml.
-      # The vault tests read the synthetic vault and the adversarial fixtures from the repo root.
+      # The vault tests read the synthetic vaults (vault-sample, vault-demo) and the adversarial
+      # and evaluation fixtures from the repo root.
       # In the image the tests live in /app/tests, so "two directories above tests" is "/": the
       # mounts below put the data exactly where the tests look for it (read-only). The pack tests
       # also read the committed packs, the converter in tools/, and the repo's .gitignore.
@@ -55,6 +56,7 @@ jobs:
           docker run --rm $HARDENED \
             -v "$GITHUB_WORKSPACE/.github/scripts:/ci-scripts:ro" \
             -v "$GITHUB_WORKSPACE/vault-sample:/vault-sample:ro" \
+            -v "$GITHUB_WORKSPACE/vault-demo:/vault-demo:ro" \
             -v "$GITHUB_WORKSPACE/fixtures:/fixtures:ro" \
             -v "$GITHUB_WORKSPACE/packs:/packs:ro" \
             -v "$GITHUB_WORKSPACE/tools:/tools:ro" \

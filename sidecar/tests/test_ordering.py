@@ -22,7 +22,12 @@ def cand(name: str, heading: str, score: Fraction, *, lexical: int | None) -> Ca
         text_sha256=name,
     )
     document = DocInfo(
-        source_path="p.md", collection="pack:p", doc_id="D", type="framework", review_by=None
+        source_path="p.md",
+        collection="pack:p",
+        doc_id="D",
+        type="framework",
+        review_by=None,
+        file_sha256="f" * 64,
     )
     item = Fused(chunk=chunk, score=score, lexical_rank=lexical, vector_rank=None)
     return Candidate(item=item, document=document, kind="framework_reference", withdrawn=False)
