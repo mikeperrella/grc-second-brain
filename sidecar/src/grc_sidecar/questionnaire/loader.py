@@ -44,6 +44,18 @@ class LoadedWorkbook:
     scan: PackageScan
     warnings: tuple[str, ...]
 
+    def close(self) -> None:
+        """Close what the workbook holds open. Call it when the workbook is no longer needed.
+
+        For a macro-enabled package openpyxl keeps the project in an in-memory zip file inside the
+        workbook; left to the garbage collector it can fail while closing, after the memory it
+        writes to has already been released. Closing it explicitly avoids that.
+        """
+        archive = self.workbook.vba_archive
+        if archive is not None:
+            archive.close()
+        self.workbook.close()
+
 
 def read_input_bytes(candidate: object, root: Path, caps: Caps = DEFAULT_CAPS) -> bytes:
     """Read a questionnaire file from inside `root`, once, refusing anything over the size cap.

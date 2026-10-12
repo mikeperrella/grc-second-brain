@@ -116,6 +116,54 @@ rules:
         - "**/tests/**"
     pattern-regex: '\bload_workbook\b'
 
+  # ---------- Python: the questionnaire engine writes one way only (ADR-014) ----------
+  # These four rules are scoped to the questionnaire package (and to the rule fixtures, so that
+  # `semgrep --test` can see them). The writer is the only module that may save a workbook or
+  # remove a file, and nothing in the package may write a file except by exclusive create.
+  - id: grc-py-workbook-save-outside-writer
+    languages: [python]
+    severity: ERROR
+    message: "Only grc_sidecar/questionnaire/writer.py may save a workbook (ADR-014). It builds the workbook, saves it to memory, reads it back and compares it, re-hashes the input, creates the file exclusively and checks it again; a second save call would skip all of that."
+    paths:
+      include:
+        - "**/questionnaire/**"
+        - ".semgrep/fixtures/grc-airgap.py"
+      exclude:
+        - "**/questionnaire/writer.py"
+    pattern-regex: '\.save\('
+
+  - id: grc-py-questionnaire-file-write-call
+    languages: [python]
+    severity: ERROR
+    message: "The questionnaire package never writes a file with write_bytes, write_text, os.replace, os.rename, shutil.copy* or shutil.move (ADR-014). Those overwrite or replace an existing file. The only write is the writer's exclusive create (open(path, 'xb')), which fails if anything of that name exists."
+    paths:
+      include:
+        - "**/questionnaire/**"
+        - ".semgrep/fixtures/grc-airgap.py"
+    pattern-regex: '\.(?:write_bytes|write_text)\(|\bos\.(?:replace|rename)\(|\bshutil\.(?:copy\w*|move)\('
+
+  - id: grc-py-questionnaire-open-mode
+    languages: [python]
+    severity: ERROR
+    message: "In the questionnaire package open() may only use mode 'rb' (read) or 'xb' (exclusive create) (ADR-014). Modes such as 'w', 'wb', 'a' or 'r+' overwrite or change an existing file; the input workbook must never be written to and an existing output must never be replaced."
+    paths:
+      include:
+        - "**/questionnaire/**"
+        - ".semgrep/fixtures/grc-airgap.py"
+    pattern-regex: '\bopen\((?:[^()\n]|\([^()\n]*\))*?,\s*(?:mode\s*=\s*)?["'']((?!rb["''])(?!xb["''])[^"'']*)["'']|\.open\(\s*["''](?!rb["''])(?!xb["''])'
+
+  - id: grc-py-questionnaire-delete-outside-writer
+    languages: [python]
+    severity: ERROR
+    message: "Only grc_sidecar/questionnaire/writer.py may remove a file (ADR-014), and only the one file it has just created when the read-back does not match. Removing files anywhere else in the questionnaire package could remove a user's workbook."
+    paths:
+      include:
+        - "**/questionnaire/**"
+        - ".semgrep/fixtures/grc-airgap.py"
+      exclude:
+        - "**/questionnaire/writer.py"
+    pattern-regex: '\bos\.(?:remove|unlink)\(|\.unlink\('
+
   # ---------- Python: frontmatter and vault content are untrusted (CLAUDE.md 8.6) ----------
   - id: grc-py-yaml-unsafe-load
     languages: [python]

@@ -411,6 +411,32 @@ class WorkbookRefusedError(GrcError):
         self.code: WorkbookRefusal = code
 
 
+WorkbookWriteRefusal = Literal[
+    "answers_incomplete",  # a question has no result to write
+    "bad_output_name",  # the source file name or run id cannot make a safe output name
+    "target_not_empty",  # an output cell is not empty or lies in a merged range
+    "input_changed",  # the input file differs from the bytes that were read and answered
+    "verify_failed",  # the saved workbook, read back from memory, differs from what was intended
+    "output_exists",  # exclusive create failed: a file by that name is already there
+    "write_failed",  # the file could not be written
+    "readback_mismatch",  # the file on disk does not hash like what was written (it is removed)
+]
+
+
+class WorkbookWriteError(GrcError):
+    """The answers file could not be written, and nothing was left behind (ADR-014).
+
+    `code` is a fixed word, never a path or text from the workbook. The input file is never
+    touched, and a file that was created and then found wrong is removed before this is raised.
+    """
+
+    default_message = "The answers file was not written"
+
+    def __init__(self, code: WorkbookWriteRefusal) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: WorkbookWriteRefusal = code
+
+
 class QuestionMappingError(GrcError):
     """The chosen question columns do not fit the workbook, or the workbook is too big to map.
 

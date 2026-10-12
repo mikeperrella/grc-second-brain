@@ -163,9 +163,34 @@ def test_a_macro_package_is_loaded_with_its_project_kept() -> None:
     data = rebuild(simple_bytes(), add={"xl/vbaProject.bin": project})
     plain = load_questionnaire(data)
     macro = load_questionnaire(with_content_type(data, MACRO_TYPE))
-    assert plain.workbook.vba_archive is None
-    assert macro.workbook.vba_archive is not None
-    assert macro.scan.macro_enabled is True
+    try:
+        assert plain.workbook.vba_archive is None
+        assert macro.workbook.vba_archive is not None
+        assert macro.scan.macro_enabled is True
+    finally:
+        plain.close()
+        macro.close()
+
+
+def test_closing_a_workbook_closes_the_macro_project_it_holds() -> None:
+    # openpyxl keeps the project in an in-memory zip file inside the workbook. Left open, the
+    # garbage collector closes it after the memory it writes to is gone, which fails (and the test
+    # run turns that into an error).
+    project = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64
+    data = rebuild(simple_bytes(), add={"xl/vbaProject.bin": project})
+    macro = load_questionnaire(with_content_type(data, MACRO_TYPE))
+    archive = macro.workbook.vba_archive
+    assert archive is not None
+    assert archive.fp is not None  # open
+    macro.close()
+    assert archive.fp is None  # closed
+    macro.close()  # closing twice is harmless
+
+
+def test_closing_a_plain_workbook_is_harmless() -> None:
+    loaded = load_questionnaire(simple_bytes())
+    loaded.close()
+    loaded.close()
 
 
 def test_the_parsers_own_warnings_are_collected_not_raised_or_printed() -> None:
