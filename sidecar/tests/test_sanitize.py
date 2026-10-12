@@ -35,7 +35,9 @@ def test_a_cleaned_text_is_accepted_by_openpyxl_for_every_control_character() ->
     sheet["A1"] = clean_cell_text(f"x{everything}y")  # raises if anything unsafe is left
 
 
-@pytest.mark.parametrize("text", ["a\ud800b", "a\udfffb", "a￾b", "a￿b"])
+# Built from code points: a source file with raw bidirectional or non-character code points is
+# what the Trojan Source scanners flag, so these tests keep their files plain ASCII.
+@pytest.mark.parametrize("text", [f"a{chr(point)}b" for point in (0xD800, 0xDFFF, 0xFFFE, 0xFFFF)])
 def test_lone_surrogates_and_non_characters_are_removed(text: str) -> None:  # [NEG]
     assert clean_cell_text(text) == "ab"
 
@@ -76,9 +78,9 @@ def test_cleaning_twice_changes_nothing() -> None:
 DIRECTION_CONTROLS = [
     *(chr(code) for code in range(0x202A, 0x202F)),
     *(chr(code) for code in range(0x2066, 0x206A)),
-    "‎",
-    "‏",
-    "؜",
+    chr(0x200E),
+    chr(0x200F),
+    chr(0x061C),
 ]
 
 

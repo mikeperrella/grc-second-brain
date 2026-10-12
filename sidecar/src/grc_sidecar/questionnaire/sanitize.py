@@ -32,13 +32,32 @@ from typing import Final
 MAX_CELL_CHARS: Final = 32_000  # Excel allows 32,767
 TRUNCATION_MARK: Final = " [truncated]"
 
-_DIRECTION_CONTROLS: Final = re.compile("[‪-‮⁦-⁩‎‏؜]")
+_BACKSLASH: Final = chr(0x5C)
+
+
+def _character_class(*ranges: tuple[int, int]) -> re.Pattern[str]:
+    """A regex class of code point ranges, written with `\\uXXXX` escapes the regex engine reads.
+
+    The ranges are given as numbers, never as the characters themselves: this file must stay plain
+    ASCII, because a source file that contains bidirectional control characters is exactly what
+    Bandit (B613) and Semgrep flag as a "Trojan Source" attack.
+    """
+    body = "".join(f"{_BACKSLASH}u{low:04x}-{_BACKSLASH}u{high:04x}" for low, high in ranges)
+    return re.compile(f"[{body}]")
+
+
+# U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F and U+061C: the twelve direction controls.
+_DIRECTION_CONTROLS: Final = _character_class(
+    (0x202A, 0x202E), (0x2066, 0x2069), (0x200E, 0x200F), (0x061C, 0x061C)
+)
 DIRECTION_MARKER: Final = "[contains direction-control characters] "
 
-# The control characters openpyxl rejects (\x00-\x08, \x0b, \x0c, \x0e-\x1f, the same set as its
+# The control characters openpyxl rejects (0x00-0x08, 0x0b, 0x0c, 0x0e-0x1f, the same set as its
 # own ILLEGAL_CHARACTERS_RE, which a test compares), plus lone surrogates and U+FFFE and U+FFFF,
 # which XML 1.0 does not allow.
-_UNSAFE: Final = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
+_UNSAFE: Final = _character_class(
+    (0x00, 0x08), (0x0B, 0x0C), (0x0E, 0x1F), (0xD800, 0xDFFF), (0xFFFE, 0xFFFF)
+)
 
 # A cell that starts with one of these can be read as a formula by a spreadsheet program, or by
 # the program a CSV export is opened in. A carriage return becomes a line feed in `clean_cell_text`,

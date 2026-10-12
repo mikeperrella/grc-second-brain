@@ -262,7 +262,12 @@ def test_a_formula_in_the_evidence_quote_is_neutralized_too(tmp_path: Path) -> N
     assert (cell.data_type, cell.quotePrefix) == ("s", True)
 
 
-@pytest.mark.parametrize("control", ["‮", "⁦", "‏", "؜"])
+# Built from code points: raw direction controls in a source file are what Bandit (B613) and
+# Semgrep flag as a Trojan Source attack, so this file stays plain ASCII.
+RLO, LRI, RLM, ALM, PDF = (chr(0x202E), chr(0x2066), chr(0x200F), chr(0x061C), chr(0x202C))
+
+
+@pytest.mark.parametrize("control", [RLO, LRI, RLM, ALM])
 def test_direction_controls_are_removed_from_the_answer(
     control: str, tmp_path: Path
 ) -> None:  # [NEG]
@@ -275,7 +280,7 @@ def test_direction_controls_are_removed_from_the_answer(
 def test_a_direction_control_cannot_hide_a_formula_trigger(tmp_path: Path) -> None:  # [NEG]
     # Removed first, so the text that is stored is the text that is checked for a trigger.
     run = Run(tmp_path)
-    run.results[2] = supported(answer="‮=1+1")
+    run.results[2] = supported(answer=f"{RLO}=1+1")
     cell = reopen(run.write())["Questions"].cell(row=2, column=ANSWER_COL)
     assert (cell.value, cell.data_type, cell.quotePrefix) == ("=1+1", "s", True)
 
@@ -284,7 +289,7 @@ def test_a_quote_with_a_direction_control_stays_verbatim_and_is_marked(
     tmp_path: Path,
 ) -> None:  # [NEG]
     run = Run(tmp_path)
-    quote = "Data at rest is ‮encrypted‬ with AES-256."
+    quote = f"Data at rest is {RLO}encrypted{PDF} with AES-256."
     run.results[2] = supported(citation=Citation("D", "policies/p.md", 4, 4, quote, FILE_HASH))
     evidence = reopen(run.write())["Questions"].cell(row=2, column=EVIDENCE_COL).value
     assert evidence == f'{DIRECTION_MARKER}policies/p.md:L4 "{quote}"'
@@ -293,7 +298,8 @@ def test_a_quote_with_a_direction_control_stays_verbatim_and_is_marked(
 
 def test_a_path_with_a_direction_control_is_marked_too(tmp_path: Path) -> None:  # [NEG]
     run = Run(tmp_path)
-    run.results[2] = supported(citation=Citation("D", "policies/‮p.md", 4, 4, "q", FILE_HASH))
+    path = f"policies/{RLO}p.md"
+    run.results[2] = supported(citation=Citation("D", path, 4, 4, "q", FILE_HASH))
     evidence = reopen(run.write())["Questions"].cell(row=2, column=EVIDENCE_COL).value
     assert evidence.startswith(DIRECTION_MARKER)
 
