@@ -164,6 +164,38 @@ def test_a_needs_review_answer_cell_stays_blank(tmp_path: Path) -> None:  # [NEG
     assert sheet.cell(row=2, column=EVIDENCE_COL).value is None
 
 
+@pytest.mark.parametrize("confidence", [0.0, 1.0, 0.4, 0.95])
+def test_a_whole_number_confidence_is_written_and_verified(  # [NEG]
+    confidence: float, tmp_path: Path
+) -> None:
+    """The file stores 0.0 and 1.0 as 0 and 1, so they read back as ints. A model that says
+    confidence 0.0 (every "no evidence") or 1.0 must not make the export fail (M5l found this)."""
+    run = Run(tmp_path)
+    run.results[2] = supported(model_confidence=confidence)
+    sheet = reopen(run.write())["Questions"]
+    assert sheet.cell(row=2, column=CONFIDENCE_COL).value == confidence
+
+
+@pytest.mark.parametrize(
+    ("stored", "intended", "expected"),
+    [
+        (0, 0.0, True),
+        (1, 1.0, True),
+        (0.95, 0.95, True),
+        (0.5, 0.0, False),  # a different number
+        (True, 1.0, False),  # a bool is not a number here
+        ("0", 0.0, False),  # text where a number was written
+        ("a", "a", True),
+        (1, "1", False),  # a number where text was written
+        ("a ", "a", False),
+    ],
+)
+def test_the_reopen_comparison_is_exact_in_value_and_kind(
+    stored: object, intended: str | float, expected: bool
+) -> None:  # [NEG]
+    assert writer._stored_as_intended(stored, intended) is expected
+
+
 def test_every_reason_is_listed_in_order(tmp_path: Path) -> None:
     run = Run(tmp_path)
     run.results[2] = supported(status="PARTIAL", reasons=("review_overdue", "lexical_only"))

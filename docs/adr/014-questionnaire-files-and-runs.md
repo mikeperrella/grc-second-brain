@@ -81,6 +81,16 @@ All are far from the 100:1 limit and from the 250,000-cell limit (the largest is
 
 **Logging, measured.** During a whole run through the routes at DEBUG, the only records were asyncio's own and the test client's httpx request lines; openpyxl and the zip library logged nothing. No canary from a question, an answer or a quote appears in any record (`tests/test_questionnaire_routes.py::test_no_canary_appears_in_any_log_record_for_a_full_run_through_the_routes`). The run's own log holds the failure code and the exception type name only.
 
+### The demo spreadsheet and the end-to-end run (M5l)
+
+**18. The demo workbook is generated, never committed.** `tools/make_demo_xlsx.py` (standard library plus the pinned openpyxl; no network, process or OS imports, checked by a test) writes `demo-questionnaire.xlsx` into the gitignored `fixtures-out/` with an exclusive create, so it never overwrites a file. It holds 15 questions in our own wording (not SIG, CAIQ or any other questionnaire), written against `vault-demo/` (11 meant to be answerable, 1 the planted 90-vs-365 conflict, 1 the overdue vendor policy, 3 absent or framework-only). It has the features the engine must leave alone: a header row, three merged bold section banners (skipped as `section_header`), a drop-down on an empty response column, column widths and a second sheet. The expectation notes live in the tool and are printed beside the live result; they are not written into the workbook and no test asserts them (a model's answers vary, ADR-013, 2a).
+
+**19. One scenario, run twice.** `tests/e2ekit.py` starts the real sidecar as a child process (`python -m grc_sidecar`, token in its environment, folders and the Ollama address in `GRC_*` settings), reads the ready line, and over real HTTP does inspect, start, read the event stream line by line while the run is going, and status. The index is built first, in the test process, by the existing indexer (decision 17: no route builds it). `test_e2e_wiring.py` runs it offline against a small fake Ollama on an unused loopback port that answers "no evidence" to everything; `test_e2e_live.py` (marker `ollama`) runs it against the real Ollama and only the owner starts it. The structural checks hold however the model answers: stream shape and counts, summary counts add up, input hash unchanged and equal in inspect and summary, no original cell changed, no new row, merged ranges and data validations unchanged, the six new headers, a blank answer exactly on the NEEDS_REVIEW rows, no question text in the stream, and (offline) none in the sidecar log. The kit refuses to point a non-live run at port 11434 (`test_an_offline_scenario_refuses_the_real_ollama_port`).
+
+**20. A bug the end-to-end run found in the M5j writer.** The reopen check compared a written number with `type(cell.value) is type(value)`. The file stores a confidence of 0.0 or 1.0 as `0` or `1`, which openpyxl reads back as an int, so any answer with model confidence exactly 0.0 or 1.0 (every fake "no evidence" reply; a real model saying 1.0) failed the run with `write_verify_failed` and no file. The unit tests had used 0.95 and `None`. Fixed in `writer._stored_as_intended` (a number is compared as a number, a bool is not a number, text must be the same `str`); four tests, and the old comparison fails six tests including the end-to-end ones (mutation proof 69). The check is not weaker for text, and the written cell is still type-checked.
+
+**What the offline run cannot show:** what a real model says, a SUPPORTED or PARTIAL cell written through the routes, or a live stream read while a slow run is going (the fake answers at once). Live check B covers those. The port-11434 guard in the kit has a mutation proof (70), run on the second attempt: the first was refused by the tool permission layer and was not worked around.
+
 ## Consequences
 
 Positive: a hostile or broken workbook is refused with a stable code before it reaches the parser; the file that was hashed is the file that was parsed; the new dependencies are checked, not assumed; every refusal and every skipped row is reported, none is silent.
@@ -189,6 +199,13 @@ Same method. Files restored with matching sha256 (`runs.py` `a2e0271c...c23bc`, 
 | 66 | Malformed requests do not echo values | the validation handler removed | 11 failed, 34 passed |
 | 67 | `Retriever.vault_withheld` | always returns nothing | 1 failed, 14 passed |
 | 68 | `current_file_sha256` | hashes the path, not the text | 3 failed, 12 passed |
+
+## Mutation proofs (M5l)
+
+| # | Control | Mutation | Result |
+|---|---|---|---|
+| 69 | The reopen check compares numbers as numbers | the float branch of `_stored_as_intended` back to `type(stored) is float and stored == intended` (the old behaviour) | 6 failed, 66 passed: `test_a_whole_number_confidence_is_written_and_verified[0.0]` and `[1.0]`, `test_the_reopen_comparison_is_exact_in_value_and_kind[0-0.0-True]` and `[1-1.0-True]`, and both end-to-end runs (`write_verify_failed`). Restored; `writer.py` sha256 matches the pre-mutation hash. |
+| 70 | The kit refuses a non-live run at port 11434 | `if False and ...` in front of the port check in `_refuse_real_ollama_unless_live` (retried with the owner's approval after a first denial) | 1 failed: `test_an_offline_scenario_refuses_the_real_ollama_port`. Restored; `e2ekit.py` sha256 matches the pre-mutation hash. |
 
 ## Limits of the writing half
 

@@ -228,12 +228,27 @@ def _compare(
             raise WorkbookWriteError("verify_failed")
     for (row, column), (value, prefixed) in written.items():
         cell = sheet.cell(row=row, column=column)
-        stored_as_intended = cell.value == value and type(cell.value) is type(value)
+        stored_as_intended = _stored_as_intended(cell.value, value)
         string_ok = isinstance(value, float) or (
             cell.data_type == "s" and cell.quotePrefix == prefixed
         )
         if not stored_as_intended or not string_ok or cell.hyperlink is not None:
             raise WorkbookWriteError("verify_failed")
+
+
+def _stored_as_intended(stored: object, intended: str | float) -> bool:
+    """Is the cell read back the same as what was written, in value and in kind?
+
+    A number is compared as a number, not by Python type: the file stores 0.0 and 1.0 as "0" and
+    "1", so openpyxl reads them back as ints (found by the M5l end-to-end run, where a model that
+    said confidence 0.0 made every run fail). A bool is not a number here. Text must come back as
+    exactly the same `str`.
+    """
+    if isinstance(intended, float):
+        return (
+            isinstance(stored, int | float) and not isinstance(stored, bool) and stored == intended
+        )
+    return type(stored) is str and stored == intended
 
 
 def _read_back(path: Path) -> bytes:
