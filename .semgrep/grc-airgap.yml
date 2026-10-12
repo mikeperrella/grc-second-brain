@@ -105,6 +105,17 @@ rules:
         - "**/tests/**"
     pattern-regex: '(?i)api/+(\./+)*chat\b'
 
+  # ---------- Python: one module may read a workbook (ADR-014) ----------
+  - id: grc-py-load-workbook-outside-loader
+    languages: [python]
+    severity: ERROR
+    message: "Only grc_sidecar/questionnaire/loader.py may call openpyxl's load_workbook (ADR-014). That module reads the file once, hashes the bytes, runs the package scan (size caps counted on decompressed bytes, DOCTYPE and ENTITY search in every part) and then parses those same bytes; a second caller would parse a workbook nobody scanned."
+    paths:
+      exclude:
+        - "**/questionnaire/loader.py"
+        - "**/tests/**"
+    pattern-regex: '\bload_workbook\b'
+
   # ---------- Python: frontmatter and vault content are untrusted (CLAUDE.md 8.6) ----------
   - id: grc-py-yaml-unsafe-load
     languages: [python]
