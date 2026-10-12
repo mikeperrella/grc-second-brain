@@ -1,5 +1,6 @@
 """The loader reads a file once, scans the bytes, then parses those same bytes (ADR-014)."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,15 @@ def test_a_file_inside_the_root_is_read_whole(root: Path) -> None:
     assert read_input_bytes("sig.xlsx", root) == data
 
 
-@pytest.mark.parametrize("candidate", ["../outside.xlsx", "..\\outside.xlsx"])
+# A backslash is a path separator only on Windows; on Linux it is an ordinary character, so the
+# second spelling names a file that does not exist inside the root. Skipped off Windows, as in
+# test_paths.py (the CI skip check accepts exactly this reason).
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows-only path behavior")
+
+
+@pytest.mark.parametrize(
+    "candidate", ["../outside.xlsx", pytest.param("..\\outside.xlsx", marks=windows_only)]
+)
 def test_a_path_that_leaves_the_root_is_refused(root: Path, candidate: str) -> None:  # [NEG]
     (root.parent / "outside.xlsx").write_bytes(simple_bytes())
     with pytest.raises(PathNotAllowedError):
