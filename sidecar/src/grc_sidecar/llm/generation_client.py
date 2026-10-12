@@ -41,9 +41,11 @@ from grc_sidecar.errors import (
     PromptTooLargeError,
 )
 from grc_sidecar.llm.limits import (
+    FIRST_CALL_READ_TIMEOUT_SECONDS,
     MAX_MESSAGE_CHARS,
     NUM_CTX,
     NUM_PREDICT,
+    READ_TIMEOUT_SECONDS,
     SEED,
     TEMPERATURE,
 )
@@ -67,11 +69,15 @@ CHAT_PATH: Final = "/api/chat"
 # The only (method, path) pairs this client may send. Compared exactly, query string included.
 ALLOWED_ENDPOINTS: Final = frozenset({("POST", CHAT_PATH), ("GET", TAGS_PATH)})
 
-# Seconds. The first call makes Ollama load the model into memory, which can take a long time on a
-# cold machine, so it gets a longer read timeout than every later call. Starting values, to be
-# tuned from live check A.
-DEFAULT_TIMEOUT: Final = Timeout(connect=5.0, read=120.0, write=30.0, pool=5.0)
-FIRST_CALL_TIMEOUT: Final = Timeout(connect=5.0, read=180.0, write=30.0, pool=5.0)
+# Seconds. The read timeout covers the whole generation (replies are not streamed), so it is
+# derived in `limits.py` from the output cap and the decode speed measured at live check A. The
+# first call makes Ollama load the model into memory as well, so it gets a longer one.
+DEFAULT_TIMEOUT: Final = Timeout(
+    connect=5.0, read=float(READ_TIMEOUT_SECONDS), write=30.0, pool=5.0
+)
+FIRST_CALL_TIMEOUT: Final = Timeout(
+    connect=5.0, read=float(FIRST_CALL_READ_TIMEOUT_SECONDS), write=30.0, pool=5.0
+)
 
 
 async def _enforce_endpoint(request: Request) -> None:

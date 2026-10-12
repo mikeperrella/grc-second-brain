@@ -31,7 +31,7 @@ from grc_sidecar.errors import (
 from grc_sidecar.security.paths import resolve_within
 from grc_sidecar.vault.frontmatter import error_to_issue, parse_document
 from grc_sidecar.vault.models import IndexIssue, ParsedDocument, ScanResult
-from grc_sidecar.vault.normalize import MAX_FILE_BYTES, decode_and_normalize
+from grc_sidecar.vault.normalize import MAX_FILE_BYTES, decode_and_normalize, sha256_hex
 
 
 def _is_markdown(name: str) -> bool:
@@ -112,6 +112,28 @@ def _parse_file(root: Path, relative: str) -> ParsedDocument | IndexIssue:
         return parse_document(decode_and_normalize(raw, relative), relative)
     except VaultError as error:
         return error_to_issue(error, relative)
+
+
+def current_file_sha256(vault_root: Path, source_path: str) -> str | None:
+    """The `file_sha256` the indexer would record for this vault file as it is now.
+
+    The same path guard and the same decoding and normalization as the scan, so an unchanged file
+    gives the value recorded at indexing, and any change to its text gives another one. Returns
+    None for anything that is not a readable, valid vault file (missing, a link, outside the
+    root, too big, not UTF-8): a cited file that is gone counts as changed (ADR-013, check 7).
+    """
+    try:
+        root = resolve_within(".", vault_root)
+    except GrcError:
+        return None
+    path = _safe_file(root, source_path)
+    raw = None if path is None else _read_limited(path)
+    if raw is None:
+        return None
+    try:
+        return sha256_hex(decode_and_normalize(raw, source_path))
+    except VaultError:
+        return None
 
 
 def scan_vault(vault_root: Path) -> ScanResult:

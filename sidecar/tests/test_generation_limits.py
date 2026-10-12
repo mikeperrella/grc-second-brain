@@ -44,6 +44,41 @@ def test_the_sources_cap_and_the_ratio_equal_retrievals_own_constants() -> None:
     assert limits.WORST_CHARS_PER_TOKEN == selection.WORST_CHARS_PER_TOKEN == 1.38
 
 
+# ----- the read timeout (M5k, ADR-012 decision 9) ------------------------------------------------
+# Written out with independent integer arithmetic, like the context window above.
+
+
+def test_the_decode_time_of_a_maximal_reply_at_the_measured_speed() -> None:
+    # 1,900 tokens at 5.8 tokens per second: 19,000 / 58 = 327.6, rounded up
+    assert limits.MEASURED_DECODE_TOKENS_PER_SECOND_TENTHS == 58
+    assert limits.DECODE_SECONDS_AT_MAX_OUTPUT == ceil_div(1_900 * 10, 58) == 328
+
+
+def test_the_read_timeout_is_derived_from_the_output_cap_and_the_decode_speed() -> None:  # [NEG]
+    assert limits.READ_TIMEOUT_MARGIN_FACTOR == 2
+    assert limits.READ_TIMEOUT_SECONDS == ceil_div(328 * 2, 60) * 60 == 660
+    assert limits.FIRST_CALL_READ_TIMEOUT_SECONDS == 660 + 60 == 720
+    assert limits.READ_TIMEOUT_SECONDS % 60 == 0
+
+
+def test_the_read_timeout_outlasts_a_maximal_reply_with_room_to_spare() -> None:  # [NEG]
+    # At the measured speed a maximal reply takes 328 seconds. The old value, 120, would have cut
+    # it off and stopped a run as if Ollama were gone.
+    assert limits.READ_TIMEOUT_SECONDS > limits.DECODE_SECONDS_AT_MAX_OUTPUT
+    assert limits.READ_TIMEOUT_SECONDS >= 2 * limits.DECODE_SECONDS_AT_MAX_OUTPUT
+    assert limits.READ_TIMEOUT_SECONDS > 165.8  # the slowest question seen at live check A
+
+
+def test_the_timeout_follows_the_inputs_it_is_derived_from() -> None:  # [NEG]
+    # The formula, with other inputs: a larger output cap, a slower machine or a bigger margin each
+    # move the timeout, so a typed-in number could not pass this.
+    assert limits.derive_read_timeout(1_900, 58, 2) == 660
+    assert limits.derive_read_timeout(3_800, 58, 2) == 1_320  # twice the output
+    assert limits.derive_read_timeout(1_900, 29, 2) == 1_320  # half the speed
+    assert limits.derive_read_timeout(1_900, 58, 4) == 1_320  # twice the margin
+    assert limits.derive_read_timeout(60, 60, 1) == 60  # exact minutes are not rounded up
+
+
 def test_decoding_is_deterministic_on_one_machine() -> None:
     assert limits.TEMPERATURE == 0
     assert limits.SEED == 42

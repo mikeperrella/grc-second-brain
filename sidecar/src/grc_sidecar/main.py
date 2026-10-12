@@ -19,10 +19,13 @@ from fastapi import FastAPI
 
 from grc_sidecar.api.errors import register_error_handlers
 from grc_sidecar.api.health import router as health_router
+from grc_sidecar.api.questionnaire import router as questionnaire_router
 from grc_sidecar.api.readiness import router as readiness_router
 from grc_sidecar.config import Settings
 from grc_sidecar.llm.model_gate import ModelGate
 from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
+from grc_sidecar.questionnaire.runs import QuestionnaireRuns
+from grc_sidecar.questionnaire.runtime import build_runtime
 from grc_sidecar.security.auth import ASGIApp, AuthMiddleware
 from grc_sidecar.vault.clock import SystemClock
 
@@ -50,6 +53,8 @@ def _model_check_lifespan(
             client, (settings.embedding_model, settings.generation_model), SystemClock()
         )
         app.state.gate = gate
+        runtime = build_runtime(settings, gate, client)
+        app.state.questionnaire = None if runtime is None else runtime.runs
         check = asyncio.create_task(gate.refresh())
         try:
             yield
@@ -57,26 +62,36 @@ def _model_check_lifespan(
             check.cancel()
             with suppress(asyncio.CancelledError):
                 await check
+            if runtime is not None:
+                await runtime.aclose()
             await client.aclose()
 
     return lifespan
 
 
 def create_app(
-    token: str, *, settings: Settings | None = None, gate: ModelGate | None = None
+    token: str,
+    *,
+    settings: Settings | None = None,
+    gate: ModelGate | None = None,
+    questionnaire: QuestionnaireRuns | None = None,
 ) -> ASGIApp:
     """Build the app with authentication wrapped around it from the outside.
 
     With `settings`, startup builds the Ollama client and a model gate and checks the models in
-    the background. A ready-made `gate` is for tests; with neither, `/readiness` and anything
-    that needs a model refuse (503) instead of proceeding unchecked.
+    the background, and, if the vault, questionnaire and export folders are all configured, the
+    questionnaire runs. A ready-made `gate` and `questionnaire` are for tests; with none of them,
+    `/readiness` and anything that needs a model or a folder refuse (503) instead of proceeding
+    unchecked.
     """
     lifespan = _model_check_lifespan(settings) if settings is not None and gate is None else None
     api = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     api.state.gate = gate
+    api.state.questionnaire = questionnaire
     register_error_handlers(api)
     api.include_router(health_router)
     api.include_router(readiness_router)
+    api.include_router(questionnaire_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own
     # error handling, so even 404/405/422/500 responses require the token.
     return AuthMiddleware(api, token)

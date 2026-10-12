@@ -1,6 +1,6 @@
 # ADR-014: Questionnaire files and runs
 
-Status: Accepted (M5i, the reading half; M5j, the writing half). The run orchestration and the routes are built in M5k, and this ADR is extended then: the section marked "later" below holds decisions already taken in the plan, not yet built. Facts about the packages and the numbers below were checked on 2026-10-12 on the Windows development machine.
+Status: Accepted (M5i, the reading half; M5j, the writing half; M5k, the runs and the routes). Facts about the packages and the numbers below were checked on 2026-10-12 on the Windows development machine.
 
 ## Context
 
@@ -59,13 +59,27 @@ All are far from the 100:1 limit and from the 250,000-cell limit (the largest is
 
 **Direction controls (owner's addition at the M5j review).** Unicode bidirectional controls (U+202A to U+202E, U+2066 to U+2069, U+200E, U+200F, U+061C: twelve in all) can make text display in a different order from the order it is stored in, so a reviewer could read something other than what is there. They are handled by where the text comes from. **In an answer** (model output, no verbatim requirement) they are removed, before the formula-trigger check, so a control placed in front of `=` cannot hide it. **In a quote** (it must stay verbatim) they are kept, and when the Evidence text (path and quote) contains any of them, the cell starts with the visible marker `[contains direction-control characters] `, so the reviewer knows what is displayed may be reordered. No status rule changes. The letters of right-to-left languages, zero-width joiners (emoji sequences) and zero-width spaces are not direction controls and are left alone (tests). Other look-alike tricks, such as homoglyphs, are not handled.
 
+**A scanner finding, fixed in `39aa7cd`:** CI's Bandit (B613, "trojansource") and Semgrep (`generic.unicode.security.bidi`) both failed the first push of M5j, because `sanitize.py` held the twelve direction controls as raw characters in a regex: the code that defends against them contained them. The `\u` escapes I had typed were turned into the characters when the file was written, and the formatter kept them. The ranges are now built from code point numbers (`_character_class`), so the file is plain ASCII; the tests build the characters with `chr()`; and `tests/test_source_hygiene.py` scans the whole repository (code, tests, documents) for them and tests its own scanner on each of the twelve, so a raw one fails a test here before CI's scanners see it. Mutation proofs 46 to 49 were re-run on the new construction (U+061C left out of the ranges: 2 failed, 99 passed; lone surrogates left out of the unsafe set: 3 failed, 98 passed); the final `sanitize.py` sha256 is `82d26c7c...49155`.
+
 **A leak found while testing, and fixed:** for a macro-enabled package openpyxl keeps the project in an in-memory zip file inside the workbook. Left to the garbage collector it can fail while closing, after the memory it writes to has been released, and the test run (which turns warnings into errors) reported that as a failure in whichever test happened to run next. `LoadedWorkbook.close()` closes it explicitly; the writer closes the workbook it reads back, and the tests close what they load. Mutation proof 50.
 
 **12. The questionnaire and export folders** are two new settings, `GRC_QUESTIONNAIRE_DIR` and `GRC_EXPORT_DIR` (absolute, optional, unset until the folder pickers exist in M6). Neither may be inside, the same as, or contain the vault or the index, checked lexically when settings load (an error that names the field, not the path) and again on the resolved paths, because a link can fool the first check (`validate_runtime_dirs`). They may be the same folder as each other. The host's five-key child environment is unchanged: the host does not pass them yet.
 
 **13. The write policy is enforced twice.** Four Semgrep rules, scoped to the questionnaire package: `.save(` only in `writer.py`; no `write_bytes`, `write_text`, `os.replace`, `os.rename`, `shutil.copy*` or `shutil.move`; `open()` only with mode `rb` or `xb`; file removal only in `writer.py`. And `tests/test_questionnaire_write_hygiene.py` reads the same policy from the syntax tree, so it runs offline, and its scanner is tested against every forbidden construct.
 
-**Later (M5k), already decided in the plan:** one run at a time, refusing to start (no file written) if the generation model is unavailable or any vault file changed since indexing; the routes `inspect`, `runs`, `events` (server-sent events with counts and codes only) and `runs/{id}`, all behind the auth middleware; the generation read timeout derived from `num_predict` and the measured decode speed; the full-run logging canary test. Not built yet.
+### Runs and routes (M5k)
+
+**14. A run refuses before it works.** `QuestionnaireRuns.start` (`questionnaire/runs.py`) refuses, with a typed error and no file written, in this order: a run already going (409 `run_in_progress`); the file outside the questionnaire folder, missing, or refused by the scan (400, 404, 422 with the loader's code); a mapping that does not fit or a workbook with no questions (422 with the mapper's code); a required model not confirmed by the gate, or the generation model's digest unreadable (503 `models_unavailable`); the index not built (409 `index_not_built`); and **any vault file changed after it was indexed (409 `vault_changed_reindex`)**, asked of the retriever's own freshness check (`Retriever.vault_withheld`). A refused start leaves nothing running and nothing remembered. Mid-run edits are handled by the answer status rules, not here: a file that changes during the run caps the later answers at PARTIAL with `evidence_withheld`, and a cited file that changed blanks its answer when the file is written (F23-6).
+
+**15. Ollama failing part-way stops the asking, not the file (ADR-013, "Ollama fails partway").** When one answer reports the model unavailable (the client could not reach it, it timed out, it was refused or answered from a non-local host), every remaining question gets a blank `model_unavailable` result without calling the model again, the file is still written, the run ends `stopped`, and the summary says `complete: false`. A generation read timeout takes this path (ADR-012, "The read timeout, derived (M5k)": 660 s, 720 s for the first call). A failure that is not about the model (the index disappears, the input file changes during the run so the write refuses, an unexpected error) ends the run `failed` with a fixed code (`index_not_built`, `retrieval_unavailable`, `write_<code>`, `internal_error`, `cancelled`) and **writes no file**; the exception's own text is never kept, sent or logged (the log line holds the code and the exception's type name).
+
+**16. Events and routes carry codes, never text.** The run reports as server-sent events: `started` (run id, total), one `progress` per question (index, total, status, reason codes), then `done` (complete, total, counts) or `failed` (code). A test lists the allowed keys and fails on a canary in a question, an answer, a quote, the file name or the path. The routes (`api/questionnaire.py`) are thin: `POST /questionnaire/inspect`, `POST /questionnaire/runs` (202), `GET /questionnaire/runs/{id}` (status and summary: model, digests before and after, template and input hashes, counts, reason counts, file name, dropped parts, warnings, seconds) and `GET /questionnaire/runs/{id}/events`. All sit behind the auth middleware that wraps the whole app, so the stream needs the token too, and a malformed body or run id is a 422 that names the fields and never echoes a value (a path may be in one). One run is held at a time; the last 20 finished runs are kept in memory (they are gone after a restart; the file is not). All the work that blocks (the workbook, the files, the hashes) runs off the event loop, and a test holds a run in the middle of a question with an event, with no sleeps, and shows `/health` still answers.
+
+**17. The real parts are assembled from the settings, and a missing setting is a refusal.** `questionnaire/runtime.py` builds the answer service, retriever, generation client and repositories when the vault, the questionnaire folder and the export folder are all configured (`GRC_VAULT_DIR`, `GRC_QUESTIONNAIRE_DIR`, `GRC_EXPORT_DIR`); otherwise there is no runtime and every route answers 503 `questionnaire_root_not_configured`. Nothing connects to Ollama while it is built. **No route builds the index, and M5 adds none (owner decision):** it is built by the existing indexer, deliberately started, so with no index a run refuses with `index_not_built`. The M5l end-to-end live test builds the `vault-demo` index with that indexer before it starts the sidecar, the same way live check A did. A production "build index" trigger belongs with the M6 folder picker. Live check B keeps the live event stream as an explicit step: a real client reading it while a run is going.
+
+**The tests never reach a real Ollama.** While writing these tests I made read-only `GET /api/tags` calls to the owner's running Ollama by accident (the run's model reader and the app's startup check had no test double); I found it, stopped, and reported it. They now use a mock transport (`build_runtime(generator_transport=...)`) or a loopback port nothing listens on, a test asserts the port is never 11434, and an instrumented run of every new test file recorded no connection to port 11434.
+
+**Logging, measured.** During a whole run through the routes at DEBUG, the only records were asyncio's own and the test client's httpx request lines; openpyxl and the zip library logged nothing. No canary from a question, an answer or a quote appears in any record (`tests/test_questionnaire_routes.py::test_no_canary_appears_in_any_log_record_for_a_full_run_through_the_routes`). The run's own log holds the failure code and the exception type name only.
 
 ## Consequences
 
@@ -146,10 +160,35 @@ Same method and rules as above. Final sha256 of each source file after restoring
 | 46 | Direction controls removed from the answer | answer written as given | 6 failed, 95 passed (I printed only the counts for this run; the four parametrized writer cases and the hidden-trigger test are among them, and a failure from the leak below may be the sixth) |
 | 47 | The quote stays verbatim | controls removed from the quote too | 2 failed, 52 passed (`test_a_quote_with_a_direction_control_stays_verbatim_and_is_marked`, plus the dropdown test, which was failing from the leak below and is not evidence for this proof) |
 | 48 | The Evidence marker | never added | 3 failed, 51 passed (the quote test, the path test, and the leak victim) |
-| 49 | Every one of the twelve controls is in the set | U+061C removed from the pattern | 3 failed, 98 passed (`test_direction_controls_are_removed_from_the_answer[؜]`, `test_each_direction_control_is_removed_from_model_text[U+061C]`, and the leak victim) |
+| 49 | Every one of the twelve controls is in the set | U+061C removed from the pattern | 3 failed, 98 passed (`test_direction_controls_are_removed_from_the_answer` (its U+061C case) and `test_each_direction_control_is_removed_from_model_text[U+061C]`, and the leak victim) |
 | 50 | Macro project closed explicitly | `LoadedWorkbook.close()` no longer closes it | 2 failed, 73 passed (`test_closing_a_workbook_closes_the_macro_project_it_holds`, and the garbage-collector failure it prevents, which reappeared in whichever test ran next) |
 
 **Not proven by mutation.** The four new Semgrep rules (27 rules in all) could not be run with `semgrep --test`, because Semgrep is not installed here. I checked each regex against its fixture annotations with Python's `re` (2 to 7 lines that must match and 2 to 5 that must not, no problems) and ran all four over the real package (no hits). Because these rules use `paths.include` for the first time in this repository, with the fixture file listed as well so `semgrep --test` can see it, the CI `semgrep` job is the real test, and if it is red the cause is the path scoping, not the policy. The AST test is the check that ran here.
+
+## Mutation proofs (M5k)
+
+Same method. Files restored with matching sha256 (`runs.py` `a2e0271c...c23bc`, `questionnaire.py` (api) `4c6d443d...c0069`, `errors.py` (api) `65a85d43...a83a`, `main.py` `3851e085...8f4ad`, `scan.py` `0fd6d719...62e7d`, `retrieval/service.py` `cdf97a1b...fd4`, `runtime.py` `167f857a...3daba`). "Run tests" are `test_questionnaire_runs.py` and `test_questionnaire_routes.py` (73 together).
+
+| # | Control | Mutation | Result |
+|---|---|---|---|
+| 51 | Read timeout margin | factor 2 changed to 1 | 3 failed, 78 passed |
+| 52 | Read timeout speed | 5.8 changed to 2.9 tokens per second | 3 failed, 78 passed |
+| 53 | `num_predict` derived from the schema maximum | `ANSWER_MAX_CHARS` doubled | 6 failed, 75 passed |
+| 54 | The client takes the derived timeout | read timeout typed in as 120 s | 1 failed, 80 passed |
+| 55 | One run at a time | check removed | 2 failed, 71 passed |
+| 56 | Models confirmed before a run | `gate.require` removed | 3 failed, 70 passed |
+| 57 | Digest readable before a run | check removed | 1 failed, 72 passed |
+| 58 | Vault current before a run | withheld check removed | 3 failed, 70 passed |
+| 59 | Stop asking when the model is gone | the stop flag never set | 3 failed, 70 passed |
+| 60 | Events carry no text | the question text added to a progress event | 3 failed, 70 passed |
+| 61 | The log holds a code, not the error's text | the exception itself logged | 1 failed, 72 passed |
+| 62 | The run is a background task | the run executed inside `start` | 5 failed, 68 passed (154.9 s: each blocked scenario ends at its 30 s limit instead of hanging the suite) |
+| 63 | A workbook with no questions is refused | check removed | 1 failed, 72 passed |
+| 64 | An unknown run is a 404 before streaming | check removed | 1 failed, 44 passed (routes tests) |
+| 65 | The routes sit behind the token | the auth middleware not applied | 18 failed, 51 passed (routes and middleware tests) |
+| 66 | Malformed requests do not echo values | the validation handler removed | 11 failed, 34 passed |
+| 67 | `Retriever.vault_withheld` | always returns nothing | 1 failed, 14 passed |
+| 68 | `current_file_sha256` | hashes the path, not the text | 3 failed, 12 passed |
 
 ## Limits of the writing half
 
@@ -158,3 +197,12 @@ Same method and rules as above. Final sha256 of each source file after restoring
 - A same-user process could swap the file between the input re-hash and the exclusive create (threat model O1).
 - Both sides of the read-back comparison are openpyxl's view of the file, not Excel's.
 - `\r` cannot survive the file format, so it becomes `\n` (decision 11).
+
+## Limits of the runs and routes (M5k)
+
+- **Nothing here has been run against a real Ollama.** Every test uses a scripted answerer or a mock transport. How a real model, the real index and a real workbook behave together is what live check B (M5l) is for.
+- **No route builds the index** (decision 17), and the folders come from the environment until the pickers exist (M6); the host does not pass them yet.
+- **Runs live in memory.** A restart forgets the last 20 runs (their output files stay). The event stream has no heartbeat and no resume position: a client that reconnects reads the events again from the first.
+- **The HTTP test transport buffers a whole response**, so the tests read a stream after the run it describes has ended, and test concurrency (a held run, `/health`, a second start) with separate requests. A real client reading the stream live is exercised only at live check B.
+- **One timeout measurement** (ADR-012, "The read timeout, derived (M5k)").
+- **`ConfigurationError` is mapped to `questionnaire_root_unusable`** (503) for every route; today only the questionnaire routes can raise it.

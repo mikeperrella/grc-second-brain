@@ -215,6 +215,17 @@ class Retriever:
 
     # ----- the steps -------------------------------------------------------------------------
 
+    async def vault_withheld(self) -> tuple[str, ...]:
+        """The vault documents that changed after they were indexed (sorted source paths).
+
+        Runs the same freshness check a question starts with, so it also refreshes what it can.
+        A questionnaire run asks this before it starts and refuses if anything is withheld
+        (ADR-014): answers must not be drafted from an index that is known to be behind the vault.
+        Raises IndexNotBuiltError or RetrievalUnavailableError like `retrieve`.
+        """
+        async with self._lock:
+            return await self._refresh_vault()
+
     async def _refresh_vault(self) -> tuple[str, ...]:
         """Step 1. Returns the documents withheld because their file changed after indexing."""
         failed = False
