@@ -1,6 +1,6 @@
 # ADR-016: Control mappings (G7) and the reality check
 
-Status: Proposed (M5.5 PR 1, chunk 1a); final when PR 1 closes. **Decision 2 is built in chunk 1b (commit to come); every other decision below is still planned** and is written so the owner can review it before any code exists. Facts about the Okta page were read on 2026-10-12 (by the owner's reviewer) and on 2026-10-13 (by the assistant, see decision 3).
+Status: Proposed (M5.5 PR 1, chunk 1a); final when PR 1 closes. **Decision 2 is built in chunk 1b (commit cf23d95) and decision 13 in chunk 1c (commit to come); every other decision below is still planned** and is written so the owner can review it before any code exists. Facts about the Okta page were read on 2026-10-12 (by the owner's reviewer) and on 2026-10-13 (by the assistant, see decision 3).
 
 ## Context
 
@@ -36,7 +36,7 @@ This ADR records the decisions so the owner can explain each one. It does **not*
 
 **12. No live connection, and how that is enforced (planned).** There is no URL, token, credential or host parameter in any request model. The `reality/` module imports no network or process module (a test, like the demo-workbook tool's), `csv` may be imported only under `reality/` (a Semgrep rule with fixtures), and the egress guard stays on for the whole suite. The reality check has no model and needs no live check.
 
-**13. The authentication-controls file (planned, chunk 1c).** `sidecar/src/grc_sidecar/reality/auth_controls.json` lists the control IDs treated as authentication controls (used by `ControlMap` to rank and cross-check claims). The owner reviews the list at STOP R1. Candidates, checked against the shipped packs on 2026-10-13: NIST SP 800-53 Rev 5 `IA-2`, `IA-2(1)`, `IA-2(2)` (headings, `packs/nist-sp800-53-r5/ia.md:22`, `:28`, `:34`); NIST SP 800-171 Rev 3 `03.05.03` (heading, `packs/nist-sp800-171-r3/03.05.md:21`); NIST CSF 2.0 `PR.AA-03` (heading, `packs/nist-csf-2.0/pr.md:28`); SOC 2 `CC6.1` (bold list item, `packs/soc2-tsc-ids/cc.md:28`); ISO 27001 `A.8.5` (bold list item, `packs/iso27001-annex-a-ids/a8-technological.md:15`). A test requires every ID in the file to exist in the shipped packs. **The owner's decision of 2026-10-13: the test accepts a heading or a bold list-item ID (`- **ID**`).** For the SOC 2 and ISO packs, which are authored and whose `id_list_verified_against` is `unverified` (F11-2), this proves the ID is present in **our authored pack**, not that it is in the standard.
+**13. The authentication-controls file (built, chunk 1c).** The file holds exactly these seven IDs, each with its framework, pack folder and pack file, and is read by `reality/auth_controls.py` with `importlib.resources` (strict Pydantic, every ID recognized by `identify`, duplicates and malformed files refused with `AuthControlsError`). `tests/test_auth_controls.py` proves each ID is a heading or a `- **ID**` item in its cited pack file. `sidecar/src/grc_sidecar/reality/auth_controls.json` lists the control IDs treated as authentication controls (used by `ControlMap` to rank and cross-check claims). The owner reviews the list at STOP R1. Candidates, checked against the shipped packs on 2026-10-13: NIST SP 800-53 Rev 5 `IA-2`, `IA-2(1)`, `IA-2(2)` (headings, `packs/nist-sp800-53-r5/ia.md:22`, `:28`, `:34`); NIST SP 800-171 Rev 3 `03.05.03` (heading, `packs/nist-sp800-171-r3/03.05.md:21`); NIST CSF 2.0 `PR.AA-03` (heading, `packs/nist-csf-2.0/pr.md:28`); SOC 2 `CC6.1` (bold list item, `packs/soc2-tsc-ids/cc.md:28`); ISO 27001 `A.8.5` (bold list item, `packs/iso27001-annex-a-ids/a8-technological.md:15`). A test requires every ID in the file to exist in the shipped packs. **The owner's decision of 2026-10-13: the test accepts a heading or a bold list-item ID (`- **ID**`).** For the SOC 2 and ISO packs, which are authored and whose `id_list_verified_against` is `unverified` (F11-2), this proves the ID is present in **our authored pack**, not that it is in the standard.
 
 **14. The administrators' hardware-key requirement is a later claim (planned).** The demo sentence at `access-control-policy.md:23` also says administrators must use a hardware security key. v1 checks only "MFA required"; that second claim is not checked, and the result does not imply it is.
 
@@ -60,4 +60,14 @@ Original `vault/controlmap.py` sha256 `877bf6d651c87046a7d7b42988bb30de9f4058158
 | 1b-i | Whole-identifier matching | `entry.key == wanted` replaced by a substring test (`wanted[1] in entry.key[1]`) | `test_a_longer_identifier_is_not_the_control_asked_for[...]` (`AC-2`/`AC-20`, `AC-02`/`AC-20`, `3.1.1`/`13.1.1`, `3.1.1`/`3.1.10`, `03.01.01`/`3.1.10`, `CC6.1`/`CC6.10`) | 6 failed, 21 passed |
 | 1b-ii | Parent rule | parent rule reversed (a lookup also returns documents mapped to its own parent, and `IA-2` no longer returns `IA-2(1)` documents) | `test_the_parent_lookup_returns_documents_mapped_to_an_enhancement`, `test_an_enhancement_lookup_never_returns_a_document_mapped_only_to_the_parent`, `test_results_are_in_a_deterministic_order`, `test_the_demo_vaults_authentication_documents` | 4 failed, 23 passed |
 
-Limits: the `5.15` / `A.5.152` trap passes under mutation 1b-i because `A.5.152` is not a recognized identifier (the ISO rule allows at most two digits per part) and is reported as unrecognized instead; the other six rows carry the proof.
+Limits (1b): the `5.15` / `A.5.152` trap passes under mutation 1b-i because `A.5.152` is not a recognized identifier (the ISO rule allows at most two digits per part) and is reported as unrecognized instead; the other six rows carry the proof.
+
+### Mutation proofs (chunk 1c)
+
+Original `tests/test_auth_controls.py` sha256 `35318f22d8f072f31a81f14f3a9ed6bce104f955554a4e5a07792ca9bae81241`. The break was made and undone with the edit tool; after the restore the hash was identical and the file passed (37 passed).
+
+| # | Control | Break | Tests that fail | Result |
+|---|---|---|---|---|
+| 1c-i | The presence check (heading or `- **ID**` item) | `present_as_heading_or_bold_item` made to always return True | `test_the_presence_check_fails_for_an_id_in_no_pack[...]` (6) and `test_the_presence_check_is_not_loose[...]` (4) | 10 failed, 27 passed |
+
+Limit: the presence check lives in the test file, so the proof breaks the test's own helper; it shows the negative tests cannot pass vacuously. For the authored SOC 2 and ISO packs, presence proves the ID is in our pack, not in the standard (F11-2).

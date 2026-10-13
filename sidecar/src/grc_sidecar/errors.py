@@ -162,6 +162,13 @@ class UnsafePathError(VaultError):
     code = "unsafe_path"
 
 
+class AuthControlsError(GrcError):
+    """The packaged list of authentication controls is missing or malformed."""
+
+    default_message = "Authentication controls list is invalid"
+    code = "auth_controls_invalid"
+
+
 class ControlMapTooLargeError(GrcError):
     """The vault has more documents than the control map accepts (a partial map would mislead)."""
 
