@@ -1,0 +1,41 @@
+user.id,user.fullName,user.email,user.mobilePhone,authenticators.type,authenticators.count,groups.name,user.isAdmin,user.status,user.login,user.primaryPhone,user.created,user.activated
+00uSYN0001,Synthetic User 01,u01@example.test,+1-555-0101,"Password,Email,Okta Verify",3,Everyone,false,Active,u01@example.test,+1-555-0201,2025-03-01T09:00:00.000Z,2025-03-01T10:00:00.000Z
+00uSYN0002,Synthetic User 02,u02@example.test,+1-555-0102,"Password,Email,Okta Verify",3,Everyone,false,Active,u02@example.test,+1-555-0202,2025-03-01T09:00:00.000Z,2025-03-01T10:00:00.000Z
+00uSYN0003,Synthetic User 03,u03@example.test,+1-555-0103,"Password,Okta Verify",2,"Everyone,IT Admins",true,Active,u03@example.test,+1-555-0203,2025-03-01T09:00:00.000Z,2025-03-01T10:00:00.000Z
+00uSYN0004,Synthetic User 04,u04@example.test,+1-555-0104,"Password,Email,Okta Verify",3,Everyone,false,Active,u04@example.test,+1-555-0204,2025-03-02T09:00:00.000Z,2025-03-02T10:00:00.000Z
+00uSYN0005,Synthetic User 05,u05@example.test,+1-555-0105,"Password,Email,Okta Verify",3,Everyone,FALSE,Active,u05@example.test,+1-555-0205,2025-03-02T09:00:00.000Z,2025-03-02T10:00:00.000Z
+00uSYN0006,Synthetic User 06,u06@example.test,+1-555-0106,"Password,Email",2,Everyone,false,Active,u06@example.test,+1-555-0206,2025-03-03T09:00:00.000Z,2025-03-03T10:00:00.000Z
+00uSYN0007,Synthetic User 07,u07@example.test,+1-555-0107,"Password,Email",2,Everyone,false,Active,u07@example.test,+1-555-0207,2025-03-03T09:00:00.000Z,2025-03-03T10:00:00.000Z
+00uSYN0008,Synthetic User 08,u08@example.test,+1-555-0108,Password,1,Everyone,false,Active,u08@example.test,+1-555-0208,2025-03-03T09:00:00.000Z,2025-03-03T10:00:00.000Z
+00uSYN0009,Synthetic User 09,u09@example.test,+1-555-0109,"Password,Email",2,"Everyone,IT Admins",true,Active,u09@example.test,+1-555-0209,2025-03-04T09:00:00.000Z,2025-03-04T10:00:00.000Z
+00uSYN0010,Synthetic User 10,u10@example.test,+1-555-0110,Password,1,"Everyone,IT Admins",TRUE,Active,u10@example.test,+1-555-0210,2025-03-04T09:00:00.000Z,2025-03-04T10:00:00.000Z
+00uSYN0011,Synthetic User 11,u11@example.test,+1-555-0111,,0,Everyone,false,Active,u11@example.test,+1-555-0211,2025-03-04T09:00:00.000Z,2025-03-04T10:00:00.000Z
+00uSYN0012,Synthetic User 12,u12@example.test,+1-555-0112,"",0,Everyone,false,Active,u12@example.test,+1-555-0212,2025-03-05T09:00:00.000Z,2025-03-05T10:00:00.000Z
+00uSYN0013,Synthetic User 13,u13@example.test,+1-555-0113,"Password,Phone",2,Everyone,false,Active,u13@example.test,+1-555-0213,2025-03-05T09:00:00.000Z,2025-03-05T10:00:00.000Z
+00uSYN0014,Synthetic User 14,u14@example.test,+1-555-0114,"Password,Email,Phone",3,Everyone,false,Active,u14@example.test,+1-555-0214,2025-03-05T09:00:00.000Z,2025-03-05T10:00:00.000Z
+00uSYN0015,Synthetic User 15,u15@example.test,+1-555-0115,Phone,1,"Everyone,IT Admins",True,Active,u15@example.test,+1-555-0215,2025-03-06T09:00:00.000Z,2025-03-06T10:00:00.000Z
+00uSYN0016,Synthetic User 16,u16@example.test,+1-555-0116,"Password,Phone,Okta Verify",3,Everyone,false,Active,u16@example.test,+1-555-0216,2025-03-06T09:00:00.000Z,2025-03-06T10:00:00.000Z
+00uSYN0017,Synthetic User 17,u17@example.test,+1-555-0117,"Password, Email, Okta Verify",3,Everyone,false,Active,u17@example.test,+1-555-0217,2025-03-06T09:00:00.000Z,2025-03-06T10:00:00.000Z
+00uSYN0018,Synthetic User 18,u18@example.test,+1-555-0118,"Password,Email,Forgotten Password Question",3,Everyone,false,Active,u18@example.test,+1-555-0218,2025-03-07T09:00:00.000Z,2025-03-07T10:00:00.000Z
+00uSYN0019,Synthetic User 19,u19@example.test,+1-555-0119,"Password,Okta Verify",2,Everyone,yes,Active,u19@example.test,+1-555-0219,2025-03-07T09:00:00.000Z,2025-03-07T10:00:00.000Z
+00uSYN0020,Synthetic User 20,u20@example.test,+1-555-0120,"Password,Email",2,Everyone,,Active,u20@example.test,+1-555-0220,2025-03-07T09:00:00.000Z,2025-03-07T10:00:00.000Z
+00uSYN0021,Synthetic User 21,u21@example.test,+1-555-0121,"Password,Email",2,Everyone,false,Deprovisioned,u21@example.test,+1-555-0221,2025-03-08T09:00:00.000Z,2025-03-08T10:00:00.000Z
+00uSYN0022,Synthetic User 22,u22@example.test,+1-555-0122,,0,Everyone,false,Deprovisioned,u22@example.test,+1-555-0222,2025-03-08T09:00:00.000Z,2025-03-08T10:00:00.000Z
+00uSYN0023,Synthetic User 23,u23@example.test,+1-555-0123,Password,1,"Everyone,IT Admins",true,Deprovisioned,u23@example.test,+1-555-0223,2025-03-08T09:00:00.000Z,2025-03-08T10:00:00.000Z
+00uSYN0024,Synthetic User 24,u24@example.test,+1-555-0124,"Password,Email",2,Everyone,false,Suspended,u24@example.test,+1-555-0224,2025-03-09T09:00:00.000Z,2025-03-09T10:00:00.000Z
+00uSYN0025,Synthetic User 25,u25@example.test,+1-555-0125,"Password,Okta Verify",2,Everyone,false,Suspended,u25@example.test,+1-555-0225,2025-03-09T09:00:00.000Z,2025-03-09T10:00:00.000Z
+00uSYN0026,Synthetic User 26,u26@example.test,+1-555-0126,,0,Everyone,false,Staged,u26@example.test,+1-555-0226,2025-03-09T09:00:00.000Z,
+00uSYN0027,Synthetic User 27,u27@example.test,+1-555-0127,Password,1,Everyone,false,Staged,u27@example.test,+1-555-0227,2025-03-10T09:00:00.000Z,
+00uSYN0028,Synthetic User 28,u28@example.test,+1-555-0128,"Password,Email",2,Everyone,false,Pending user action,u28@example.test,+1-555-0228,2025-03-10T09:00:00.000Z,
+00uSYN0029,Synthetic User 29,u01@example.test,+1-555-0129,Password,1,Everyone,false,Active,u01@example.test,+1-555-0229,2025-03-10T09:00:00.000Z,2025-03-10T10:00:00.000Z
+00uSYN0030,"=HYPERLINK(""http://example.test/x"",""click"")",u30@example.test,@SUM(A1:A2),"Password,Okta Verify",2,+1+1,false,Active,u30@example.test,-2+3,2025-03-11T09:00:00.000Z,2025-03-11T10:00:00.000Z
+00uSYN0031,Synthetic User 31,u31@example.test,+1-555-0131,"Password,Okta Verify",2,"Everyone,Engineering",false,Active,u31@example.test,+1-555-0231,2025-03-11T09:00:00.000Z,2025-03-11T10:00:00.000Z
+00uSYN0032,Synthetic User 32,u32@example.test,+1-555-0132,"Password,Okta Verify",2,"Everyone,Engineering",false,Active,u32@example.test,+1-555-0232,2025-03-11T09:00:00.000Z,2025-03-11T10:00:00.000Z
+00uSYN0033,Synthetic User 33,u33@example.test,+1-555-0133,"Password,Email,Okta Verify",3,"Everyone,Sales",false,Active,u33@example.test,+1-555-0233,2025-03-12T09:00:00.000Z,2025-03-12T10:00:00.000Z
+00uSYN0034,Synthetic User 34,u34@example.test,+1-555-0134,"Password,Email,Okta Verify",3,"Everyone,Sales",false,Active,u34@example.test,+1-555-0234,2025-03-12T09:00:00.000Z,2025-03-12T10:00:00.000Z
+00uSYN0035,Synthetic User 35,u35@example.test,+1-555-0135,"Password,Okta Verify",2,"Everyone,Finance",false,Active,u35@example.test,+1-555-0235,2025-03-12T09:00:00.000Z,2025-03-12T10:00:00.000Z
+00uSYN0036,Synthetic User 36,u36@example.test,+1-555-0136,"Password,Okta Verify",2,"Everyone,Finance",false,Active,u36@example.test,+1-555-0236,2025-03-13T09:00:00.000Z,2025-03-13T10:00:00.000Z
+00uSYN0037,Synthetic User 37,u37@example.test,+1-555-0137,"Password,Email,Okta Verify",3,Everyone,false,Active,u37@example.test,+1-555-0237,2025-03-13T09:00:00.000Z,2025-03-13T10:00:00.000Z
+00uSYN0038,Synthetic User 38,u38@example.test,+1-555-0138,"Password,Okta Verify",2,Everyone,false,Active,u38@example.test,+1-555-0238,2025-03-13T09:00:00.000Z,2025-03-13T10:00:00.000Z
+00uSYN0039,Synthetic User 39,u39@example.test,+1-555-0139,"Password,Email,Okta Verify",3,Everyone,false,Active,u39@example.test,+1-555-0239,2025-03-14T09:00:00.000Z,2025-03-14T10:00:00.000Z
+00uSYN0040,Synthetic User 40,u40@example.test,+1-555-0140,"Password,Okta Verify",2,Everyone,false,Active,u40@example.test,+1-555-0240,2025-03-14T09:00:00.000Z,2025-03-14T10:00:00.000Z

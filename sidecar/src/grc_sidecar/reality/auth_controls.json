@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "controls": [
+    {"id": "IA-2", "framework": "NIST SP 800-53 Rev 5", "pack": "nist-sp800-53-r5", "file": "ia.md"},
+    {"id": "IA-2(1)", "framework": "NIST SP 800-53 Rev 5", "pack": "nist-sp800-53-r5", "file": "ia.md"},
+    {"id": "IA-2(2)", "framework": "NIST SP 800-53 Rev 5", "pack": "nist-sp800-53-r5", "file": "ia.md"},
+    {"id": "03.05.03", "framework": "NIST SP 800-171 Rev 3", "pack": "nist-sp800-171-r3", "file": "03.05.md"},
+    {"id": "PR.AA-03", "framework": "NIST CSF 2.0", "pack": "nist-csf-2.0", "file": "pr.md"},
+    {"id": "CC6.1", "framework": "SOC 2 Trust Services Criteria (authored ID list)", "pack": "soc2-tsc-ids", "file": "cc.md"},
+    {"id": "A.8.5", "framework": "ISO/IEC 27001 Annex A (authored ID list)", "pack": "iso27001-annex-a-ids", "file": "a8-technological.md"}
+  ]
+}

@@ -8,7 +8,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from grc_sidecar.errors import (
+    AuthControlsError,
+    CheckRefusedError,
     ConfigurationError,
+    ControlMapTooLargeError,
+    ExportRefusedError,
+    ImportRootNotConfiguredError,
     IndexNotBuiltError,
     ModelsUnavailableError,
     PathNotAllowedError,
@@ -34,6 +39,7 @@ _FIXED: dict[type[Exception], tuple[int, str]] = {
         HTTP_SERVICE_UNAVAILABLE,
         "questionnaire_root_not_configured",
     ),
+    ImportRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "import_root_not_configured"),
     ConfigurationError: (HTTP_SERVICE_UNAVAILABLE, "questionnaire_root_unusable"),
     RunInProgressError: (HTTP_CONFLICT, "run_in_progress"),
     RunNotFoundError: (HTTP_NOT_FOUND, "run_not_found"),
@@ -42,6 +48,8 @@ _FIXED: dict[type[Exception], tuple[int, str]] = {
     RetrievalUnavailableError: (HTTP_SERVICE_UNAVAILABLE, "retrieval_unavailable"),
     PathNotAllowedError: (HTTP_BAD_REQUEST, "path_not_allowed"),
     PathNotFoundError: (HTTP_NOT_FOUND, "file_not_found"),
+    ControlMapTooLargeError: (HTTP_UNPROCESSABLE, "control_map_too_large"),
+    AuthControlsError: (HTTP_SERVICE_UNAVAILABLE, "auth_controls_invalid"),
 }
 
 
@@ -61,6 +69,21 @@ async def _fixed(_request: Request, exc: Exception) -> JSONResponse:
 async def _workbook_refused(_request: Request, exc: Exception) -> JSONResponse:
     code = exc.code if isinstance(exc, WorkbookRefusedError) else "unknown"
     return JSONResponse({"error": "workbook_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
+
+
+async def _export_refused(_request: Request, exc: Exception) -> JSONResponse:
+    """`code` is a fixed word and `column` one of ALIBI's own required names, never file text."""
+    body: dict[str, str] = {"error": "export_refused", "code": "unknown"}
+    if isinstance(exc, ExportRefusedError):
+        body["code"] = exc.code
+        if exc.column is not None:
+            body["column"] = exc.column
+    return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
+
+
+async def _check_refused(_request: Request, exc: Exception) -> JSONResponse:
+    code = exc.code if isinstance(exc, CheckRefusedError) else "unknown"
+    return JSONResponse({"error": "check_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
 
 
 async def _mapping_refused(_request: Request, exc: Exception) -> JSONResponse:
@@ -83,5 +106,7 @@ def register_error_handlers(app: FastAPI) -> None:
     for error_type in _FIXED:
         app.add_exception_handler(error_type, _fixed)
     app.add_exception_handler(WorkbookRefusedError, _workbook_refused)
+    app.add_exception_handler(ExportRefusedError, _export_refused)
+    app.add_exception_handler(CheckRefusedError, _check_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)
     app.add_exception_handler(RequestValidationError, _invalid_request)

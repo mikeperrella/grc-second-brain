@@ -7,3 +7,5 @@ All content here is synthetic test data. Nothing is from a real company.
   assert that the content is treated as plain data (CLAUDE.md 8.6). Characters that are invisible
   in an editor (zero-width, right-to-left override, U+2028) are generated inside the tests instead
   of being committed, so a reviewer can see exactly what the test does.
+- `exports/` holds a synthetic Okta-style MFA enrollment CSV for the reality check (ADR-016); its
+  own README says its authenticator type strings are examples, not confirmed Okta values.

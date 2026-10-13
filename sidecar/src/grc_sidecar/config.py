@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # the questionnaire routes refuse with a typed error (M5k), not that a default is guessed.
     questionnaire_dir: Path | None = None
     export_dir: Path | None = None
+    # Where offline IT exports (the reality check, ADR-016) are read from. Chosen only here until
+    # the folder picker exists (M6). It may not equal, sit inside or contain the vault, the index,
+    # the questionnaire folder or the export folder: an export holds personal data and must never
+    # sit next to derived state or answers. Unset means the reality routes refuse (503).
+    import_dir: Path | None = None
     # Bundled framework packs (ADR-008). Whether it exists is checked when packs are loaded.
     packs_dir: Path | None = None
     embedding_model: str = "nomic-embed-text"
@@ -98,8 +103,27 @@ class Settings(BaseSettings):
                 raise ValueError(f"{info.field_name} must not overlap {other_name}")
         return value
 
+    @field_validator("import_dir")
+    @classmethod
+    def _import_dir_must_not_overlap_other_folders(
+        cls, value: Path | None, info: ValidationInfo
+    ) -> Path | None:
+        if value is None:
+            return None
+        for other_name in ("vault_dir", "index_dir", "questionnaire_dir", "export_dir"):
+            other = info.data.get(other_name)  # declared above, so already validated
+            if other is not None and (_is_inside(value, other) or _is_inside(other, value)):
+                raise ValueError(f"import_dir must not overlap {other_name}")
+        return value
+
     @field_validator(
-        "log_dir", "vault_dir", "index_dir", "packs_dir", "questionnaire_dir", "export_dir"
+        "log_dir",
+        "vault_dir",
+        "index_dir",
+        "packs_dir",
+        "questionnaire_dir",
+        "export_dir",
+        "import_dir",
     )
     @classmethod
     def _dirs_must_be_absolute(cls, value: Path | None) -> Path | None:
@@ -187,12 +211,20 @@ def validate_runtime_dirs(settings: Settings) -> Settings:
             )
             if overlaps:
                 raise ConfigurationError(f"Invalid configuration for: {name}")
+    import_folder = _existing_directory(settings.import_dir, "import_dir")
+    if import_folder is not None:
+        for other in (vault, index, questionnaire, export):
+            if other is not None and (
+                _is_inside(import_folder, other) or _is_inside(other, import_folder)
+            ):
+                raise ConfigurationError("Invalid configuration for: import_dir")
     return settings.model_copy(
         update={
             "vault_dir": vault,
             "index_dir": index,
             "questionnaire_dir": questionnaire,
             "export_dir": export,
+            "import_dir": import_folder,
         }
     )
 

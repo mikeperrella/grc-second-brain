@@ -158,6 +158,35 @@ loaders = load_workbooks_report
 # ok: grc-py-load-workbook-outside-loader
 loader = questionnaire_loader.load_questionnaire(data)
 
+# ---------- grc-py-csv-outside-reality ----------
+# ruleid: grc-py-csv-outside-reality
+import csv
+# ruleid: grc-py-csv-outside-reality
+from csv import reader
+# ruleid: grc-py-csv-outside-reality
+import csv as table
+# ruleid: grc-py-csv-outside-reality
+import os, csv
+# ruleid: grc-py-csv-outside-reality
+import csv, os
+# ruleid: grc-py-csv-outside-reality
+import json, os as operating_system, csv
+if True:
+    # ruleid: grc-py-csv-outside-reality
+    import csv
+# ok: grc-py-csv-outside-reality
+import csvkit_like
+# ok: grc-py-csv-outside-reality
+import os, csvkit
+# ok: grc-py-csv-outside-reality
+import mycsv
+# ok: grc-py-csv-outside-reality
+from csvkit import reader as kit_reader
+# ok: grc-py-csv-outside-reality
+csv_rows = 0
+# ok: grc-py-csv-outside-reality
+note = "export the csv report"
+
 # ---------- grc-py-workbook-save-outside-writer ----------
 # ruleid: grc-py-workbook-save-outside-writer
 workbook.save(buffer)

@@ -162,6 +162,81 @@ class UnsafePathError(VaultError):
     code = "unsafe_path"
 
 
+class AuthControlsError(GrcError):
+    """The packaged list of authentication controls is missing or malformed."""
+
+    default_message = "Authentication controls list is invalid"
+    code = "auth_controls_invalid"
+
+
+class ControlMapTooLargeError(GrcError):
+    """The vault has more documents than the control map accepts (a partial map would mislead)."""
+
+    default_message = "Vault has too many documents for the control map"
+    code = "control_map_too_large"
+
+
+ExportRefusal = Literal[
+    # caps (ADR-016 decision 9)
+    "file_too_large",
+    "too_many_rows",
+    "field_too_long",
+    # content refused for safety
+    "encoding_not_allowed",
+    "nul_character",
+    # not an export ALIBI can read
+    "missing_column",
+    "duplicate_column",
+    "unreadable",
+]
+
+
+class ExportRefusedError(GrcError):
+    """An IT export was refused before or while it was read (ADR-016).
+
+    `code` is one of a fixed set of words, never text from the file. `column` is set only for the
+    two header refusals and is always one of ALIBI's own four required column names, never a value
+    taken from the file, so the message is safe to show and to log.
+    """
+
+    default_message = "The export was refused"
+
+    def __init__(self, code: ExportRefusal, column: str | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: ExportRefusal = code
+        self.column = column
+
+
+CheckRefusal = Literal[
+    "exported_at_in_future",  # the owner's export date is after today
+    "claim_not_verbatim",  # the claim is not exactly a candidate of the current vault
+    "no_users_in_scope",  # no row has an active status, so "no exceptions" would mean nothing
+]
+
+
+class CheckRefusedError(GrcError):
+    """A reality check was refused before it could give a finding (ADR-016).
+
+    `code` is one of a fixed set of words, never text from the request, the vault or the export.
+    """
+
+    default_message = "The reality check was refused"
+
+    def __init__(self, code: CheckRefusal) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: CheckRefusal = code
+
+
+class ImportRootNotConfiguredError(GrcError):
+    """The reality routes were asked for work but the import folder is not configured.
+
+    The routes need `GRC_IMPORT_DIR` and `GRC_VAULT_DIR`; with either unset they refuse instead of
+    guessing a folder (ADR-016).
+    """
+
+    default_message = "The import folder is not configured"
+
+
 class IndexStoreError(GrcError):
     """The vector index (SQLite file) could not be opened, read or written."""
 

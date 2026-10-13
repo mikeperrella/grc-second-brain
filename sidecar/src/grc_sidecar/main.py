@@ -21,11 +21,13 @@ from grc_sidecar.api.errors import register_error_handlers
 from grc_sidecar.api.health import router as health_router
 from grc_sidecar.api.questionnaire import router as questionnaire_router
 from grc_sidecar.api.readiness import router as readiness_router
+from grc_sidecar.api.reality import router as reality_router
 from grc_sidecar.config import Settings
 from grc_sidecar.llm.model_gate import ModelGate
 from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
 from grc_sidecar.questionnaire.runs import QuestionnaireRuns
 from grc_sidecar.questionnaire.runtime import build_runtime
+from grc_sidecar.reality.runtime import RealityRuntime, build_reality_runtime
 from grc_sidecar.security.auth import ASGIApp, AuthMiddleware
 from grc_sidecar.vault.clock import SystemClock
 
@@ -55,6 +57,7 @@ def _model_check_lifespan(
         app.state.gate = gate
         runtime = build_runtime(settings, gate, client)
         app.state.questionnaire = None if runtime is None else runtime.runs
+        app.state.reality = build_reality_runtime(settings)
         check = asyncio.create_task(gate.refresh())
         try:
             yield
@@ -75,12 +78,14 @@ def create_app(
     settings: Settings | None = None,
     gate: ModelGate | None = None,
     questionnaire: QuestionnaireRuns | None = None,
+    reality: RealityRuntime | None = None,
 ) -> ASGIApp:
     """Build the app with authentication wrapped around it from the outside.
 
     With `settings`, startup builds the Ollama client and a model gate and checks the models in
     the background, and, if the vault, questionnaire and export folders are all configured, the
-    questionnaire runs. A ready-made `gate` and `questionnaire` are for tests; with none of them,
+    questionnaire runs; with the import and vault folders configured, the reality check. A
+    ready-made `gate`, `questionnaire` and `reality` are for tests; with none of them,
     `/readiness` and anything that needs a model or a folder refuse (503) instead of proceeding
     unchecked.
     """
@@ -88,10 +93,12 @@ def create_app(
     api = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     api.state.gate = gate
     api.state.questionnaire = questionnaire
+    api.state.reality = reality
     register_error_handlers(api)
     api.include_router(health_router)
     api.include_router(readiness_router)
     api.include_router(questionnaire_router)
+    api.include_router(reality_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own
     # error handling, so even 404/405/422/500 responses require the token.
     return AuthMiddleware(api, token)
