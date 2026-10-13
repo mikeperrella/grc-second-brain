@@ -7,7 +7,9 @@ import io
 from collections import Counter
 from pathlib import Path
 
-from .vaultkit import REPO_ROOT
+from grc_sidecar.reality.claims import ClaimCandidate
+
+from .vaultkit import REPO_ROOT, doc_text
 
 FIXTURE = REPO_ROOT / "fixtures" / "exports" / "okta-mfa-enrollment-synthetic.csv"
 CANARY = "CANARY-7f3a9c-not-for-logs"
@@ -117,6 +119,98 @@ def as_counts(found: dict[str, object]) -> dict[str, object]:
         "authenticator_types": {item["value"]: item["count"] for item in types},
         "duplicate_logins": found["duplicate_logins"],
     }
+
+
+def expected_check(
+    path: Path,
+    mfa_types: list[str],
+    phone_types: list[str],
+    active: tuple[str, ...] = ("Active",),
+) -> dict[str, object]:
+    """What a check of this (well-formed) export must report, worked out with a separate csv pass
+    and a different formulation from the code under test (lists and `any`/`all`, no helper)."""
+    text = path.read_bytes().decode("utf-8")
+    rows = list(csv.DictReader(io.StringIO(text, newline="")))
+
+    def types_of(r: dict[str, str]) -> list[str]:
+        return [p.strip() for p in r["authenticators.type"].split(",") if p.strip()]
+
+    scoped = [r for r in rows if r["user.status"].strip() in active]
+    without = [r for r in scoped if not any(t in mfa_types for t in types_of(r))]
+    phone_only = [
+        r
+        for r in scoped
+        if any(t in phone_types for t in types_of(r))
+        and all(t not in mfa_types or t in phone_types for t in types_of(r))
+    ]
+    admin_values = [r["user.isAdmin"].strip().lower() for r in without]
+    everything = {t for r in rows for t in types_of(r)}
+    logins = [r["user.login"].strip() for r in rows]
+    return {
+        "in_scope": len(scoped),
+        "with_mfa": len(scoped) - len(without),
+        "without_mfa": len(without),
+        "admins_without_mfa": admin_values.count("true"),
+        "admin_unknown": len([v for v in admin_values if v not in ("true", "false")]),
+        "phone_only": len(phone_only),
+        "skipped": dict(Counter(r["user.status"].strip() for r in rows if r not in scoped)),
+        "malformed_rows": 0,
+        "duplicate_logins": len(logins) - len(set(logins)),
+        "mfa_types_not_present": sorted(t for t in mfa_types if t not in everything),
+        "exceptions": [r["user.login"].strip() for r in without],
+    }
+
+
+def as_check_counts(found: dict[str, object]) -> dict[str, object]:
+    """A check result (as a dict) reduced to the shape `expected_check` returns."""
+    skipped = found["skipped"]
+    listed = found["exceptions"]
+    assert isinstance(skipped, list) and isinstance(listed, list)
+    assert found["skipped_not_listed"] == 0 and found["exceptions_not_listed"] == 0
+    keys = (
+        "in_scope",
+        "with_mfa",
+        "without_mfa",
+        "admins_without_mfa",
+        "admin_unknown",
+        "phone_only",
+        "malformed_rows",
+        "duplicate_logins",
+        "mfa_types_not_present",
+    )
+    reduced: dict[str, object] = {key: found[key] for key in keys}
+    reduced["skipped"] = {item["value"]: item["count"] for item in skipped}
+    reduced["exceptions"] = [item["login"] for item in listed]
+    return reduced
+
+
+CLAIM_SENTENCE = "MFA is required for all staff accounts."
+
+
+def write_policy_vault(
+    root: Path,
+    sentence: str = CLAIM_SENTENCE,
+    *,
+    doc_type: str = "policy",
+    mappings: str = '["NIST-800-53:IA-2"]',
+) -> None:
+    """A one-document synthetic vault whose policy holds `sentence` as its own paragraph."""
+    root.mkdir(parents=True, exist_ok=True)
+    frontmatter = (
+        "doc_id: POL-1",
+        f"type: {doc_type}",
+        "owner: Test Owner",
+        "review_by: 2030-01-01",
+        f"control_mappings: {mappings}",
+    )
+    body = f"# Synthetic policy\n\n{sentence}\n"
+    (root / "policy.md").write_text(doc_text(body, *frontmatter), encoding="utf-8")
+
+
+def claim_ref(candidate: ClaimCandidate | dict[str, object]) -> dict[str, object]:
+    """The request's `claim` for a candidate, as the claims route would have listed it."""
+    shown = candidate if isinstance(candidate, dict) else candidate.model_dump()
+    return {key: shown[key] for key in ("path", "start_line", "end_line", "quote")}
 
 
 def straddling_export(special: str) -> tuple[bytes, str]:

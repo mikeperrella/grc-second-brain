@@ -67,7 +67,13 @@ def python_files(root: Path) -> list[Path]:
 
 def test_nothing_under_reality_imports_a_network_or_process_module() -> None:  # [NEG]
     files = python_files(REALITY)
-    assert {f.name for f in files} >= {"export_reader.py", "inspect.py", "runtime.py"}
+    assert {f.name for f in files} >= {
+        "export_reader.py",
+        "inspect.py",
+        "runtime.py",
+        "claims.py",
+        "check.py",
+    }
     for path in files:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         modules = imported_modules(tree) | dynamic_import_strings(tree)

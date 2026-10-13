@@ -50,7 +50,8 @@ class ExportInspection(BaseModel):
     duplicate_logins: int
 
 
-def _listed(counter: Counter[str]) -> tuple[list[ValueCount], int]:
+def listed_counts(counter: Counter[str]) -> tuple[list[ValueCount], int]:
+    """The most common values, shortened for display, and how many more were not listed."""
     ranked = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
     listed = [
         ValueCount(
@@ -90,8 +91,8 @@ def inspect_export(name: object, root: Path, caps: Caps = DEFAULT_CAPS) -> Expor
         result_hash = reader.sha256
         size = reader.size_bytes
         malformed = reader.malformed_rows
-    listed_statuses, statuses_not_listed = _listed(statuses)
-    listed_types, types_not_listed = _listed(types)
+    listed_statuses, statuses_not_listed = listed_counts(statuses)
+    listed_types, types_not_listed = listed_counts(types)
     _log.info("export inspected: rows=%d malformed=%d duplicates=%d", rows, malformed, duplicates)
     return ExportInspection(
         sha256=result_hash,

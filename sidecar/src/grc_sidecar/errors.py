@@ -207,6 +207,26 @@ class ExportRefusedError(GrcError):
         self.column = column
 
 
+CheckRefusal = Literal[
+    "exported_at_in_future",  # the owner's export date is after today
+    "claim_not_verbatim",  # the claim is not exactly a candidate of the current vault
+    "no_users_in_scope",  # no row has an active status, so "no exceptions" would mean nothing
+]
+
+
+class CheckRefusedError(GrcError):
+    """A reality check was refused before it could give a finding (ADR-016).
+
+    `code` is one of a fixed set of words, never text from the request, the vault or the export.
+    """
+
+    default_message = "The reality check was refused"
+
+    def __init__(self, code: CheckRefusal) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: CheckRefusal = code
+
+
 class ImportRootNotConfiguredError(GrcError):
     """The reality routes were asked for work but the import folder is not configured.
 

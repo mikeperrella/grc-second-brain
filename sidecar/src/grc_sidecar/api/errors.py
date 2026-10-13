@@ -8,7 +8,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from grc_sidecar.errors import (
+    AuthControlsError,
+    CheckRefusedError,
     ConfigurationError,
+    ControlMapTooLargeError,
     ExportRefusedError,
     ImportRootNotConfiguredError,
     IndexNotBuiltError,
@@ -45,6 +48,8 @@ _FIXED: dict[type[Exception], tuple[int, str]] = {
     RetrievalUnavailableError: (HTTP_SERVICE_UNAVAILABLE, "retrieval_unavailable"),
     PathNotAllowedError: (HTTP_BAD_REQUEST, "path_not_allowed"),
     PathNotFoundError: (HTTP_NOT_FOUND, "file_not_found"),
+    ControlMapTooLargeError: (HTTP_UNPROCESSABLE, "control_map_too_large"),
+    AuthControlsError: (HTTP_SERVICE_UNAVAILABLE, "auth_controls_invalid"),
 }
 
 
@@ -76,6 +81,11 @@ async def _export_refused(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
 
 
+async def _check_refused(_request: Request, exc: Exception) -> JSONResponse:
+    code = exc.code if isinstance(exc, CheckRefusedError) else "unknown"
+    return JSONResponse({"error": "check_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
+
+
 async def _mapping_refused(_request: Request, exc: Exception) -> JSONResponse:
     code = exc.code if isinstance(exc, QuestionMappingError) else "unknown"
     return JSONResponse({"error": "mapping_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
@@ -97,5 +107,6 @@ def register_error_handlers(app: FastAPI) -> None:
         app.add_exception_handler(error_type, _fixed)
     app.add_exception_handler(WorkbookRefusedError, _workbook_refused)
     app.add_exception_handler(ExportRefusedError, _export_refused)
+    app.add_exception_handler(CheckRefusedError, _check_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)
     app.add_exception_handler(RequestValidationError, _invalid_request)

@@ -5,6 +5,8 @@ route. There is no URL, token, credential or host field in any request: the chec
 to a live system.
 
 - `POST /reality/inspect`   read an export from the import folder and return counts only
+- `GET  /reality/claims`    list the policy sentences that read like "MFA is required"
+- `POST /reality/check`     count the export against the chosen claim
 """
 
 from typing import Annotated
@@ -13,6 +15,8 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from grc_sidecar.errors import ImportRootNotConfiguredError
+from grc_sidecar.reality.check import CheckRequest, CheckResult
+from grc_sidecar.reality.claims import ClaimReport
 from grc_sidecar.reality.inspect import ExportInspection
 from grc_sidecar.reality.runtime import RealityRuntime
 
@@ -40,3 +44,13 @@ class InspectRequest(BaseModel):
 @router.post("/reality/inspect")
 async def inspect(body: InspectRequest, reality: Reality) -> ExportInspection:
     return await reality.inspect(body.file)
+
+
+@router.get("/reality/claims")
+async def claims(reality: Reality) -> ClaimReport:
+    return await reality.claims()
+
+
+@router.post("/reality/check")
+async def check(body: CheckRequest, reality: Reality) -> CheckResult:
+    return await reality.check(body)
