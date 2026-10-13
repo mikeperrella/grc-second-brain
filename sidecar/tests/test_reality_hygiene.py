@@ -5,9 +5,13 @@ AST tests are the second (they also see `__import__` and `importlib`, which a re
 import ast
 from pathlib import Path
 
+import grc_sidecar
+
 from .vaultkit import REPO_ROOT
 
-PACKAGE = REPO_ROOT / "sidecar" / "src" / "grc_sidecar"
+# The package is found from the import, not from the repository layout: in the air-gap image the
+# code lives at /app/src, so a path built from the test file's location points at nothing.
+PACKAGE = Path(grc_sidecar.__file__).resolve().parent
 REALITY = PACKAGE / "reality"
 FORBIDDEN_IN_REALITY = {
     "socket",
@@ -27,12 +31,14 @@ FORBIDDEN_IN_REALITY = {
     "ctypes",
 }
 FORBIDDEN_INTERNAL = ("grc_sidecar.security.net", "grc_sidecar.llm")
-CODE_ROOTS = [
-    PACKAGE,
+# The package root always exists and is always scanned (asserted below). The other roots are
+# scanned only where they exist: the air-gap image holds no `.github/` and keeps `ci` beside `src`.
+OTHER_CODE_ROOTS = [
     REPO_ROOT / "sidecar" / "ci",
     REPO_ROOT / "tools",
     REPO_ROOT / ".github" / "scripts",
 ]
+CODE_ROOTS = [PACKAGE, *(root for root in OTHER_CODE_ROOTS if root.is_dir())]
 
 
 def imported_modules(tree: ast.AST) -> set[str]:
@@ -93,6 +99,7 @@ def test_no_request_model_has_a_url_token_credential_or_host_field() -> None:  #
 
 
 def test_csv_is_imported_only_under_reality() -> None:  # [NEG]
+    assert PACKAGE.is_dir() and CODE_ROOTS[0] == PACKAGE, "the package root must be scanned"
     importers: set[Path] = set()
     for root in CODE_ROOTS:
         for path in python_files(root):
