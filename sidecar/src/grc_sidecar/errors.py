@@ -176,6 +176,47 @@ class ControlMapTooLargeError(GrcError):
     code = "control_map_too_large"
 
 
+ExportRefusal = Literal[
+    # caps (ADR-016 decision 9)
+    "file_too_large",
+    "too_many_rows",
+    "field_too_long",
+    # content refused for safety
+    "encoding_not_allowed",
+    "nul_character",
+    # not an export ALIBI can read
+    "missing_column",
+    "duplicate_column",
+    "unreadable",
+]
+
+
+class ExportRefusedError(GrcError):
+    """An IT export was refused before or while it was read (ADR-016).
+
+    `code` is one of a fixed set of words, never text from the file. `column` is set only for the
+    two header refusals and is always one of ALIBI's own four required column names, never a value
+    taken from the file, so the message is safe to show and to log.
+    """
+
+    default_message = "The export was refused"
+
+    def __init__(self, code: ExportRefusal, column: str | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: ExportRefusal = code
+        self.column = column
+
+
+class ImportRootNotConfiguredError(GrcError):
+    """The reality routes were asked for work but the import folder is not configured.
+
+    The routes need `GRC_IMPORT_DIR` and `GRC_VAULT_DIR`; with either unset they refuse instead of
+    guessing a folder (ADR-016).
+    """
+
+    default_message = "The import folder is not configured"
+
+
 class IndexStoreError(GrcError):
     """The vector index (SQLite file) could not be opened, read or written."""
 

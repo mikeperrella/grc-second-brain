@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 
 from grc_sidecar.errors import (
     ConfigurationError,
+    ExportRefusedError,
+    ImportRootNotConfiguredError,
     IndexNotBuiltError,
     ModelsUnavailableError,
     PathNotAllowedError,
@@ -34,6 +36,7 @@ _FIXED: dict[type[Exception], tuple[int, str]] = {
         HTTP_SERVICE_UNAVAILABLE,
         "questionnaire_root_not_configured",
     ),
+    ImportRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "import_root_not_configured"),
     ConfigurationError: (HTTP_SERVICE_UNAVAILABLE, "questionnaire_root_unusable"),
     RunInProgressError: (HTTP_CONFLICT, "run_in_progress"),
     RunNotFoundError: (HTTP_NOT_FOUND, "run_not_found"),
@@ -63,6 +66,16 @@ async def _workbook_refused(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse({"error": "workbook_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
 
 
+async def _export_refused(_request: Request, exc: Exception) -> JSONResponse:
+    """`code` is a fixed word and `column` one of ALIBI's own required names, never file text."""
+    body: dict[str, str] = {"error": "export_refused", "code": "unknown"}
+    if isinstance(exc, ExportRefusedError):
+        body["code"] = exc.code
+        if exc.column is not None:
+            body["column"] = exc.column
+    return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
+
+
 async def _mapping_refused(_request: Request, exc: Exception) -> JSONResponse:
     code = exc.code if isinstance(exc, QuestionMappingError) else "unknown"
     return JSONResponse({"error": "mapping_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
@@ -83,5 +96,6 @@ def register_error_handlers(app: FastAPI) -> None:
     for error_type in _FIXED:
         app.add_exception_handler(error_type, _fixed)
     app.add_exception_handler(WorkbookRefusedError, _workbook_refused)
+    app.add_exception_handler(ExportRefusedError, _export_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)
     app.add_exception_handler(RequestValidationError, _invalid_request)

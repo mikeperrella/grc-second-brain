@@ -116,6 +116,17 @@ rules:
         - "**/tests/**"
     pattern-regex: '\bload_workbook\b'
 
+  # ---------- Python: one package may read a CSV (ADR-016) ----------
+  - id: grc-py-csv-outside-reality
+    languages: [python]
+    severity: ERROR
+    message: "Only grc_sidecar/reality/ may import the csv module (ADR-016 decision 12). The reality check's export reader reads the file once in chunks, hashes and decodes the same bytes, caps size, rows and field length, refuses encodings and NUL characters and keeps four fields per row; a second csv reader would parse an untrusted export, which holds personal data, without any of that. Spellings caught: import csv, import csv as x, from csv import y, and csv as one item of a comma list (import os, csv). The AST test test_csv_is_imported_only_under_reality is the second layer and also sees __import__ and importlib."
+    paths:
+      exclude:
+        - "**/reality/**"
+        - "**/tests/**"
+    pattern-regex: '(?m)^[ \t]*(?:import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*csv\b|from[ \t]+csv\b)'
+
   # ---------- Python: the questionnaire engine writes one way only (ADR-014) ----------
   # These four rules are scoped to the questionnaire package (and to the rule fixtures, so that
   # `semgrep --test` can see them). The writer is the only module that may save a workbook or
