@@ -162,6 +162,13 @@ class UnsafePathError(VaultError):
     code = "unsafe_path"
 
 
+class ControlMapTooLargeError(GrcError):
+    """The vault has more documents than the control map accepts (a partial map would mislead)."""
+
+    default_message = "Vault has too many documents for the control map"
+    code = "control_map_too_large"
+
+
 class IndexStoreError(GrcError):
     """The vector index (SQLite file) could not be opened, read or written."""
 
