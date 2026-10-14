@@ -8,6 +8,7 @@ look-alike characters are built with chr().
 import datetime
 import hashlib
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -590,9 +591,14 @@ def test_a_file_outside_the_export_folder_is_refused(tmp_path: Path) -> None:  #
         approve(d, 2)
         outside = tmp_path / "outside.xlsx"
         outside.write_bytes(d.path.read_bytes())
-        for name in ("../outside.xlsx", str(outside), "..\\outside.xlsx"):
+        for name in ("../outside.xlsx", str(outside)):
             with pytest.raises(PathNotAllowedError):
                 import_rows(d, file=name)
+        # A backslash separates folders only on Windows; elsewhere it is a character in a file name
+        # that is not there, so the guard answers "not found" (still refused, nothing created).
+        backslash_refusal = PathNotAllowedError if os.name == "nt" else PathNotFoundError
+        with pytest.raises(backslash_refusal):
+            import_rows(d, file="..\\outside.xlsx")
         assert promises_of(d) == [] and customers_of(d) == []
 
 

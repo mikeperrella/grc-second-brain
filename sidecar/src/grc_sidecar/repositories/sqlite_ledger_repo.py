@@ -223,7 +223,7 @@ _TRIGGER: Final = (
 # no value and no caller input ever reaches them, so S608 does not apply. Every VALUE is bound.
 def _insert_sql(table: str, columns: Sequence[str]) -> str:
     return (
-        "INSERT INTO "  # noqa: S608
+        "INSERT INTO "  # noqa: S608  # nosec B608 -- table and columns are constants at every call site
         + table
         + " ("
         + ", ".join(columns)
@@ -234,7 +234,7 @@ def _insert_sql(table: str, columns: Sequence[str]) -> str:
 
 
 def _select_sql(table: str, columns: Sequence[str]) -> str:
-    return "SELECT " + ", ".join(columns) + " FROM " + table  # noqa: S608
+    return "SELECT " + ", ".join(columns) + " FROM " + table  # noqa: S608  # nosec B608 -- constants
 
 
 _INSERT: Final = {
@@ -418,7 +418,7 @@ class _LedgerStore:
 
     def _exists(self, table: str, column: str, value: object) -> bool:
         # `table` and `column` are constants at every call site, never input.
-        sql = "SELECT 1 FROM " + table + " WHERE " + column + " = ?"  # noqa: S608
+        sql = "SELECT 1 FROM " + table + " WHERE " + column + " = ?"  # noqa: S608  # nosec B608 -- constants
         return self._con.execute(sql, (value,)).fetchone() is not None
 
     # ----- run record ---------------------------------------------------------------------

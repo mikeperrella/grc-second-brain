@@ -307,8 +307,7 @@ sql_four = "INSERT OR REPLACE INTO run_record (run_id) VALUES (?)"
 # ruleid: grc-py-ledger-mutation-outside-ledger
 sql_five = "REPLACE INTO run_answer (run_id) VALUES (?)"
 # ruleid: grc-py-ledger-mutation-outside-ledger
-sql_six = """
-    DELETE
+sql_six = """DELETE
     FROM schema_info
 """
 # ok: grc-py-ledger-mutation-outside-ledger
