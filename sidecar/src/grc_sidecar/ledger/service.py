@@ -29,13 +29,15 @@ from typing import Final
 
 from grc_sidecar.config import Settings
 from grc_sidecar.errors import (
+    BlastRadiusRefusedError,
     ExportRootNotConfiguredError,
     ImportRefusedError,
+    InvalidEncodingError,
     LedgerRefusedError,
     RecallRefusedError,
     VaultRootNotConfiguredError,
 )
-from grc_sidecar.ledger.recall import SCOPE, STATEMENT, check_promise
+from grc_sidecar.ledger.recall import SCOPE, STATEMENT, RecallResult, check_promise
 from grc_sidecar.ledger.review import ReviewMark, classify_review, shorten_other
 from grc_sidecar.ledger.reviewed import ReviewedRow, read_reviewed
 from grc_sidecar.questionnaire.loader import load_questionnaire, read_input_bytes
@@ -56,7 +58,7 @@ from grc_sidecar.repositories.sqlite_ledger_repo import (
     validate_customer_name,
 )
 from grc_sidecar.vault.clock import Clock
-from grc_sidecar.vault.normalize import sha256_hex
+from grc_sidecar.vault.normalize import MAX_FILE_BYTES, decode_and_normalize, sha256_hex
 from grc_sidecar.vault.scan import ReadReason, VaultText, read_vault_text
 
 SKIP_CODES: Final = (
@@ -69,7 +71,10 @@ SKIP_CODES: Final = (
 )
 PAGE_SIZE: Final = 100  # a starting value, unmeasured (M5.5 plan, Section 3)
 MAX_RECALL_PROMISES: Final = 2_000  # a starting value, unmeasured (M5.5 plan, Section 3)
+MAX_BLAST_PROMISES: Final = 2_000  # a starting value, unmeasured (ADR-018)
 RECALL_STATES: Final = ("intact", "moved", "changed", "missing")
+PREVIEW_LINE: Final = "this is a preview; nothing was saved or recorded"
+NO_MATCH_LINE: Final = "no live promise cites this path as written"
 _ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -131,6 +136,36 @@ class RecallReport:
     items: tuple[RecallItem, ...]
     statement: str
     scope: str
+
+
+@dataclass(frozen=True)
+class BlastItem:
+    """What a proposed edit would do to one promise. Codes, line numbers and ids only: no text."""
+
+    promise_id: str
+    state_now: str
+    state_proposed: str
+    would_change: bool  # any difference in state
+    proposed_detail: str | None
+    locations: tuple[tuple[int, int], ...]  # for `moved`, every place the quote would be
+    flags: tuple[str, ...]
+    statement: str
+    scope: str
+    preview: str
+
+
+@dataclass(frozen=True)
+class BlastReport:
+    """The preview for one file. Nothing in it was saved or recorded."""
+
+    checked: int
+    would_change: int
+    counts: dict[str, int]  # promises by the state they would be in
+    items: tuple[BlastItem, ...]
+    statement: str
+    scope: str
+    preview: str
+    note: str | None  # a fixed line when no live promise matched the path
 
 
 @dataclass(frozen=True)
@@ -521,6 +556,59 @@ class LedgerService:
             path: await asyncio.to_thread(read_vault_text, root, path) for path in sorted(paths)
         }
 
+    # ----- blast radius (a preview; reads, never writes) ------------------------------------------
+
+    async def blast_radius(
+        self, path: str, proposed_text: str | None, customer_id: str | None
+    ) -> BlastReport:
+        """What saving `proposed_text` as `path` (or deleting it: `None`) would do to live promises.
+
+        Promises only: controls and backlinks are not covered (ADR-018). Each live promise whose
+        cited path equals `path` ignoring letter case is checked twice with the pure
+        `check_promise`: against the CURRENT vault file (read once, never the index) and against
+        the proposed text,
+        normalized exactly as an indexed file. The proposed text is held in memory for this call
+        only: it is never written, appended, logged or returned. Nothing is recorded, so asking
+        again appends nothing. Above `MAX_BLAST_PROMISES` the whole call is refused.
+        """
+        root = self._vault_root
+        if root is None:
+            raise VaultRootNotConfiguredError
+        proposed: VaultText | ReadReason = (
+            "not_found" if proposed_text is None else _normalize_proposed(proposed_text)
+        )
+        await self._repo.open_or_create()
+        wanted = path.casefold()
+        matching = [
+            p
+            for p in await self._repo.list_promises(customer_id)
+            if p.source_path.casefold() == wanted
+        ]
+        live = [p for p in matching if not await self._is_voided(p)]
+        if len(live) > MAX_BLAST_PROMISES:
+            raise BlastRadiusRefusedError(
+                "too_many_promises", {"promises": len(live), "cap": MAX_BLAST_PROMISES}
+            )
+        texts = await self._read_vault_files(root, {p.source_path for p in live})
+        today = self._clock.today()
+        items: list[BlastItem] = []
+        for promise in live:
+            now = check_promise(promise, texts[promise.source_path], today)
+            then = check_promise(promise, proposed, today)
+            items.append(_blast_item(promise.promise_id, now, then))
+        return BlastReport(
+            checked=len(items),
+            would_change=sum(item.would_change for item in items),
+            counts={
+                state: sum(i.state_proposed == state for i in items) for state in RECALL_STATES
+            },
+            items=tuple(items),
+            statement=STATEMENT,
+            scope=SCOPE,
+            preview=PREVIEW_LINE,
+            note=None if items else NO_MATCH_LINE,
+        )
+
     # ----- void and acknowledge (events, never edits) ---------------------------------------------
 
     async def void(self, promise_id: str, reason: VoidReason) -> PromiseEvent:
@@ -546,6 +634,41 @@ class LedgerService:
         if await self._is_voided(promise):
             raise RecallRefusedError("promise_voided")
         return promise
+
+
+def _normalize_proposed(proposed_text: str) -> VaultText:
+    """The proposed text as the indexer would see it: UTF-8 bytes, size cap, NUL refused, then the
+    BOM and line-ending rules. Refuses the whole call rather than check part of the text."""
+    try:
+        raw = proposed_text.encode("utf-8")
+    except UnicodeEncodeError:
+        raw = None
+    # Raised outside the `except` so the encode error (which holds the text) is not chained.
+    if raw is None:
+        raise BlastRadiusRefusedError("proposed_text_not_utf8")
+    if len(raw) > MAX_FILE_BYTES:
+        raise BlastRadiusRefusedError(
+            "proposed_text_too_large", {"bytes": len(raw), "cap": MAX_FILE_BYTES}
+        )
+    try:
+        return VaultText(decode_and_normalize(raw))
+    except InvalidEncodingError:
+        raise BlastRadiusRefusedError("proposed_text_has_nul") from None
+
+
+def _blast_item(promise_id: str, now: RecallResult, then: RecallResult) -> BlastItem:
+    return BlastItem(
+        promise_id=promise_id,
+        state_now=now.state,
+        state_proposed=then.state,
+        would_change=now.state != then.state,
+        proposed_detail=then.detail,
+        locations=then.locations,
+        flags=then.flags,
+        statement=then.statement,
+        scope=then.scope,
+        preview=PREVIEW_LINE,
+    )
 
 
 def _last_recall_state(events: list[PromiseEvent]) -> str | None:

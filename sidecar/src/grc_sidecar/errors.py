@@ -334,6 +334,30 @@ class RecallRefusedError(GrcError):
         self.counts: dict[str, int] = {} if counts is None else dict(counts)
 
 
+BlastRadiusRefusal = Literal[
+    "too_many_promises",
+    "proposed_text_too_large",
+    "proposed_text_has_nul",
+    "proposed_text_not_utf8",
+]
+
+
+class BlastRadiusRefusedError(GrcError):
+    """A blast-radius preview was refused (ADR-018). Nothing is checked after a refusal.
+
+    `code` is a fixed word and `counts` holds only integers (for `too_many_promises`: how many
+    promises and the cap; for `proposed_text_too_large`: the byte count and the cap), never any
+    part of the proposed text.
+    """
+
+    default_message = "The preview was refused"
+
+    def __init__(self, code: BlastRadiusRefusal, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: BlastRadiusRefusal = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
 class VaultRootNotConfiguredError(GrcError):
     """Recall was asked to read the vault but the vault folder is not configured.
 

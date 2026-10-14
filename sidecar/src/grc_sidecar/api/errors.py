@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from grc_sidecar.errors import (
     AuthControlsError,
+    BlastRadiusRefusedError,
     CheckRefusedError,
     ConfigurationError,
     ControlMapTooLargeError,
@@ -129,6 +130,16 @@ async def _recall_refused(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
 
 
+async def _blast_radius_refused(_request: Request, exc: Exception) -> JSONResponse:
+    """`code` is a fixed word and `counts` holds integers only, never any of the proposed text."""
+    body: dict[str, object] = {"error": "blast_radius_refused", "code": "unknown"}
+    if isinstance(exc, BlastRadiusRefusedError):
+        body["code"] = exc.code
+        if exc.counts:
+            body["counts"] = exc.counts
+    return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
+
+
 async def _mapping_refused(_request: Request, exc: Exception) -> JSONResponse:
     code = exc.code if isinstance(exc, QuestionMappingError) else "unknown"
     return JSONResponse({"error": "mapping_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
@@ -154,5 +165,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(LedgerRefusedError, _ledger_refused)
     app.add_exception_handler(ImportRefusedError, _import_refused)
     app.add_exception_handler(RecallRefusedError, _recall_refused)
+    app.add_exception_handler(BlastRadiusRefusedError, _blast_radius_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)
     app.add_exception_handler(RequestValidationError, _invalid_request)

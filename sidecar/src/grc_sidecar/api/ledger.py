@@ -9,19 +9,24 @@ questions and answers, and none of it is ever logged.
 - `GET  /ledger/customers`   the customers
 - `GET  /ledger/promises`    a page of promises (voided ones only with `include_voided=true`)
 - `POST /ledger/recall`      check live promises against the current vault (a POST: it can append)
-- `POST /ledger/promises/{id}/void`         correct a mistake: a fixed reason, no free text
+- `POST /ledger/blast-radius`  preview what saving or deleting one vault file would do to the
+                              promises that cite it (promises only; nothing saved or recorded)
+- `POST /ledger/promises/{id}/void`        correct a mistake: a fixed reason, no free text
 - `POST /ledger/promises/{id}/acknowledge`  record that the owner saw a flag
 """
 
+import re
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Self
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi import Path as PathParam
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from grc_sidecar.errors import LedgerRootNotConfiguredError
 from grc_sidecar.ledger.service import (
+    BlastItem,
+    BlastReport,
     CustomerChoice,
     ImportOutcome,
     LedgerService,
@@ -31,8 +36,12 @@ from grc_sidecar.ledger.service import (
     RecallReport,
 )
 from grc_sidecar.repositories.base import Customer, PromiseEvent, VoidReason
+from grc_sidecar.vault.normalize import MAX_FILE_BYTES
 
 router = APIRouter()
+
+_DRIVE_LETTER = re.compile(r"[A-Za-z]:")
+MAX_PATH_CHARS = 1_000  # a bound on the request; promises never cite anything longer
 
 RUN_ID_PATTERN = r"^[0-9a-f]{8,64}$"
 ID_PATTERN = r"^[0-9a-f]{8,64}$"
@@ -145,6 +154,66 @@ class RecallResponse(_Body):
     scope: str
 
 
+class BlastRadiusRequest(_Body):
+    """Exactly one of `proposed_text` (the whole new file) or `delete_file=true`.
+
+    There is no URL, token, credential or host field: nothing here connects anywhere. A bad
+    request is a 422 that names the field and never echoes its value (the text may be sensitive).
+    """
+
+    path: str = Field(max_length=MAX_PATH_CHARS)
+    # A first bound only: characters are at most bytes, so the byte cap in the service is the real
+    # limit and this never refuses text the byte cap would accept.
+    proposed_text: str | None = Field(default=None, max_length=MAX_FILE_BYTES)
+    delete_file: bool = False
+    customer_id: str | None = Field(default=None, pattern=ID_PATTERN)
+
+    @field_validator("path")
+    @classmethod
+    def _vault_relative_posix_path(cls, value: str) -> str:
+        bad = (
+            not value
+            or value.startswith("/")
+            or _DRIVE_LETTER.match(value) is not None
+            or "\\" in value
+            or "\x00" in value
+            or ".." in value.split("/")
+        )
+        if bad:
+            raise ValueError("not a vault-relative POSIX path")
+        return value
+
+    @model_validator(mode="after")
+    def _exactly_one_of_text_or_delete(self) -> Self:
+        if (self.proposed_text is not None) == self.delete_file:
+            raise ValueError("send exactly one of proposed_text or delete_file=true")
+        return self
+
+
+class BlastItemResponse(_Body):
+    promise_id: str
+    state_now: str
+    state_proposed: str
+    would_change: bool
+    proposed_detail: str | None
+    locations: list[LocationResponse]
+    flags: list[str]
+    statement: str
+    scope: str
+    preview: str
+
+
+class BlastRadiusResponse(_Body):
+    checked: int
+    would_change: int
+    counts: dict[str, int]
+    items: list[BlastItemResponse]
+    statement: str
+    scope: str
+    preview: str
+    note: str | None
+
+
 class EventResponse(_Body):
     promise_id: str
     event_id: int
@@ -232,6 +301,34 @@ def _recall_response(report: RecallReport) -> RecallResponse:
     )
 
 
+def _blast_item_response(item: BlastItem) -> BlastItemResponse:
+    return BlastItemResponse(
+        promise_id=item.promise_id,
+        state_now=item.state_now,
+        state_proposed=item.state_proposed,
+        would_change=item.would_change,
+        proposed_detail=item.proposed_detail,
+        locations=[LocationResponse(start_line=s, end_line=e) for s, e in item.locations],
+        flags=list(item.flags),
+        statement=item.statement,
+        scope=item.scope,
+        preview=item.preview,
+    )
+
+
+def _blast_response(report: BlastReport) -> BlastRadiusResponse:
+    return BlastRadiusResponse(
+        checked=report.checked,
+        would_change=report.would_change,
+        counts=report.counts,
+        items=[_blast_item_response(item) for item in report.items],
+        statement=report.statement,
+        scope=report.scope,
+        preview=report.preview,
+        note=report.note,
+    )
+
+
 def _event_response(event: PromiseEvent) -> EventResponse:
     return EventResponse(promise_id=event.promise_id, event_id=event.event_id, kind=event.kind)
 
@@ -270,6 +367,13 @@ async def promises(
 async def recall(ledger: Ledger, body: RecallRequest | None = None) -> RecallResponse:
     customer_id = None if body is None else body.customer_id
     return _recall_response(await ledger.recall(customer_id))
+
+
+@router.post("/ledger/blast-radius")
+async def blast_radius(body: BlastRadiusRequest, ledger: Ledger) -> BlastRadiusResponse:
+    return _blast_response(
+        await ledger.blast_radius(body.path, body.proposed_text, body.customer_id)
+    )
 
 
 PromiseId = Annotated[str, PathParam(pattern=PROMISE_ID_PATTERN)]
