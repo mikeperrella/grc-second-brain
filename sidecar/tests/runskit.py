@@ -13,7 +13,12 @@ from grc_sidecar.errors import GenerationUnavailableError, ModelsUnavailableErro
 from grc_sidecar.llm.ollama_embeddings import ModelEntry
 from grc_sidecar.questionnaire.mapping import QuestionMapping
 from grc_sidecar.questionnaire.models import AnswerResult, Citation
-from grc_sidecar.questionnaire.runs import QuestionnaireRuns, RunDependencies
+from grc_sidecar.questionnaire.runs import (
+    CitedReader,
+    QuestionnaireRuns,
+    RunDependencies,
+    RunRecorder,
+)
 from grc_sidecar.questionnaire.service import AnswerOutcome
 from grc_sidecar.questionnaire.status import blank_result
 
@@ -171,6 +176,8 @@ def setup(
     data: bytes | None = None,
     current_sha256: Callable[[str], str | None] | None = None,
     run_ids: list[str] | None = None,
+    run_recorder: RunRecorder | None = None,
+    read_cited: CitedReader | None = None,
 ) -> Setup:
     questionnaire_root = tmp_path / "questionnaires"
     export_root = tmp_path / "exports"
@@ -197,6 +204,8 @@ def setup(
         current_sha256=current_sha256 or (lambda _path: FILE_HASH),
         template_sha256="t" * 64,
         new_run_id=lambda: next(ids),
+        run_recorder=run_recorder,
+        **({} if read_cited is None else {"read_cited": read_cited}),
     )
     return Setup(
         runs=QuestionnaireRuns(deps),
