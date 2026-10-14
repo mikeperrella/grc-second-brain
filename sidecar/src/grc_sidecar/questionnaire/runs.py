@@ -24,7 +24,7 @@ import asyncio
 import logging
 import uuid
 from collections import Counter
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -53,13 +53,18 @@ from grc_sidecar.questionnaire.models import AnswerResult
 from grc_sidecar.questionnaire.package import PartInventory
 from grc_sidecar.questionnaire.service import AnswerOutcome
 from grc_sidecar.questionnaire.status import blank_result
-from grc_sidecar.questionnaire.writer import ExportResult, write_answers
+from grc_sidecar.questionnaire.writer import ExportedRow, ExportResult, write_answers
+from grc_sidecar.repositories.base import NewRunRecord, RunAnswer
 from grc_sidecar.vault.clock import Clock
+from grc_sidecar.vault.scan import CitedFile, ReadReason
 
 _log = logging.getLogger(__name__)
 
 RunStatus = Literal["running", "complete", "stopped", "failed"]
 KEPT_RUNS = 20  # finished runs kept in memory for `GET /questionnaire/runs/{id}`
+WARNING_RECORD_NOT_KEPT = "run_record_not_kept"  # no ledger folder is configured
+WARNING_RECORD_FAILED = "run_record_failed"  # the ledger refused or failed; the run still finished
+DIGEST_UNAVAILABLE = "unavailable"  # stored when Ollama gave no digest for the model
 
 
 class QuestionAnswerer(Protocol):
@@ -78,6 +83,20 @@ class ModelRequirement(Protocol):
     async def require(self, *models: str) -> None: ...
 
 
+class RunRecorder(Protocol):
+    """Keeps the durable record of a finished run (ADR-017 decision 15): the ledger, or a fake."""
+
+    async def record(self, record: NewRunRecord, answers: Sequence[RunAnswer]) -> None: ...
+
+
+CitedReader = Callable[[str, Sequence[tuple[int, int]]], CitedFile | ReadReason]
+
+
+def _cited_nowhere(_source_path: str, _ranges: Sequence[tuple[int, int]]) -> ReadReason:
+    """The default cited-file reader: it reads nothing, so every baseline is NULL (fail closed)."""
+    return "not_found"
+
+
 @dataclass(frozen=True)
 class RunDependencies:
     """Everything a run needs, passed in so tests can fake each part."""
@@ -94,6 +113,8 @@ class RunDependencies:
     current_sha256: Callable[[str], str | None]
     template_sha256: str
     new_run_id: Callable[[], str] = field(default=lambda: uuid.uuid4().hex)
+    run_recorder: RunRecorder | None = None  # None means no ledger is configured
+    read_cited: CitedReader = _cited_nowhere
 
 
 @dataclass(frozen=True)
@@ -273,8 +294,25 @@ class QuestionnaireRuns:
                 current_sha256=self._deps.current_sha256,
             )
             complete = not any("model_unavailable" in r.reasons for r in results.values())
+            # Only here, after the answers file exists: a record always belongs to a real file.
+            record_warnings = await self._keep_record(
+                state,
+                mapping,
+                len(questions.questions),
+                export,
+                digest_before,
+                digest_after,
+                complete,
+            )
             state.summary = self._summary(
-                state, results, export, digest_before, digest_after, complete, started
+                state,
+                results,
+                export,
+                digest_before,
+                digest_after,
+                complete,
+                started,
+                record_warnings,
             )
             state.status = "complete" if complete else "stopped"
             await self._emit(
@@ -330,6 +368,101 @@ class QuestionnaireRuns:
         _, digest = await self._read_digest()
         return digest
 
+    async def _keep_record(
+        self,
+        state: RunState,
+        mapping: QuestionMapping,
+        question_count: int,
+        export: ExportResult,
+        digest_before: str | None,
+        digest_after: str | None,
+        complete: bool,
+    ) -> tuple[str, ...]:
+        """Write the run record, and say in one warning code if it was not kept (ADR-017 #15).
+
+        No recorder means no ledger folder. A failure of any kind (the ledger, the vault read) never
+        fails the run: it becomes `run_record_failed`, and only a fixed code is logged.
+        """
+        recorder = self._deps.run_recorder
+        if recorder is None:
+            return (WARNING_RECORD_NOT_KEPT,)
+        try:
+            baselines = await asyncio.to_thread(self._baselines, export)
+            record = NewRunRecord(
+                run_id=state.run_id,
+                model=self._deps.model_name,
+                digest_before=digest_before or DIGEST_UNAVAILABLE,
+                digest_after=digest_after or DIGEST_UNAVAILABLE,
+                template_sha256=self._deps.template_sha256,
+                input_sha256=state.input_sha256,
+                file_name=export.file_name,
+                sheet=mapping.sheet,
+                header_row=mapping.header_row,
+                question_col=mapping.question_col,
+                first_new_column=export.first_new_column,
+                question_count=question_count,
+                complete=complete,
+            )
+            answers = [
+                self._run_answer(state.run_id, row, baselines.get(index))
+                for index, row in enumerate(export.rows)
+            ]
+            await recorder.record(record, answers)
+        except Exception as error:  # the run is done and the file is written: report, never fail
+            _log.error("run record failed: %s (%s)", WARNING_RECORD_FAILED, type(error).__name__)
+            return (WARNING_RECORD_FAILED,)
+        return ()
+
+    def _baselines(self, export: ExportResult) -> dict[int, tuple[str, str]]:
+        """Per exported row index: (cited lines hash, cited file hash), for rows that have one.
+
+        Each distinct cited file is read once. A row has no baseline when the file cannot be read,
+        when its hash is not the one the answer carried (the file changed since it was cited), or
+        when the cited lines are not inside the file.
+        """
+        wanted: dict[str, list[tuple[int, int, int]]] = {}  # path -> (row index, start, end)
+        for index, row in enumerate(export.rows):
+            citation = row.citation
+            if citation is not None:
+                wanted.setdefault(citation.source_path, []).append(
+                    (index, citation.start_line, citation.end_line)
+                )
+        found: dict[int, tuple[str, str]] = {}
+        for source_path, places in wanted.items():
+            read = self._deps.read_cited(source_path, [(start, end) for _, start, end in places])
+            if isinstance(read, str):
+                continue
+            for (index, _, _), lines_hash in zip(places, read.lines_sha256, strict=True):
+                citation = export.rows[index].citation
+                if (
+                    citation is not None
+                    and lines_hash is not None
+                    and read.file_sha256 == citation.file_sha256
+                ):
+                    found[index] = (lines_hash, citation.file_sha256)
+        return found
+
+    @staticmethod
+    def _run_answer(run_id: str, row: ExportedRow, baseline: tuple[str, str] | None) -> RunAnswer:
+        citation = row.citation
+        return RunAnswer(
+            run_id=run_id,
+            row_index=row.row,
+            question_sha256=row.question_sha256,
+            status=row.status,
+            reasons=row.reasons,
+            source_path=None if citation is None else citation.source_path,
+            doc_id=None if citation is None else citation.doc_id,
+            start_line=None if citation is None else citation.start_line,
+            end_line=None if citation is None else citation.end_line,
+            quote=None if citation is None else citation.quote,
+            cited_lines_sha256=None if baseline is None else baseline[0],
+            cited_file_sha256=None if baseline is None else baseline[1],
+            answer_cell_sha256=row.answer_cell_sha256,
+            status_cell_sha256=row.status_cell_sha256,
+            evidence_cell_sha256=row.evidence_cell_sha256,
+        )
+
     def _summary(
         self,
         state: RunState,
@@ -339,6 +472,7 @@ class QuestionnaireRuns:
         digest_after: str | None,
         complete: bool,
         started: float,
+        extra_warnings: tuple[str, ...] = (),
     ) -> RunSummary:
         counts = Counter(r.status for r in results.values())
         reasons = Counter(reason for r in results.values() for reason in r.reasons)
@@ -356,7 +490,7 @@ class QuestionnaireRuns:
             file_name=export.file_name,
             rows_written=export.rows_written,
             dropped_parts=tuple((c.category, c.before, c.after) for c in export.dropped),
-            warnings=export.warnings,
+            warnings=export.warnings + extra_warnings,
             seconds=round(self._deps.clock.monotonic() - started, 1),
         )
 

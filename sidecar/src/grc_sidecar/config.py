@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     # the questionnaire folder or the export folder: an export holds personal data and must never
     # sit next to derived state or answers. Unset means the reality routes refuse (503).
     import_dir: Path | None = None
+    # Where the promise ledger lives (ADR-017): `<ledger_dir>/ledger.sqlite3`. No default, on
+    # purpose: unset means the ledger routes refuse (503) and questionnaire runs still work. It
+    # cannot be rebuilt from anything, so it may not equal, sit inside or contain the vault, the
+    # index (disposable derived state), the questionnaire, export or import folder.
+    ledger_dir: Path | None = None
     # Bundled framework packs (ADR-008). Whether it exists is checked when packs are loaded.
     packs_dir: Path | None = None
     embedding_model: str = "nomic-embed-text"
@@ -116,6 +121,25 @@ class Settings(BaseSettings):
                 raise ValueError(f"import_dir must not overlap {other_name}")
         return value
 
+    @field_validator("ledger_dir")
+    @classmethod
+    def _ledger_dir_must_not_overlap_other_folders(
+        cls, value: Path | None, info: ValidationInfo
+    ) -> Path | None:
+        if value is None:
+            return None
+        for other_name in (
+            "vault_dir",
+            "index_dir",
+            "questionnaire_dir",
+            "export_dir",
+            "import_dir",
+        ):
+            other = info.data.get(other_name)  # declared above, so already validated
+            if other is not None and (_is_inside(value, other) or _is_inside(other, value)):
+                raise ValueError(f"ledger_dir must not overlap {other_name}")
+        return value
+
     @field_validator(
         "log_dir",
         "vault_dir",
@@ -124,6 +148,7 @@ class Settings(BaseSettings):
         "questionnaire_dir",
         "export_dir",
         "import_dir",
+        "ledger_dir",
     )
     @classmethod
     def _dirs_must_be_absolute(cls, value: Path | None) -> Path | None:
@@ -218,6 +243,13 @@ def validate_runtime_dirs(settings: Settings) -> Settings:
                 _is_inside(import_folder, other) or _is_inside(other, import_folder)
             ):
                 raise ConfigurationError("Invalid configuration for: import_dir")
+    ledger_folder = _existing_directory(settings.ledger_dir, "ledger_dir")
+    if ledger_folder is not None:
+        for other in (vault, index, questionnaire, export, import_folder):
+            if other is not None and (
+                _is_inside(ledger_folder, other) or _is_inside(other, ledger_folder)
+            ):
+                raise ConfigurationError("Invalid configuration for: ledger_dir")
     return settings.model_copy(
         update={
             "vault_dir": vault,
@@ -225,6 +257,7 @@ def validate_runtime_dirs(settings: Settings) -> Settings:
             "questionnaire_dir": questionnaire,
             "export_dir": export,
             "import_dir": import_folder,
+            "ledger_dir": ledger_folder,
         }
     )
 

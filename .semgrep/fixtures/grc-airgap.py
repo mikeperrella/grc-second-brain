@@ -295,6 +295,35 @@ import sqlalchemy
 # ok: grc-py-sqlite-outside-repositories
 from grc_sidecar.repositories.base import VectorRepository
 
+# ---------- grc-py-ledger-mutation-outside-ledger ----------
+# ruleid: grc-py-ledger-mutation-outside-ledger
+sql_one = "UPDATE promise SET status = 'PARTIAL' WHERE promise_id = ?"
+# ruleid: grc-py-ledger-mutation-outside-ledger
+sql_two = "DELETE FROM promise_event WHERE promise_id = ?"
+# ruleid: grc-py-ledger-mutation-outside-ledger
+sql_three = "UPDATE customer SET display_name = ?"
+# ruleid: grc-py-ledger-mutation-outside-ledger
+sql_four = "INSERT OR REPLACE INTO run_record (run_id) VALUES (?)"
+# ruleid: grc-py-ledger-mutation-outside-ledger
+sql_five = "REPLACE INTO run_answer (run_id) VALUES (?)"
+# ruleid: grc-py-ledger-mutation-outside-ledger
+sql_six = """DELETE
+    FROM schema_info
+"""
+# ok: grc-py-ledger-mutation-outside-ledger
+sql_read = "SELECT promise_id FROM promise WHERE customer_id = ?"
+# ok: grc-py-ledger-mutation-outside-ledger
+sql_insert = "INSERT INTO promise_event (promise_id) VALUES (?)"
+# ok: grc-py-ledger-mutation-outside-ledger
+sql_other_table = "UPDATE settings SET value = ?"
+# ok: grc-py-ledger-mutation-outside-ledger
+sql_similar_name = "DELETE FROM promise_drafts"
+# ok: grc-py-ledger-mutation-outside-ledger
+# we never update customer names, and delete from promise_event is blocked
+note = 1
+# ok: grc-py-ledger-mutation-outside-ledger
+PROSE = """We never update customer names. A delete from promise_event is blocked by a trigger."""
+
 # ---------- grc-py-extension-load-outside-repositories ----------
 # ruleid: grc-py-extension-load-outside-repositories
 connection.load_extension("vec0")

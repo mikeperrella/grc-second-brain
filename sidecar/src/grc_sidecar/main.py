@@ -19,10 +19,12 @@ from fastapi import FastAPI
 
 from grc_sidecar.api.errors import register_error_handlers
 from grc_sidecar.api.health import router as health_router
+from grc_sidecar.api.ledger import router as ledger_router
 from grc_sidecar.api.questionnaire import router as questionnaire_router
 from grc_sidecar.api.readiness import router as readiness_router
 from grc_sidecar.api.reality import router as reality_router
 from grc_sidecar.config import Settings
+from grc_sidecar.ledger.service import LedgerService, build_ledger_service
 from grc_sidecar.llm.model_gate import ModelGate
 from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
 from grc_sidecar.questionnaire.runs import QuestionnaireRuns
@@ -57,6 +59,10 @@ def _model_check_lifespan(
         app.state.gate = gate
         runtime = build_runtime(settings, gate, client)
         app.state.questionnaire = None if runtime is None else runtime.runs
+        ledger, close_ledger = build_ledger_service(
+            settings, None if runtime is None else runtime.ledger, SystemClock()
+        )
+        app.state.ledger = ledger
         app.state.reality = build_reality_runtime(settings)
         check = asyncio.create_task(gate.refresh())
         try:
@@ -67,6 +73,8 @@ def _model_check_lifespan(
                 await check
             if runtime is not None:
                 await runtime.aclose()
+            if close_ledger is not None:
+                await close_ledger()
             await client.aclose()
 
     return lifespan
@@ -79,13 +87,15 @@ def create_app(
     gate: ModelGate | None = None,
     questionnaire: QuestionnaireRuns | None = None,
     reality: RealityRuntime | None = None,
+    ledger: LedgerService | None = None,
 ) -> ASGIApp:
     """Build the app with authentication wrapped around it from the outside.
 
     With `settings`, startup builds the Ollama client and a model gate and checks the models in
     the background, and, if the vault, questionnaire and export folders are all configured, the
-    questionnaire runs; with the import and vault folders configured, the reality check. A
-    ready-made `gate`, `questionnaire` and `reality` are for tests; with none of them,
+    questionnaire runs; with the import and vault folders configured, the reality check; with the
+    ledger folder configured, the run record. A ready-made `gate`, `questionnaire`, `reality` and
+    `ledger` are for tests; with none of them,
     `/readiness` and anything that needs a model or a folder refuse (503) instead of proceeding
     unchecked.
     """
@@ -94,11 +104,13 @@ def create_app(
     api.state.gate = gate
     api.state.questionnaire = questionnaire
     api.state.reality = reality
+    api.state.ledger = ledger
     register_error_handlers(api)
     api.include_router(health_router)
     api.include_router(readiness_router)
     api.include_router(questionnaire_router)
     api.include_router(reality_router)
+    api.include_router(ledger_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own
     # error handling, so even 404/405/422/500 responses require the token.
     return AuthMiddleware(api, token)

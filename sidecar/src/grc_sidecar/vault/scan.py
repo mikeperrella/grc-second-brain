@@ -16,13 +16,17 @@ ALL of them are left out, because "first one wins" would depend on directory ord
 """
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from grc_sidecar.errors import (
     ConfigurationError,
     DuplicateDocIdError,
+    FileTooLargeError,
     GrcError,
+    InvalidEncodingError,
     PathNotAllowedError,
     PathNotFoundError,
     UnsafePathError,
@@ -31,7 +35,32 @@ from grc_sidecar.errors import (
 from grc_sidecar.security.paths import resolve_within
 from grc_sidecar.vault.frontmatter import error_to_issue, parse_document
 from grc_sidecar.vault.models import IndexIssue, ParsedDocument, ScanResult
-from grc_sidecar.vault.normalize import MAX_FILE_BYTES, decode_and_normalize, sha256_hex
+from grc_sidecar.vault.normalize import (
+    MAX_FILE_BYTES,
+    decode_and_normalize,
+    sha256_hex,
+    split_lines,
+)
+
+ReadReason = Literal["not_found", "unsafe_path", "too_large", "not_utf8"]
+
+
+@dataclass(frozen=True)
+class CitedFile:
+    """One vault file read once: its hash and, per requested line range, the hash of those lines.
+
+    A range that does not lie inside the file has no hash (None).
+    """
+
+    file_sha256: str
+    lines_sha256: tuple[str | None, ...]
+
+
+@dataclass(frozen=True)
+class VaultText:
+    """One vault file read once, as the indexer sees it (decoded, BOM and line endings fixed)."""
+
+    text: str
 
 
 def _is_markdown(name: str) -> bool:
@@ -80,13 +109,21 @@ def _unsafe(relative: str) -> IndexIssue:
     return error_to_issue(UnsafePathError(source_path=relative))
 
 
-def _safe_file(root: Path, relative: str) -> Path | None:
-    """The canonical path of a vault file, or None if the path guard refuses it."""
+def _locate_file(root: Path, relative: str) -> Path | Literal["not_found", "unsafe_path"]:
+    """The canonical path of a vault file, or why the path guard refuses it."""
     try:
         resolved = resolve_within(relative, root)
-    except (PathNotAllowedError, PathNotFoundError):
-        return None
-    return resolved if resolved == root.joinpath(*relative.split("/")) else None
+    except PathNotFoundError:
+        return "not_found"
+    except PathNotAllowedError:
+        return "unsafe_path"
+    return resolved if resolved == root.joinpath(*relative.split("/")) else "unsafe_path"
+
+
+def _safe_file(root: Path, relative: str) -> Path | None:
+    """The canonical path of a vault file, or None if the path guard refuses it."""
+    located = _locate_file(root, relative)
+    return located if isinstance(located, Path) else None
 
 
 def _read_limited(path: Path) -> bytes | None:
@@ -134,6 +171,70 @@ def current_file_sha256(vault_root: Path, source_path: str) -> str | None:
         return sha256_hex(decode_and_normalize(raw, source_path))
     except VaultError:
         return None
+
+
+def read_cited_file(
+    vault_root: Path, source_path: str, ranges: Sequence[tuple[int, int]]
+) -> CitedFile | ReadReason:
+    """Read a cited vault file once: its hash, and the hash of each cited line range (ADR-017 #3).
+
+    The same path guard, size limit and decoding as `current_file_sha256`, but the file is read a
+    single time however many ranges are asked for, and a file that cannot be used says why:
+    `not_found` (missing, unreadable or no root), `unsafe_path` (a link, or outside the root),
+    `too_large` or `not_utf8`. The lines hash follows the `Chunk.text` rule: the file's lines
+    `start..end` (1-based, inclusive) joined with a newline.
+    """
+    try:
+        root = resolve_within(".", vault_root)
+    except GrcError:
+        return "not_found"
+    located = _locate_file(root, source_path)
+    if not isinstance(located, Path):
+        return located
+    raw = _read_limited(located)
+    if raw is None:
+        return "not_found"
+    try:
+        text = decode_and_normalize(raw, source_path)
+    except FileTooLargeError:
+        return "too_large"
+    except InvalidEncodingError:
+        return "not_utf8"
+    lines = split_lines(text)
+    return CitedFile(
+        file_sha256=sha256_hex(text),
+        lines_sha256=tuple(
+            sha256_hex("\n".join(lines[start - 1 : end]))
+            if 1 <= start <= end <= len(lines)
+            else None
+            for start, end in ranges
+        ),
+    )
+
+
+def read_vault_text(vault_root: Path, source_path: str) -> VaultText | ReadReason:
+    """Read a vault file once and return its normalized text, or why it cannot be used.
+
+    The same path guard, size limit and decoding as `read_cited_file`, with the same reasons
+    (`not_found`, `unsafe_path`, `too_large`, `not_utf8`). Recall (ADR-017 decision 19) hashes and
+    parses the text this returns, so the hash and the lines it compares always come from one read.
+    """
+    try:
+        root = resolve_within(".", vault_root)
+    except GrcError:
+        return "not_found"
+    located = _locate_file(root, source_path)
+    if not isinstance(located, Path):
+        return located
+    raw = _read_limited(located)
+    if raw is None:
+        return "not_found"
+    try:
+        return VaultText(decode_and_normalize(raw, source_path))
+    except FileTooLargeError:
+        return "too_large"
+    except InvalidEncodingError:
+        return "not_utf8"
 
 
 def scan_vault(vault_root: Path) -> ScanResult:

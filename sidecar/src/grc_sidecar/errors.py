@@ -237,6 +237,147 @@ class ImportRootNotConfiguredError(GrcError):
     default_message = "The import folder is not configured"
 
 
+class LedgerRootNotConfiguredError(GrcError):
+    """The ledger routes were asked for work but the ledger folder is not configured.
+
+    The ledger needs `GRC_LEDGER_DIR` and has no default: with it unset the routes refuse instead
+    of guessing a folder, and a questionnaire run still works (ADR-017).
+    """
+
+    default_message = "The ledger folder is not configured"
+
+
+class LedgerStoreError(GrcError):
+    """The ledger (SQLite file) could not be opened, read or written."""
+
+    default_message = "Ledger store error"
+
+
+class LedgerSchemaMismatchError(LedgerStoreError):
+    """The ledger file is from another schema version, or is not a ledger at all.
+
+    The ledger cannot be rebuilt, so it fails closed: nothing is migrated, repaired or deleted.
+    """
+
+    default_message = "The ledger file has an unsupported schema"
+
+
+LedgerRefusal = Literal[
+    "customer_name_invalid",
+    "customer_exists",
+    "customer_unknown",
+    "run_exists",
+    "run_unknown",
+    "promise_exists",
+    "promise_unknown",
+    "event_invalid",
+]
+
+
+class LedgerRefusedError(GrcError):
+    """A ledger write was refused (ADR-017). `code` is a fixed word, never caller text.
+
+    `customer_id` is set only for `customer_exists`: the id of the customer the name collided
+    with, so the caller can use that customer instead of making a second one.
+    """
+
+    default_message = "The ledger write was refused"
+
+    def __init__(self, code: LedgerRefusal, customer_id: str | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: LedgerRefusal = code
+        self.customer_id = customer_id
+
+
+ImportRefusal = Literal[
+    "run_record_missing",
+    "headers_changed",
+    "question_mismatch",
+    "customer_choice_invalid",
+    "new_customer_not_confirmed",
+    "sent_on_invalid",
+    "sent_on_in_future",
+    "sent_before_drafted",
+]
+
+
+class ImportRefusedError(GrcError):
+    """A reviewed-workbook import was refused as a whole (ADR-017 decision 5).
+
+    `code` is a fixed word and `counts` holds only integers (for `question_mismatch`: how many rows
+    differ and how many rows each side has), never text from the workbook, the request or the vault.
+    """
+
+    default_message = "The import was refused"
+
+    def __init__(self, code: ImportRefusal, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: ImportRefusal = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
+RecallRefusal = Literal["too_many_promises", "promise_voided"]
+
+
+class RecallRefusedError(GrcError):
+    """A recall, void or acknowledge was refused (ADR-017 decisions 13, 17 and 20).
+
+    `code` is a fixed word and `counts` holds only integers (for `too_many_promises`: how many
+    promises there are and the cap), never text from the ledger or the vault.
+    """
+
+    default_message = "The request was refused"
+
+    def __init__(self, code: RecallRefusal, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: RecallRefusal = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
+BlastRadiusRefusal = Literal[
+    "too_many_promises",
+    "proposed_text_too_large",
+    "proposed_text_has_nul",
+    "proposed_text_not_utf8",
+]
+
+
+class BlastRadiusRefusedError(GrcError):
+    """A blast-radius preview was refused (ADR-018). Nothing is checked after a refusal.
+
+    `code` is a fixed word and `counts` holds only integers (for `too_many_promises`: how many
+    promises and the cap; for `proposed_text_too_large`: the byte count and the cap), never any
+    part of the proposed text.
+    """
+
+    default_message = "The preview was refused"
+
+    def __init__(self, code: BlastRadiusRefusal, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: BlastRadiusRefusal = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
+class VaultRootNotConfiguredError(GrcError):
+    """Recall was asked to read the vault but the vault folder is not configured.
+
+    Recall reads the current vault files from `GRC_VAULT_DIR`; with it unset recall refuses and
+    names that folder, instead of the ledger's own `ledger_root_not_configured`.
+    """
+
+    default_message = "The vault folder is not configured"
+
+
+class ExportRootNotConfiguredError(GrcError):
+    """The import was asked to read a reviewed workbook but the export folder is not configured.
+
+    The import reads the reviewed copy of a draft from `GRC_EXPORT_DIR`; with it unset the import
+    refuses and names that folder, instead of the ledger's own `ledger_root_not_configured`.
+    """
+
+    default_message = "The export folder is not configured"
+
+
 class IndexStoreError(GrcError):
     """The vector index (SQLite file) could not be opened, read or written."""
 

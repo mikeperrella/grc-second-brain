@@ -35,9 +35,10 @@ from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from grc_sidecar.errors import WorkbookWriteError
+from grc_sidecar.questionnaire.grounding import normalize
 from grc_sidecar.questionnaire.loader import LoadedWorkbook, load_questionnaire
 from grc_sidecar.questionnaire.mapping import QuestionMapping, QuestionRow
-from grc_sidecar.questionnaire.models import AnswerResult
+from grc_sidecar.questionnaire.models import AnswerResult, Citation, Status
 from grc_sidecar.questionnaire.package import InventoryChange, compare_inventories, sha256_hex
 from grc_sidecar.questionnaire.sanitize import (
     DIRECTION_MARKER,
@@ -48,6 +49,7 @@ from grc_sidecar.questionnaire.sanitize import (
 )
 from grc_sidecar.questionnaire.status import lower_for_changed_source
 from grc_sidecar.security.paths import resolve_within
+from grc_sidecar.vault.normalize import sha256_hex as sha256_text
 
 EXPORT_HEADERS: Final = (
     "GRC Answer [UNREVIEWED DRAFT]",
@@ -66,8 +68,30 @@ MAX_STEM_CHARS: Final = 80
 
 
 @dataclass(frozen=True)
+class ExportedRow:
+    """What the run record keeps of one question row (ADR-017 decision 3): hashes, not cell text.
+
+    `status`, `reasons` and `citation` are those of the FINAL result, after the changed-source
+    lowering. Each cell hash is sha256 (UTF-8) of the string exactly as stored in the saved cell,
+    or None when no cell was written. The question hash is of the whitespace-normalized text.
+    """
+
+    row: int
+    question_sha256: str
+    status: Status
+    reasons: tuple[str, ...]
+    citation: Citation | None
+    answer_cell_sha256: str | None
+    status_cell_sha256: str
+    evidence_cell_sha256: str | None
+
+
+@dataclass(frozen=True)
 class ExportResult:
-    """What was written. `path` is internal; callers show `file_name`, never the folder."""
+    """What was written. `path` is internal; callers show `file_name`, never the folder.
+
+    `rows` is for the run record only: it never goes into a summary, an event or a log.
+    """
 
     path: Path
     file_name: str
@@ -76,6 +100,7 @@ class ExportResult:
     first_new_column: int
     dropped: tuple[InventoryChange, ...]
     warnings: tuple[str, ...]
+    rows: tuple[ExportedRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -321,8 +346,10 @@ def write_answers(
         _target_must_be_empty(sheet, mapping.header_row, first_column + offset)
         stored = _put_text(sheet, mapping.header_row, first_column + offset, title)
         written[(mapping.header_row, first_column + offset)] = (stored, needs_quote_prefix(stored))
+    exported: list[ExportedRow] = []
     for question in questions:
         final = _lowered(results[question.row], current_sha256)
+        stored_hashes: dict[int, str] = {}  # column offset -> sha256 of the string as stored
         for cell in _cells_for(question, final, first_column):
             _target_must_be_empty(sheet, cell.row, cell.column)
             if cell.number is not None:
@@ -331,6 +358,19 @@ def write_answers(
             elif cell.text is not None:
                 stored = _put_text(sheet, cell.row, cell.column, cell.text)
                 written[(cell.row, cell.column)] = (stored, needs_quote_prefix(stored))
+                stored_hashes[cell.column - first_column] = sha256_text(stored)
+        exported.append(
+            ExportedRow(
+                row=question.row,
+                question_sha256=sha256_text(normalize(question.text)),
+                status=final.status,
+                reasons=final.reasons,
+                citation=final.citation,
+                answer_cell_sha256=stored_hashes.get(ANSWER),
+                status_cell_sha256=stored_hashes[STATUS],
+                evidence_cell_sha256=stored_hashes.get(EVIDENCE),
+            )
+        )
 
     buffer = BytesIO()
     workbook.save(buffer)
@@ -359,4 +399,5 @@ def write_answers(
         first_new_column=first_column,
         dropped=dropped,
         warnings=reopen_warnings,
+        rows=tuple(exported),
     )
