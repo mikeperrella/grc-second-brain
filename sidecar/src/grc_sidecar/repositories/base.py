@@ -9,6 +9,7 @@ links change together or not at all.
 """
 
 from collections.abc import Sequence
+from datetime import date
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -179,4 +180,157 @@ class VectorRepository(Protocol):
 
     async def verify_integrity(self) -> IntegrityReport: ...
 
+
+# ---------------------------------------------------------------------------------------------
+# The promise ledger (ADR-017). Append-only: the protocol has insert and read methods and nothing
+# else, so no caller can even ask for an update or a delete.
+# ---------------------------------------------------------------------------------------------
+
+LedgerAnswerStatus = Literal["SUPPORTED", "PARTIAL", "NEEDS_REVIEW"]
+PromiseStatus = Literal["SUPPORTED", "PARTIAL"]
+PromiseEventKind = Literal["created", "recall_state_changed", "acknowledged", "voided"]
+RecallState = Literal["intact", "moved", "changed", "missing"]
+# A fixed set, so a void carries no free text and opens no new content channel (ADR-017 #13).
+VoidReason = Literal["wrong_customer", "imported_in_error", "not_actually_sent", "other"]
+
+
+class NewRunRecord(_Frozen):
+    """What the run recorder supplies. `created_on` and `row_sha256` are added by the store."""
+
+    run_id: str = Field(min_length=1)
+    model: str
+    digest_before: str
+    digest_after: str
+    template_sha256: str
+    input_sha256: str
+    file_name: str
+    sheet: str
+    header_row: int
+    question_col: int
+    first_new_column: int
+    question_count: int
+    complete: bool
+
+
+class RunRecord(NewRunRecord):
+    created_on: date
+    row_sha256: str
+
+
+class RunAnswer(_Frozen):
+    """One question of a run, answered or blank. Hashes are sha256 hex (ADR-017 decision 3)."""
+
+    run_id: str = Field(min_length=1)
+    row_index: int
+    question_sha256: str
+    status: LedgerAnswerStatus
+    reasons: tuple[str, ...] = ()
+    source_path: str | None = None
+    doc_id: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    quote: str | None = None
+    cited_lines_sha256: str | None = None
+    cited_file_sha256: str | None = None
+    answer_cell_sha256: str | None = None
+    status_cell_sha256: str
+    evidence_cell_sha256: str | None = None
+
+
+class StoredRunAnswer(RunAnswer):
+    row_sha256: str
+
+
+class Customer(_Frozen):
+    customer_id: str
+    display_name: str  # as typed
+    normalized_name: str  # the unique key
+    row_sha256: str
+
+
+class NewPromise(_Frozen):
+    """A promise to record. The store adds `promise_id`, `created_on` and `row_sha256`."""
+
+    customer_id: str
+    run_id: str
+    run_row_index: int
+    question_sha256: str  # data (the "rows were not moved" check), never the key
+    question_text: str
+    answer_text: str
+    status: PromiseStatus
+    source_path: str
+    doc_id: str
+    start_line: int
+    end_line: int
+    quote: str
+    cited_lines_sha256: str
+    cited_file_sha256: str
+    edited_after_draft: bool
+    import_workbook_sha256: str
+    sent_on: date
+
+
+class Promise(NewPromise):
+    promise_id: str
+    created_on: date
+    row_sha256: str
+
+
+class NewPromiseEvent(_Frozen):
+    """An event to append. `created` is written by `add_promise` itself, never by a caller."""
+
+    promise_id: str
+    kind: Literal["recall_state_changed", "acknowledged", "voided"]
+    state: RecallState | None = None  # recall_state_changed only
+    detail_code: str | None = None  # a fixed code: a RecallState detail, or a VoidReason
+
+
+class PromiseEvent(_Frozen):
+    event_id: int
+    promise_id: str
+    kind: PromiseEventKind
+    state: RecallState | None
+    detail_code: str | None
+    on_date: date
+    row_sha256: str
+
+
+class LedgerRepository(Protocol):
+    """Append-only store of run records, customers, promises and promise events."""
+
+    async def open_or_create(self) -> None:
+        """Open the ledger file, or create it. Fails closed (LedgerSchemaMismatchError) if the
+        file is another schema version or not a ledger; nothing is migrated or deleted."""
+
     async def close(self) -> None: ...
+
+    async def add_run_record(self, record: NewRunRecord, answers: Sequence[RunAnswer]) -> None:
+        """One transaction: the run and all its answers, or nothing. Dated from the Clock."""
+
+    async def get_run_record(self, run_id: str) -> RunRecord | None: ...
+
+    async def list_run_answers(self, run_id: str) -> list[StoredRunAnswer]: ...
+
+    async def add_customer(self, display_name: str) -> Customer:
+        """Refuses a bad name (`customer_name_invalid`) or one whose normalized form exists
+        (`customer_exists`, carrying that customer's id)."""
+
+    async def get_customer(self, customer_id: str) -> Customer | None: ...
+
+    async def find_customer_by_name(self, name: str) -> Customer | None:
+        """The customer whose normalized name equals the normalized `name`, or None."""
+
+    async def list_customers(self) -> list[Customer]: ...
+
+    async def add_promise(self, promise: NewPromise) -> Promise:
+        """One transaction: the promise and its `created` event. Refuses a second promise for
+        the same customer, run and row (`promise_exists`)."""
+
+    async def get_promise(self, promise_id: str) -> Promise | None: ...
+
+    async def list_promises(self, customer_id: str | None = None) -> list[Promise]: ...
+
+    async def add_event(self, event: NewPromiseEvent) -> PromiseEvent: ...
+
+    async def list_events(self, promise_id: str) -> list[PromiseEvent]:
+        """Oldest first, by event id (an integer, so the order never depends on a timestamp)."""

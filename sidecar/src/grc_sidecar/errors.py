@@ -237,6 +237,58 @@ class ImportRootNotConfiguredError(GrcError):
     default_message = "The import folder is not configured"
 
 
+class LedgerRootNotConfiguredError(GrcError):
+    """The ledger routes were asked for work but the ledger folder is not configured.
+
+    The ledger needs `GRC_LEDGER_DIR` and has no default: with it unset the routes refuse instead
+    of guessing a folder, and a questionnaire run still works (ADR-017).
+    """
+
+    default_message = "The ledger folder is not configured"
+
+
+class LedgerStoreError(GrcError):
+    """The ledger (SQLite file) could not be opened, read or written."""
+
+    default_message = "Ledger store error"
+
+
+class LedgerSchemaMismatchError(LedgerStoreError):
+    """The ledger file is from another schema version, or is not a ledger at all.
+
+    The ledger cannot be rebuilt, so it fails closed: nothing is migrated, repaired or deleted.
+    """
+
+    default_message = "The ledger file has an unsupported schema"
+
+
+LedgerRefusal = Literal[
+    "customer_name_invalid",
+    "customer_exists",
+    "customer_unknown",
+    "run_exists",
+    "run_unknown",
+    "promise_exists",
+    "promise_unknown",
+    "event_invalid",
+]
+
+
+class LedgerRefusedError(GrcError):
+    """A ledger write was refused (ADR-017). `code` is a fixed word, never caller text.
+
+    `customer_id` is set only for `customer_exists`: the id of the customer the name collided
+    with, so the caller can use that customer instead of making a second one.
+    """
+
+    default_message = "The ledger write was refused"
+
+    def __init__(self, code: LedgerRefusal, customer_id: str | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: LedgerRefusal = code
+        self.customer_id = customer_id
+
+
 class IndexStoreError(GrcError):
     """The vector index (SQLite file) could not be opened, read or written."""
 

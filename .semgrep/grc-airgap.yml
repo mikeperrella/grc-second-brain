@@ -223,6 +223,20 @@ rules:
       - pattern: $CON.enable_load_extension(...)
       - pattern: sqlite_vec.load(...)
 
+  # The promise ledger is append-only (ADR-017 decision 8). Its repository has no method that
+  # changes or removes a row, and a trigger on every table aborts one. This rule keeps SQL that
+  # does either out of every other module. Case-sensitive on purpose: the codebase writes SQL
+  # keywords in upper case, and prose such as "we never update customer names" must not trip it.
+  - id: grc-py-ledger-mutation-outside-ledger
+    languages: [python]
+    severity: ERROR
+    message: "No UPDATE, DELETE or replace statement against a ledger table may appear outside grc_sidecar/repositories/sqlite_ledger_repo.py (ADR-017 decision 8). The ledger is append-only: record a correction as a new event."
+    paths:
+      exclude:
+        - "**/repositories/sqlite_ledger_repo.py"
+        - "**/tests/**"
+    pattern-regex: '\b(UPDATE|DELETE\s+FROM|INSERT\s+OR\s+REPLACE\s+INTO|REPLACE\s+INTO)\s+(run_record|run_answer|customer|promise|promise_event|schema_info)\b'
+
   # ---------- Rust: no shell ----------
   - id: grc-rs-shell-command
     languages: [rust]
