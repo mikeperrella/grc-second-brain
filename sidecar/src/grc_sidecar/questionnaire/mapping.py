@@ -189,15 +189,22 @@ def _validated_sheet(workbook: Workbook, mapping: QuestionMapping) -> Worksheet:
     return sheet
 
 
-def extract_questions(workbook: Workbook, mapping: QuestionMapping) -> QuestionSet:
+def extract_questions(
+    workbook: Workbook, mapping: QuestionMapping, *, reading_a_draft: bool = False
+) -> QuestionSet:
     """Read the questions under the header row, reporting every row that was skipped.
+
+    `reading_a_draft` is for the reviewed-workbook import (ADR-017): a draft has ALIBI's answer
+    columns by design, so only that one refusal is skipped. Everything else is unchanged.
 
     Raises:
         QuestionMappingError: the mapping does not fit the sheet, the sheet is too large, the sheet
-            already has ALIBI's columns, or it holds more than MAX_QUESTIONS questions.
+            already has ALIBI's columns (unless `reading_a_draft`), or it holds more than
+            MAX_QUESTIONS questions.
     """
     sheet = _validated_sheet(workbook, mapping)
-    _refuse_if_already_answered(sheet, mapping.header_row)
+    if not reading_a_draft:
+        _refuse_if_already_answered(sheet, mapping.header_row)
     merges = _horizontal_merges(sheet)
     questions: list[QuestionRow] = []
     skipped: list[SkippedRow] = []

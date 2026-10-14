@@ -289,6 +289,43 @@ class LedgerRefusedError(GrcError):
         self.customer_id = customer_id
 
 
+ImportRefusal = Literal[
+    "run_record_missing",
+    "headers_changed",
+    "question_mismatch",
+    "customer_choice_invalid",
+    "new_customer_not_confirmed",
+    "sent_on_invalid",
+    "sent_on_in_future",
+    "sent_before_drafted",
+]
+
+
+class ImportRefusedError(GrcError):
+    """A reviewed-workbook import was refused as a whole (ADR-017 decision 5).
+
+    `code` is a fixed word and `counts` holds only integers (for `question_mismatch`: how many rows
+    differ and how many rows each side has), never text from the workbook, the request or the vault.
+    """
+
+    default_message = "The import was refused"
+
+    def __init__(self, code: ImportRefusal, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: ImportRefusal = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
+class ExportRootNotConfiguredError(GrcError):
+    """The import was asked to read a reviewed workbook but the export folder is not configured.
+
+    The import reads the reviewed copy of a draft from `GRC_EXPORT_DIR`; with it unset the import
+    refuses and names that folder, instead of the ledger's own `ledger_root_not_configured`.
+    """
+
+    default_message = "The export folder is not configured"
+
+
 class IndexStoreError(GrcError):
     """The vector index (SQLite file) could not be opened, read or written."""
 

@@ -13,11 +13,14 @@ from grc_sidecar.errors import (
     ConfigurationError,
     ControlMapTooLargeError,
     ExportRefusedError,
+    ExportRootNotConfiguredError,
+    ImportRefusedError,
     ImportRootNotConfiguredError,
     IndexNotBuiltError,
     LedgerRefusedError,
     LedgerRootNotConfiguredError,
     LedgerSchemaMismatchError,
+    LedgerStoreError,
     ModelsUnavailableError,
     PathNotAllowedError,
     PathNotFoundError,
@@ -43,8 +46,10 @@ _FIXED: dict[type[Exception], tuple[int, str]] = {
         "questionnaire_root_not_configured",
     ),
     ImportRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "import_root_not_configured"),
+    ExportRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "export_root_not_configured"),
     LedgerRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "ledger_root_not_configured"),
     LedgerSchemaMismatchError: (HTTP_SERVICE_UNAVAILABLE, "ledger_unusable"),
+    LedgerStoreError: (HTTP_SERVICE_UNAVAILABLE, "ledger_store_error"),
     ConfigurationError: (HTTP_SERVICE_UNAVAILABLE, "questionnaire_root_unusable"),
     RunInProgressError: (HTTP_CONFLICT, "run_in_progress"),
     RunNotFoundError: (HTTP_NOT_FOUND, "run_not_found"),
@@ -101,6 +106,16 @@ async def _ledger_refused(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
 
 
+async def _import_refused(_request: Request, exc: Exception) -> JSONResponse:
+    """`code` is a fixed word and `counts` holds integers only, never text from the workbook."""
+    body: dict[str, object] = {"error": "import_refused", "code": "unknown"}
+    if isinstance(exc, ImportRefusedError):
+        body["code"] = exc.code
+        if exc.counts:
+            body["counts"] = exc.counts
+    return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
+
+
 async def _mapping_refused(_request: Request, exc: Exception) -> JSONResponse:
     code = exc.code if isinstance(exc, QuestionMappingError) else "unknown"
     return JSONResponse({"error": "mapping_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
@@ -124,5 +139,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ExportRefusedError, _export_refused)
     app.add_exception_handler(CheckRefusedError, _check_refused)
     app.add_exception_handler(LedgerRefusedError, _ledger_refused)
+    app.add_exception_handler(ImportRefusedError, _import_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)
     app.add_exception_handler(RequestValidationError, _invalid_request)

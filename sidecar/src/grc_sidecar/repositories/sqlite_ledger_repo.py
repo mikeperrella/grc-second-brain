@@ -280,6 +280,14 @@ def _checked_display_name(name: str) -> str:
     return normalize_customer_name(name)
 
 
+def validate_customer_name(name: str) -> None:
+    """Raise `customer_name_invalid` unless `add_customer` would accept this name.
+
+    Lets the import refuse a bad name before it decides whether anything will be created.
+    """
+    _checked_display_name(name)
+
+
 # ----- row hashes --------------------------------------------------------------------------
 
 

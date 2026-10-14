@@ -19,16 +19,17 @@ from fastapi import FastAPI
 
 from grc_sidecar.api.errors import register_error_handlers
 from grc_sidecar.api.health import router as health_router
+from grc_sidecar.api.ledger import router as ledger_router
 from grc_sidecar.api.questionnaire import router as questionnaire_router
 from grc_sidecar.api.readiness import router as readiness_router
 from grc_sidecar.api.reality import router as reality_router
 from grc_sidecar.config import Settings
+from grc_sidecar.ledger.service import LedgerService, build_ledger_service
 from grc_sidecar.llm.model_gate import ModelGate
 from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
 from grc_sidecar.questionnaire.runs import QuestionnaireRuns
 from grc_sidecar.questionnaire.runtime import build_runtime
 from grc_sidecar.reality.runtime import RealityRuntime, build_reality_runtime
-from grc_sidecar.repositories.base import LedgerRepository
 from grc_sidecar.security.auth import ASGIApp, AuthMiddleware
 from grc_sidecar.vault.clock import SystemClock
 
@@ -58,7 +59,10 @@ def _model_check_lifespan(
         app.state.gate = gate
         runtime = build_runtime(settings, gate, client)
         app.state.questionnaire = None if runtime is None else runtime.runs
-        app.state.ledger = None if runtime is None else runtime.ledger
+        ledger, close_ledger = build_ledger_service(
+            settings, None if runtime is None else runtime.ledger, SystemClock()
+        )
+        app.state.ledger = ledger
         app.state.reality = build_reality_runtime(settings)
         check = asyncio.create_task(gate.refresh())
         try:
@@ -69,6 +73,8 @@ def _model_check_lifespan(
                 await check
             if runtime is not None:
                 await runtime.aclose()
+            if close_ledger is not None:
+                await close_ledger()
             await client.aclose()
 
     return lifespan
@@ -81,7 +87,7 @@ def create_app(
     gate: ModelGate | None = None,
     questionnaire: QuestionnaireRuns | None = None,
     reality: RealityRuntime | None = None,
-    ledger: LedgerRepository | None = None,
+    ledger: LedgerService | None = None,
 ) -> ASGIApp:
     """Build the app with authentication wrapped around it from the outside.
 
@@ -104,6 +110,7 @@ def create_app(
     api.include_router(readiness_router)
     api.include_router(questionnaire_router)
     api.include_router(reality_router)
+    api.include_router(ledger_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own
     # error handling, so even 404/405/422/500 responses require the token.
     return AuthMiddleware(api, token)
