@@ -32,7 +32,10 @@ from grc_sidecar.errors import (
     ExportRootNotConfiguredError,
     ImportRefusedError,
     LedgerRefusedError,
+    RecallRefusedError,
+    VaultRootNotConfiguredError,
 )
+from grc_sidecar.ledger.recall import SCOPE, STATEMENT, check_promise
 from grc_sidecar.ledger.review import ReviewMark, classify_review, shorten_other
 from grc_sidecar.ledger.reviewed import ReviewedRow, read_reviewed
 from grc_sidecar.questionnaire.loader import load_questionnaire, read_input_bytes
@@ -40,9 +43,12 @@ from grc_sidecar.repositories.base import (
     Customer,
     LedgerRepository,
     NewPromise,
+    NewPromiseEvent,
     Promise,
+    PromiseEvent,
     PromiseStatus,
     RunAnswer,
+    VoidReason,
 )
 from grc_sidecar.repositories.sqlite_ledger_repo import (
     SqliteLedgerRepository,
@@ -51,6 +57,7 @@ from grc_sidecar.repositories.sqlite_ledger_repo import (
 )
 from grc_sidecar.vault.clock import Clock
 from grc_sidecar.vault.normalize import sha256_hex
+from grc_sidecar.vault.scan import ReadReason, VaultText, read_vault_text
 
 SKIP_CODES: Final = (
     "not_approved",
@@ -61,6 +68,8 @@ SKIP_CODES: Final = (
     "already_imported",
 )
 PAGE_SIZE: Final = 100  # a starting value, unmeasured (M5.5 plan, Section 3)
+MAX_RECALL_PROMISES: Final = 2_000  # a starting value, unmeasured (M5.5 plan, Section 3)
+RECALL_STATES: Final = ("intact", "moved", "changed", "missing")
 _ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -94,6 +103,34 @@ class ImportOutcome:
     review: dict[str, int]
     other_values: tuple[OtherValue, ...]
     promise_ids: tuple[str, ...]
+    # How many of the promises just created already rest on lines that are not as they were when
+    # the answer was drafted. Information only; None when no vault folder is configured.
+    already_changed_since_draft: int | None = None
+
+
+@dataclass(frozen=True)
+class RecallItem:
+    """Recall's finding for one promise. Codes, line numbers and ids only: no text."""
+
+    promise_id: str
+    state: str
+    detail: str | None
+    locations: tuple[tuple[int, int], ...]
+    flags: tuple[str, ...]
+    previous_state: str | None  # the last recorded recall state, None at a first recall
+    event_recorded: bool  # a `recall_state_changed` event was appended for this promise
+    statement: str
+    scope: str
+
+
+@dataclass(frozen=True)
+class RecallReport:
+    checked: int
+    events_recorded: int
+    counts: dict[str, int]
+    items: tuple[RecallItem, ...]
+    statement: str
+    scope: str
 
 
 @dataclass(frozen=True)
@@ -198,12 +235,24 @@ def _plan(
 
 
 class LedgerService:
-    """The ledger's operations. `export_root` is None when no export folder is configured."""
+    """The ledger's operations.
 
-    def __init__(self, repo: LedgerRepository, export_root: Path | None, clock: Clock) -> None:
+    `export_root` and `vault_root` are None when that folder is not configured: the import then
+    refuses (no export folder) and recall refuses (no vault folder); the import skips its
+    information count when there is no vault folder.
+    """
+
+    def __init__(
+        self,
+        repo: LedgerRepository,
+        export_root: Path | None,
+        clock: Clock,
+        vault_root: Path | None = None,
+    ) -> None:
         self._repo = repo
         self._export_root = export_root
         self._clock = clock
+        self._vault_root = vault_root
 
     # ----- import ------------------------------------------------------------------------------
 
@@ -260,6 +309,7 @@ class LedgerService:
             customer_created = True
 
         created_ids: list[str] = []
+        created: list[Promise] = []
         edited = 0
         if customer_id is not None:  # always true when anything is pending
             for ready in pending:
@@ -267,6 +317,7 @@ class LedgerService:
                 if promise is None:
                     skipped["already_imported"] += 1
                     continue
+                created.append(promise)
                 created_ids.append(promise.promise_id)
                 edited += int(promise.edited_after_draft)
         return ImportOutcome(
@@ -283,7 +334,21 @@ class LedgerService:
                 for (text, truncated), count in sorted(others.items())
             ),
             promise_ids=tuple(created_ids),
+            already_changed_since_draft=await self._count_already_changed(created),
         )
+
+    async def _count_already_changed(self, created: list[Promise]) -> int | None:
+        """Information for the owner at import: how many new promises start life flagged.
+
+        The same `check_promise` recall uses, on the current vault; a promise whose state is not
+        `intact` counts. It never refuses the import and never appends an event (decision 12).
+        """
+        root = self._vault_root
+        if root is None:
+            return None
+        texts = await self._read_vault_files(root, {p.source_path for p in created})
+        today = self._clock.today()
+        return sum(check_promise(p, texts[p.source_path], today).state != "intact" for p in created)
 
     async def _resolve_customer(self, choice: CustomerChoice) -> tuple[Customer | None, str | None]:
         """(the existing customer, None) or (None, the new name). Creates nothing."""
@@ -379,6 +444,115 @@ class LedgerService:
         events = await self._repo.list_events(promise.promise_id)
         return any(event.kind == "voided" for event in events)
 
+    # ----- recall ------------------------------------------------------------------------------
+
+    async def recall(self, customer_id: str | None) -> RecallReport:
+        """Check every live promise against the CURRENT vault and record each change of state.
+
+        Reads the vault files, never the index (the index can be stale). Each distinct file is read
+        once. Voided promises are left out. Above `MAX_RECALL_PROMISES` the whole call is refused:
+        a partial recall that looked complete would be worse than none. An event is appended only
+        when a promise's state differs from its last recorded recall state (a first recall always
+        records), so asking again does not grow the ledger. No model is involved.
+        """
+        root = self._vault_root
+        if root is None:
+            raise VaultRootNotConfiguredError
+        await self._repo.open_or_create()
+        live = await self._live_promises(customer_id)
+        if len(live) > MAX_RECALL_PROMISES:
+            raise RecallRefusedError(
+                "too_many_promises", {"promises": len(live), "cap": MAX_RECALL_PROMISES}
+            )
+        texts = await self._read_vault_files(root, {promise.source_path for promise, _ in live})
+        today = self._clock.today()
+        items: list[RecallItem] = []
+        for promise, events in live:
+            result = check_promise(promise, texts[promise.source_path], today)
+            previous = _last_recall_state(events)
+            record = result.state != previous
+            if record:
+                await self._repo.add_event(
+                    NewPromiseEvent(
+                        promise_id=promise.promise_id,
+                        kind="recall_state_changed",
+                        state=result.state,
+                        detail_code=result.detail,
+                    )
+                )
+            items.append(
+                RecallItem(
+                    promise_id=promise.promise_id,
+                    state=result.state,
+                    detail=result.detail,
+                    locations=result.locations,
+                    flags=result.flags,
+                    previous_state=previous,
+                    event_recorded=record,
+                    statement=result.statement,
+                    scope=result.scope,
+                )
+            )
+        return RecallReport(
+            checked=len(items),
+            events_recorded=sum(item.event_recorded for item in items),
+            counts={state: sum(item.state == state for item in items) for state in RECALL_STATES},
+            items=tuple(items),
+            statement=STATEMENT,
+            scope=SCOPE,
+        )
+
+    async def _live_promises(
+        self, customer_id: str | None
+    ) -> list[tuple[Promise, list[PromiseEvent]]]:
+        """Promises that are not voided, each with its events (one query per promise)."""
+        live: list[tuple[Promise, list[PromiseEvent]]] = []
+        for promise in await self._repo.list_promises(customer_id):
+            events = await self._repo.list_events(promise.promise_id)
+            if not any(event.kind == "voided" for event in events):
+                live.append((promise, events))
+        return live
+
+    async def _read_vault_files(
+        self, root: Path, paths: set[str]
+    ) -> dict[str, VaultText | ReadReason]:
+        """Each distinct file once: its normalized text or the reason it could not be read."""
+        return {
+            path: await asyncio.to_thread(read_vault_text, root, path) for path in sorted(paths)
+        }
+
+    # ----- void and acknowledge (events, never edits) ---------------------------------------------
+
+    async def void(self, promise_id: str, reason: VoidReason) -> PromiseEvent:
+        """Correct a mistake: append a `voided` event. The reason is one of a fixed set."""
+        await self._open_promise(promise_id)
+        return await self._repo.add_event(
+            NewPromiseEvent(promise_id=promise_id, kind="voided", detail_code=reason)
+        )
+
+    async def acknowledge(self, promise_id: str) -> PromiseEvent:
+        """Record that the owner saw a flag on this promise."""
+        await self._open_promise(promise_id)
+        return await self._repo.add_event(
+            NewPromiseEvent(promise_id=promise_id, kind="acknowledged")
+        )
+
+    async def _open_promise(self, promise_id: str) -> Promise:
+        """The promise, if it exists and is not voided."""
+        await self._repo.open_or_create()
+        promise = await self._repo.get_promise(promise_id)
+        if promise is None:
+            raise LedgerRefusedError("promise_unknown")
+        if await self._is_voided(promise):
+            raise RecallRefusedError("promise_voided")
+        return promise
+
+
+def _last_recall_state(events: list[PromiseEvent]) -> str | None:
+    """The state of the latest `recall_state_changed` event, or None if recall never ran."""
+    states = [event.state for event in events if event.kind == "recall_state_changed"]
+    return states[-1] if states else None
+
 
 def build_ledger_service(
     settings: Settings, existing: LedgerRepository | None, clock: Clock
@@ -389,8 +563,8 @@ def build_ledger_service(
     per process, never two connections to one file. With no ledger folder there is no ledger.
     """
     if existing is not None:
-        return LedgerService(existing, settings.export_dir, clock), None
+        return LedgerService(existing, settings.export_dir, clock, settings.vault_dir), None
     if settings.ledger_dir is None:
         return None, None
     repo = SqliteLedgerRepository(ledger_path(settings), clock)
-    return LedgerService(repo, settings.export_dir, clock), repo.close
+    return LedgerService(repo, settings.export_dir, clock, settings.vault_dir), repo.close

@@ -56,6 +56,13 @@ class CitedFile:
     lines_sha256: tuple[str | None, ...]
 
 
+@dataclass(frozen=True)
+class VaultText:
+    """One vault file read once, as the indexer sees it (decoded, BOM and line endings fixed)."""
+
+    text: str
+
+
 def _is_markdown(name: str) -> bool:
     return name.lower().endswith(".md")
 
@@ -203,6 +210,31 @@ def read_cited_file(
             for start, end in ranges
         ),
     )
+
+
+def read_vault_text(vault_root: Path, source_path: str) -> VaultText | ReadReason:
+    """Read a vault file once and return its normalized text, or why it cannot be used.
+
+    The same path guard, size limit and decoding as `read_cited_file`, with the same reasons
+    (`not_found`, `unsafe_path`, `too_large`, `not_utf8`). Recall (ADR-017 decision 19) hashes and
+    parses the text this returns, so the hash and the lines it compares always come from one read.
+    """
+    try:
+        root = resolve_within(".", vault_root)
+    except GrcError:
+        return "not_found"
+    located = _locate_file(root, source_path)
+    if not isinstance(located, Path):
+        return located
+    raw = _read_limited(located)
+    if raw is None:
+        return "not_found"
+    try:
+        return VaultText(decode_and_normalize(raw, source_path))
+    except FileTooLargeError:
+        return "too_large"
+    except InvalidEncodingError:
+        return "not_utf8"
 
 
 def scan_vault(vault_root: Path) -> ScanResult:

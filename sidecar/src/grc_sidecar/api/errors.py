@@ -26,10 +26,12 @@ from grc_sidecar.errors import (
     PathNotFoundError,
     QuestionMappingError,
     QuestionnaireNotConfiguredError,
+    RecallRefusedError,
     RetrievalUnavailableError,
     RunInProgressError,
     RunNotFoundError,
     VaultChangedError,
+    VaultRootNotConfiguredError,
     WorkbookRefusedError,
 )
 
@@ -47,6 +49,7 @@ _FIXED: dict[type[Exception], tuple[int, str]] = {
     ),
     ImportRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "import_root_not_configured"),
     ExportRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "export_root_not_configured"),
+    VaultRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "vault_root_not_configured"),
     LedgerRootNotConfiguredError: (HTTP_SERVICE_UNAVAILABLE, "ledger_root_not_configured"),
     LedgerSchemaMismatchError: (HTTP_SERVICE_UNAVAILABLE, "ledger_unusable"),
     LedgerStoreError: (HTTP_SERVICE_UNAVAILABLE, "ledger_store_error"),
@@ -116,6 +119,16 @@ async def _import_refused(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
 
 
+async def _recall_refused(_request: Request, exc: Exception) -> JSONResponse:
+    """`code` is a fixed word and `counts` holds integers only."""
+    body: dict[str, object] = {"error": "recall_refused", "code": "unknown"}
+    if isinstance(exc, RecallRefusedError):
+        body["code"] = exc.code
+        if exc.counts:
+            body["counts"] = exc.counts
+    return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
+
+
 async def _mapping_refused(_request: Request, exc: Exception) -> JSONResponse:
     code = exc.code if isinstance(exc, QuestionMappingError) else "unknown"
     return JSONResponse({"error": "mapping_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
@@ -140,5 +153,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(CheckRefusedError, _check_refused)
     app.add_exception_handler(LedgerRefusedError, _ledger_refused)
     app.add_exception_handler(ImportRefusedError, _import_refused)
+    app.add_exception_handler(RecallRefusedError, _recall_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)
     app.add_exception_handler(RequestValidationError, _invalid_request)

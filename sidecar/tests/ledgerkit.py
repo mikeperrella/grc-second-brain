@@ -25,7 +25,8 @@ from grc_sidecar.questionnaire.runtime import LedgerRunRecorder
 from grc_sidecar.questionnaire.service import AnswerOutcome
 from grc_sidecar.repositories.base import Promise
 from grc_sidecar.repositories.sqlite_ledger_repo import SqliteLedgerRepository
-from grc_sidecar.vault.scan import CitedFile, ReadReason
+from grc_sidecar.vault.normalize import sha256_hex
+from grc_sidecar.vault.scan import CitedFile, ReadReason, current_file_sha256, read_cited_file
 
 from .clockkit import ManualClock
 from .runskit import FILE_HASH, FILE_NAME, MAPPING, Setup, citation, outcome, setup, supported
@@ -56,6 +57,25 @@ def good_reader(_path: str, ranges: Sequence[tuple[int, int]]) -> CitedFile | Re
 
 def cited(start: int, end: int, *, quote: str = "Data at rest is encrypted.") -> Citation:
     return dataclasses.replace(citation(), start_line=start, end_line=end, quote=quote)
+
+
+def real_citation(vault: Path, source_path: str, quote: str) -> Citation:
+    """A citation of `quote` as it really sits in a vault file now: its lines and the file's hash.
+
+    The quote must be on one line, and its first occurrence is the one cited.
+    """
+    text = (vault / source_path).read_text(encoding="utf-8").replace("\r\n", "\n")
+    for number, line in enumerate(text.split("\n"), start=1):
+        if quote in line:
+            return dataclasses.replace(
+                citation(),
+                source_path=source_path,
+                start_line=number,
+                end_line=number,
+                quote=quote,
+                file_sha256=sha256_hex(text),
+            )
+    raise AssertionError("the quote is not in the vault file")
 
 
 def answered(
@@ -98,16 +118,30 @@ def draft_for(
     *,
     data: bytes | None = None,
     read_cited: CitedReader = good_reader,
+    vault: Path | None = None,
 ) -> Iterator[Draft]:
-    """Run a scripted questionnaire once and yield the draft. The ledger is closed on exit."""
+    """Run a scripted questionnaire once and yield the draft. The ledger is closed on exit.
+
+    With `vault`, the run reads that folder through the real `read_cited_file` and
+    `current_file_sha256`, and the service is given it as its vault folder (for recall). The
+    answers' citations must then match the real files (see `real_citation`).
+    """
     clock = ManualClock()
     repo = SqliteLedgerRepository(tmp_path / "ledger" / "ledger.sqlite3", clock)
+    if vault is not None:
+        vault_root = vault
+        read_cited = lambda path, ranges: read_cited_file(vault_root, path, ranges)  # noqa: E731
     s = setup(
         tmp_path,
         count=len(outcomes),
         data=data,
         run_recorder=LedgerRunRecorder(repo),
         read_cited=read_cited,
+        **(
+            {}
+            if vault is None
+            else {"current_sha256": lambda path: current_file_sha256(vault_root, path)}
+        ),
     )
     s.answerer.script = list(outcomes)
 
@@ -123,7 +157,7 @@ def draft_for(
         yield Draft(
             s=s,
             repo=repo,
-            service=LedgerService(repo, s.export_root, clock),
+            service=LedgerService(repo, s.export_root, clock, vault),
             run_id=run_id,
             path=s.export_root / file_name,
             clock=clock,

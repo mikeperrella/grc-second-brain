@@ -62,6 +62,20 @@ class QuoteLocation:
     heading_only: bool  # the whole quote lies inside one Markdown heading line
 
 
+def _location_at(
+    text: str, origin: list[int], at: int, length: int, first_line: int
+) -> QuoteLocation:
+    """The lines of the match that starts at normalized offset `at` and is `length` characters."""
+    raw_first = origin[at]
+    raw_last = origin[at + length - 1]  # the needle ends in a non-space, so a real character
+    first = text.count("\n", 0, raw_first)
+    last = text.count("\n", 0, raw_last)
+    heading = first == last and _ATX_HEADING.match(text.split("\n")[first]) is not None
+    return QuoteLocation(
+        start_line=first_line + first, end_line=first_line + last, heading_only=heading
+    )
+
+
 def locate_quote(chunk: RetrievedChunk, quote: str) -> QuoteLocation | None:
     """Find `quote` verbatim in the chunk's raw text, or None. Whitespace is the only leniency."""
     needle = normalize(quote)
@@ -71,16 +85,26 @@ def locate_quote(chunk: RetrievedChunk, quote: str) -> QuoteLocation | None:
     at = haystack.find(needle)
     if at < 0:
         return None
-    raw_first = origin[at]
-    raw_last = origin[at + len(needle) - 1]  # the needle ends in a non-space, so a real character
-    first = chunk.text.count("\n", 0, raw_first)
-    last = chunk.text.count("\n", 0, raw_last)
-    heading = first == last and _ATX_HEADING.match(chunk.text.split("\n")[first]) is not None
-    return QuoteLocation(
-        start_line=chunk.start_line + first,
-        end_line=chunk.start_line + last,
-        heading_only=heading,
-    )
+    return _location_at(chunk.text, origin, at, len(needle), chunk.start_line)
+
+
+def locate_all_quotes(text: str, quote: str, first_line: int = 1) -> tuple[QuoteLocation, ...]:
+    """EVERY place `quote` occurs verbatim in `text`, in order, as lines (ADR-017 decision 17).
+
+    The same rule as `locate_quote` and nothing more: whitespace runs count as one space, the ends
+    are trimmed, and no other folding. Matches do not overlap. `first_line` is the line number of
+    the first line of `text` (1 for a whole file).
+    """
+    needle = normalize(quote)
+    if not needle:
+        return ()
+    haystack, origin = normalize_with_map(text)
+    found: list[QuoteLocation] = []
+    at = haystack.find(needle)
+    while at >= 0:
+        found.append(_location_at(text, origin, at, len(needle), first_line))
+        at = haystack.find(needle, at + len(needle))
+    return tuple(found)
 
 
 def long_enough(quote: str) -> bool:

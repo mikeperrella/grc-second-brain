@@ -8,12 +8,16 @@ questions and answers, and none of it is ever logged.
 - `POST /ledger/import`      turn the approved rows of a reviewed draft into promises
 - `GET  /ledger/customers`   the customers
 - `GET  /ledger/promises`    a page of promises (voided ones only with `include_voided=true`)
+- `POST /ledger/recall`      check live promises against the current vault (a POST: it can append)
+- `POST /ledger/promises/{id}/void`         correct a mistake: a fixed reason, no free text
+- `POST /ledger/promises/{id}/acknowledge`  record that the owner saw a flag
 """
 
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi import Path as PathParam
 from pydantic import BaseModel, ConfigDict, Field
 
 from grc_sidecar.errors import LedgerRootNotConfiguredError
@@ -23,13 +27,16 @@ from grc_sidecar.ledger.service import (
     LedgerService,
     PromisePage,
     PromiseView,
+    RecallItem,
+    RecallReport,
 )
-from grc_sidecar.repositories.base import Customer
+from grc_sidecar.repositories.base import Customer, PromiseEvent, VoidReason
 
 router = APIRouter()
 
 RUN_ID_PATTERN = r"^[0-9a-f]{8,64}$"
 ID_PATTERN = r"^[0-9a-f]{8,64}$"
+PROMISE_ID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 MAX_FILE_NAME_CHARS = 260
 MAX_NEW_NAME_CHARS = 1_000  # a bound on the request; the ledger's own name rules decide the rest
 MAX_PAGE = 100_000
@@ -73,6 +80,7 @@ class ImportResponse(_Body):
     review: dict[str, int]
     other_values: list[OtherValueResponse]
     promise_ids: list[str]
+    already_changed_since_draft: int | None = None  # information only; None with no vault folder
 
 
 class CustomerResponse(_Body):
@@ -99,6 +107,50 @@ class PromiseResponse(_Body):
     voided: bool
 
 
+class RecallRequest(_Body):
+    customer_id: str | None = Field(default=None, pattern=ID_PATTERN)
+
+
+class VoidRequest(_Body):
+    reason: VoidReason  # one of a fixed set: free text cannot be sent
+
+
+class EmptyRequest(_Body):
+    """A body with nothing in it, so an unknown field is refused like everywhere else."""
+
+
+class LocationResponse(_Body):
+    start_line: int
+    end_line: int
+
+
+class RecallItemResponse(_Body):
+    promise_id: str
+    state: str
+    detail: str | None
+    locations: list[LocationResponse]
+    flags: list[str]
+    previous_state: str | None
+    event_recorded: bool
+    statement: str
+    scope: str
+
+
+class RecallResponse(_Body):
+    checked: int
+    events_recorded: int
+    counts: dict[str, int]
+    items: list[RecallItemResponse]
+    statement: str
+    scope: str
+
+
+class EventResponse(_Body):
+    promise_id: str
+    event_id: int
+    kind: str
+
+
 class PromisesResponse(_Body):
     page: int
     page_size: int
@@ -116,6 +168,7 @@ def _import_response(outcome: ImportOutcome) -> ImportResponse:
         review=outcome.review,
         other_values=[OtherValueResponse(**vars(v)) for v in outcome.other_values],
         promise_ids=list(outcome.promise_ids),
+        already_changed_since_draft=outcome.already_changed_since_draft,
     )
 
 
@@ -154,6 +207,35 @@ def _promises_response(found: PromisePage) -> PromisesResponse:
     )
 
 
+def _recall_item_response(item: RecallItem) -> RecallItemResponse:
+    return RecallItemResponse(
+        promise_id=item.promise_id,
+        state=item.state,
+        detail=item.detail,
+        locations=[LocationResponse(start_line=s, end_line=e) for s, e in item.locations],
+        flags=list(item.flags),
+        previous_state=item.previous_state,
+        event_recorded=item.event_recorded,
+        statement=item.statement,
+        scope=item.scope,
+    )
+
+
+def _recall_response(report: RecallReport) -> RecallResponse:
+    return RecallResponse(
+        checked=report.checked,
+        events_recorded=report.events_recorded,
+        counts=report.counts,
+        items=[_recall_item_response(item) for item in report.items],
+        statement=report.statement,
+        scope=report.scope,
+    )
+
+
+def _event_response(event: PromiseEvent) -> EventResponse:
+    return EventResponse(promise_id=event.promise_id, event_id=event.event_id, kind=event.kind)
+
+
 @router.post("/ledger/import")
 async def import_reviewed(body: ImportRequest, ledger: Ledger) -> ImportResponse:
     outcome = await ledger.import_reviewed(
@@ -182,3 +264,24 @@ async def promises(
     page: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 1,
 ) -> PromisesResponse:
     return _promises_response(await ledger.promises(customer_id, include_voided, page))
+
+
+@router.post("/ledger/recall")
+async def recall(ledger: Ledger, body: RecallRequest | None = None) -> RecallResponse:
+    customer_id = None if body is None else body.customer_id
+    return _recall_response(await ledger.recall(customer_id))
+
+
+PromiseId = Annotated[str, PathParam(pattern=PROMISE_ID_PATTERN)]
+
+
+@router.post("/ledger/promises/{promise_id}/void")
+async def void_promise(promise_id: PromiseId, body: VoidRequest, ledger: Ledger) -> EventResponse:
+    return _event_response(await ledger.void(promise_id, body.reason))
+
+
+@router.post("/ledger/promises/{promise_id}/acknowledge")
+async def acknowledge_promise(
+    promise_id: PromiseId, ledger: Ledger, body: EmptyRequest | None = None
+) -> EventResponse:
+    return _event_response(await ledger.acknowledge(promise_id))

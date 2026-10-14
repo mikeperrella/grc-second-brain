@@ -316,6 +316,34 @@ class ImportRefusedError(GrcError):
         self.counts: dict[str, int] = {} if counts is None else dict(counts)
 
 
+RecallRefusal = Literal["too_many_promises", "promise_voided"]
+
+
+class RecallRefusedError(GrcError):
+    """A recall, void or acknowledge was refused (ADR-017 decisions 13, 17 and 20).
+
+    `code` is a fixed word and `counts` holds only integers (for `too_many_promises`: how many
+    promises there are and the cap), never text from the ledger or the vault.
+    """
+
+    default_message = "The request was refused"
+
+    def __init__(self, code: RecallRefusal, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: RecallRefusal = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
+class VaultRootNotConfiguredError(GrcError):
+    """Recall was asked to read the vault but the vault folder is not configured.
+
+    Recall reads the current vault files from `GRC_VAULT_DIR`; with it unset recall refuses and
+    names that folder, instead of the ledger's own `ledger_root_not_configured`.
+    """
+
+    default_message = "The vault folder is not configured"
+
+
 class ExportRootNotConfiguredError(GrcError):
     """The import was asked to read a reviewed workbook but the export folder is not configured.
 
