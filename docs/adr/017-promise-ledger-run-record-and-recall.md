@@ -1,6 +1,6 @@
 # ADR-017: Promise ledger, run record and recall
 
-Status: Proposed (M5.5 PR 2); final when PR 2 closes. **Chunk 2b (the store) is built; the rest is not.** Decisions 6, 7, 8, 10 (normalization), 14 and 20 (storage side) are marked *(built in chunk 2b)*; every other decision is marked *(planned)* and names the chunk that builds it: 2b the store, 2c the run record, 2d the import and the offline draft tool, 2e recall. The design is from the approved M5.5 plan (revision 2b, with deviations M55-1 to M55-4). It is written before any M5 file is touched so the owner can review it at STOP L1. Facts about the code were read on 2026-10-13.
+Status: Accepted (M5.5 PR 2). The ledger, the run record, the import, the offline draft tool and recall are built, in these chunks: 2a the design and the planned threat-model rows (`8cd19b0`), 2b the store (`d81e268`), 2c the run record (`45bccc3`), 2d the reviewed-workbook import, the review vocabulary and the ledger routes (`21e0626`), 2d2 the offline draft tool (`5b5def6`), 2e recall, void, acknowledge and the import's changed-since-draft count (`29f93b1`), 2f the blast-radius preview, which has its own ADR-018 (`64b6a71`). Each decision names the chunk that built it. Two are not code: decision 9 (what "Immutable" means) is wording for the product and holds only for the application, and decision 21 (the setup guide items) stays planned for M8. The design is from the approved M5.5 plan (revision 2b, with deviations M55-1 to M55-4), written before any M5 file was touched so the owner could review it at STOP L1. Facts about the code were read on 2026-10-13. The per-chunk "details the build settled" and "mutation proofs" sections below are the record of what each chunk did and are unchanged.
 
 ## Context
 
@@ -104,7 +104,7 @@ Negative or risky:
 - **Recall is blind outside the cited lines** (decision 18) and cannot judge whether an edited answer still matches its quote.
 - **Starting values are unmeasured:** 2,000 promises per recall call; import rows bounded by the existing 500-question cap; listing page size 100. They may be wrong; a refusal because of one is reported, not worked around.
 - **Changes shipped M5 code.** The run record (decision 15) touches `writer.py` and `runs.py`; the existing M5 tests run unchanged at STOP L2, and the change is additive (a defaulted field, an optional recorder).
-- **Planned threat-model rows** F27 to F31 (`docs/threat-model.md`, Sections 5 to 7) are all **No mitigation** today, planned or accepted, and change label only when the chunk that builds each control lands with a resolvable test.
+- **Threat-model rows** F27 to F31 (`docs/threat-model.md`, Sections 5 to 7) were written as planned rows in chunk 2a and were labelled at the PR 2 close: each says **Mitigated** only where a resolvable test is cited, and the rows that stay **No mitigation, accepted** (F28-2, F28-3, F28-4, F29-8, F30-7, F31-4a) say why. Blast radius is F32.
 - **Not in this ADR:** blast radius (ADR-018), the contradiction detector (ADR-019), a ledger export to a spreadsheet (would need `sanitize.py` and an F23-class review, backlog item G32), sending anything to a customer, and the M6 approval screen.
 
 ### Chunk 2b: details the build settled

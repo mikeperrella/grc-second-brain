@@ -1,6 +1,6 @@
 # ADR-018: Blast radius, a preview of what an edit to a policy would do to the promises that rest on it
 
-Status: Built in chunk 2f of PR 2 (owner review pending). Proposed 2026-10-14.
+Status: Accepted (M5.5 PR 2). Proposed 2026-10-14 and built in chunk 2f (`64b6a71`).
 
 ## Context
 
@@ -52,7 +52,7 @@ Negative or risky, stated as limits:
 
 ## Built in chunk 2f
 
-`POST /ledger/blast-radius` in `api/ledger.py`; `LedgerService.blast_radius`, `BlastItem`, `BlastReport`, `PREVIEW_LINE` and `NO_MATCH_LINE` in `ledger/service.py`; `BlastRadiusRefusedError` in `errors.py` and its one handler (422 `blast_radius_refused`, fixed code, integer counts) in `api/errors.py`. The repository gained nothing, no dependency was added, and no existing test changed. Tests: `sidecar/tests/test_ledger_blast_radius.py` (43 tests). Threat-model rows are not relabelled in this chunk.
+`POST /ledger/blast-radius` in `api/ledger.py`; `LedgerService.blast_radius`, `BlastItem`, `BlastReport`, `PREVIEW_LINE` and `NO_MATCH_LINE` in `ledger/service.py`; `BlastRadiusRefusedError` in `errors.py` and its one handler (422 `blast_radius_refused`, fixed code, integer counts) in `api/errors.py`. The repository gained nothing, no dependency was added, and no existing test changed. Tests: `sidecar/tests/test_ledger_blast_radius.py` (43 tests). The threat-model rows for it, F32-1 to F32-5, were written at the PR 2 close.
 
 ### Mutation proofs (chunk 2f)
 
