@@ -11,4 +11,5 @@ All content here is synthetic test data. Nothing is from a real company.
   own README says its authenticator type strings are examples, not confirmed Okta values.
 - `vault-contradictions/` is a synthetic vault of planted policy contradictions, and
   `eval/contradiction-set.json` labels them (dev and held-out) for the contradiction detector
-  (ADR-019). Every note says it is synthetic. The set is not frozen until chunk 4c.
+  (ADR-019). Every note says it is synthetic. The set was frozen in chunk 4c and is pinned by
+  `sidecar/tests/test_contradiction_freeze.py`.
