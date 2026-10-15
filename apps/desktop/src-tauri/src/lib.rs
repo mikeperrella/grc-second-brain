@@ -10,8 +10,10 @@ mod commands;
 mod dev_paths;
 pub mod health;
 pub mod host;
+pub mod proxy;
 pub mod ready;
 pub mod sidecar;
+pub mod sidecar_client;
 pub mod token;
 
 use tauri::{Manager, RunEvent, WindowEvent};

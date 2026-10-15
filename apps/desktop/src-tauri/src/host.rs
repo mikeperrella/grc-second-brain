@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use crate::child_env::build_child_env;
 use crate::health::{HealthClient, HealthError, HealthReply, LoopbackEndpoint};
+use crate::proxy::{ProxyError, ProxyReply, RouteRequest};
 use crate::sidecar::resolve::{resolve_sidecar_program, SIDECAR_ARGS};
 use crate::sidecar::spawn::system_windows_directory;
 use crate::sidecar::supervisor::{FailureKind, SidecarSpec, SidecarState, Supervisor};
@@ -37,6 +38,17 @@ pub(crate) fn decide(state: SidecarState) -> Decision {
         SidecarState::Ready { port } => Decision::Probe(LoopbackEndpoint::from_port(port)),
         SidecarState::Failed(reason) => Decision::Reply(HealthReply::Failed { reason }),
         SidecarState::Stopped => Decision::Reply(HealthReply::NotRunning),
+    }
+}
+
+/// Where a proxied call may go for a given sidecar state. Pure, like [`decide`]: only `Ready` has a
+/// port, and every other state is `not_ready` with no network call.
+pub(crate) fn endpoint_for(state: SidecarState) -> Result<LoopbackEndpoint, ProxyError> {
+    match state {
+        SidecarState::Ready { port } => Ok(LoopbackEndpoint::from_port(port)),
+        SidecarState::Starting | SidecarState::Failed(_) | SidecarState::Stopped => {
+            Err(ProxyError::NotReady)
+        }
     }
 }
 
@@ -122,6 +134,17 @@ impl SidecarHost {
             Decision::Reply(reply) => Ok(reply),
             Decision::Probe(endpoint) => self.client.check(&endpoint).await,
         }
+    }
+
+    /// One proxied call (ADR-020). `not_ready` unless the sidecar has announced its port and is
+    /// running; otherwise the call goes to that port only. Not a Tauri command yet (chunk 6e).
+    pub async fn call(&self, request: &RouteRequest) -> Result<ProxyReply, ProxyError> {
+        let state = self
+            .supervisor
+            .state()
+            .unwrap_or(SidecarState::Failed(FailureKind::Internal));
+        let endpoint = endpoint_for(state)?;
+        crate::proxy::call(&self.client, &endpoint, request).await
     }
 
     pub fn supervisor(&self) -> &Supervisor {
@@ -282,6 +305,21 @@ mod tests {
         assert_eq!(
             decide(SidecarState::Ready { port: port(5000) }),
             Decision::Probe(LoopbackEndpoint::new(5000).unwrap())
+        );
+    }
+
+    #[test]
+    fn a_proxied_call_has_an_endpoint_only_when_the_sidecar_is_ready() {
+        for state in [
+            SidecarState::Starting,
+            SidecarState::Stopped,
+            SidecarState::Failed(FailureKind::Timeout),
+        ] {
+            assert_eq!(endpoint_for(state), Err(ProxyError::NotReady), "{state:?}");
+        }
+        assert_eq!(
+            endpoint_for(SidecarState::Ready { port: port(5000) }),
+            Ok(LoopbackEndpoint::new(5000).unwrap())
         );
     }
 
