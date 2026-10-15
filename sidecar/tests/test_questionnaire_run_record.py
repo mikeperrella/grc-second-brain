@@ -43,6 +43,7 @@ from .runskit import (
     FakeModelReader,
     Setup,
     citation,
+    make_workbook,
     outcome,
     setup,
     supported,
@@ -326,8 +327,9 @@ def test_with_no_ledger_the_run_is_unchanged_but_the_summary_says_no_record_was_
     ids = [f"{n:08x}" + "0" * 24 for n in (1, 2)]
     (tmp_path / "plain").mkdir()
     (tmp_path / "rec").mkdir()
-    plain = setup(tmp_path / "plain", count=2, run_ids=list(ids))
-    recorded, _ = recorded_setup(tmp_path / "rec", count=2, run_ids=list(ids))
+    data = make_workbook(2)  # built once: openpyxl stamps the build second into the package
+    plain = setup(tmp_path / "plain", count=2, data=data, run_ids=list(ids))
+    recorded, _ = recorded_setup(tmp_path / "rec", count=2, data=data, run_ids=list(ids))
     assert plain.deps.run_recorder is None
     without = run(start_and_finish(plain)).summary
     with_record = run(start_and_finish(recorded)).summary

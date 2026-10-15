@@ -5,9 +5,11 @@ import asyncio
 import hashlib
 import json
 import logging
+import threading
 import zipfile
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeVar
 
@@ -17,14 +19,17 @@ import pytest
 from grc_sidecar.errors import IndexNotBuiltError
 from grc_sidecar.main import create_app
 from grc_sidecar.questionnaire.runs import QuestionnaireRuns
+from grc_sidecar.questionnaire.service import AnswerOutcome
 from grc_sidecar.security.net import create_async_client
 
 from .runskit import (
     CANARY,
+    FILE_HASH,
     FILE_NAME,
     MAPPING,
     FakeGate,
     FakeVault,
+    ScriptedAnswerer,
     make_workbook,
     models_unavailable,
     outcome,
@@ -337,6 +342,98 @@ def test_health_answers_during_run(tmp_path: Path) -> None:  # [NEG]
                 assert (await client.get("/health", headers=AUTH)).status_code == 200
             hold.set()
             await s.runs.aclose()
+
+    run(scenario())
+
+
+@dataclass
+class OneAtATimeAnswerer(ScriptedAnswerer):
+    """Answers a question only when the test lets one through (a semaphore, no sleeps)."""
+
+    turnstile: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(0))
+
+    async def answer(self, question: str) -> AnswerOutcome:
+        await self.turnstile.acquire()
+        return await super().answer(question)
+
+
+async def settle() -> None:
+    """Let the event loop run a few turns so a wrongly early update would have happened."""
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+
+def test_completed_is_exact_after_each_answer_and_the_summary_waits_for_the_file(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    """Pins the status route mid-run (M6_PLAN Check 1, F38-4): `completed` is 0, 1, 2 ... total
+    after exactly that many answers, and `summary` stays null until the answers file is written.
+
+    The last-answer write phase CAN be paused: the writer calls `current_sha256` (on a worker
+    thread) for every cited row, so a threading.Event held there freezes the run after the final
+    answer and before the file exists."""
+    total = 4
+    in_writer, let_writer_go = threading.Event(), threading.Event()
+
+    def held_hash(_path: str) -> str:
+        in_writer.set()
+        assert let_writer_go.wait(20)
+        return FILE_HASH
+
+    answerer = OneAtATimeAnswerer()
+    s = setup(tmp_path, count=total, answerer=answerer, current_sha256=held_hash)
+
+    async def scenario() -> None:
+        async with client_for(s.runs) as client:
+            started = await client.post("/questionnaire/runs", json=BODY, headers=AUTH)
+            assert started.status_code == 202 and started.json()["total"] == total
+            run_id = started.json()["run_id"]
+
+            async def status() -> dict[str, object]:
+                body = (await client.get(f"/questionnaire/runs/{run_id}", headers=AUTH)).json()
+                assert body["total"] == total
+                return dict(body)
+
+            await settle()
+            before = await status()
+            assert (before["status"], before["completed"], before["summary"]) == (
+                "running",
+                0,
+                None,
+            )
+            for expected in range(1, total + 1):
+                answerer.turnstile.release()  # exactly one answer goes through
+                for _ in range(500):
+                    if (await status())["completed"] == expected:
+                        break
+                    await asyncio.sleep(0.01)
+                await settle()
+                now = await status()
+                assert now["completed"] == expected  # exact, and not one ahead after settling
+                assert now["summary"] is None and now["failure"] is None
+                assert len(answerer.questions) == expected
+                if expected < total:
+                    assert now["status"] == "running"
+            # All answers are in, the file is not written yet: completed == total, summary null.
+            for _ in range(500):
+                if in_writer.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert in_writer.is_set()
+            paused = await status()
+            assert (paused["status"], paused["completed"], paused["summary"]) == (
+                "running",
+                total,
+                None,
+            )
+            assert s.exports() == []  # no answers file yet
+            let_writer_go.set()
+            stream = await client.get(f"/questionnaire/runs/{run_id}/events", headers=AUTH)
+            assert frames(stream.text)[-1][0] == "done"
+            end = await status()
+            assert (end["status"], end["completed"]) == ("complete", total)
+            assert isinstance(end["summary"], dict) and end["summary"]["rows_written"] == total
+            assert len(s.exports()) == 1
 
     run(scenario())
 

@@ -316,6 +316,23 @@ class ImportRefusedError(GrcError):
         self.counts: dict[str, int] = {} if counts is None else dict(counts)
 
 
+class DraftRefusedError(GrcError):
+    """The draft-rows route refused the whole draft (ADR-021 decision 5).
+
+    `code` is a fixed word: `run_record_missing`, `headers_changed`, `question_mismatch`, or the
+    loader's or the question mapping's own code (never text from a file). `counts`
+    holds only integers (for `question_mismatch`), never text from the workbook or the request. A
+    refusal returns no rows.
+    """
+
+    default_message = "The draft was refused"
+
+    def __init__(self, code: str, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: str = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
 RecallRefusal = Literal["too_many_promises", "promise_voided"]
 
 

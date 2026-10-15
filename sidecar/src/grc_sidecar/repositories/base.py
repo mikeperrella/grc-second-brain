@@ -307,7 +307,21 @@ class LedgerRepository(Protocol):
     async def add_run_record(self, record: NewRunRecord, answers: Sequence[RunAnswer]) -> None:
         """One transaction: the run and all its answers, or nothing. Dated from the Clock."""
 
+    async def open_existing(self) -> bool:
+        """Open the ledger only if its file already exists and holds the schema; never create it.
+
+        For read-only callers (the review queue). False means there is no ledger yet, and nothing
+        was written. Fails closed like `open_or_create` on another schema version.
+        """
+
     async def get_run_record(self, run_id: str) -> RunRecord | None: ...
+
+    async def get_run_record_by_file_name(self, file_name: str) -> RunRecord | None:
+        """The run record whose recorded `file_name` equals `file_name` exactly, or None.
+
+        Exact and case-sensitive: never a prefix, never the 8-hex run id in the name. None also
+        when more than one record has that name, so an ambiguous name never matches a record.
+        """
 
     async def list_run_answers(self, run_id: str) -> list[StoredRunAnswer]: ...
 

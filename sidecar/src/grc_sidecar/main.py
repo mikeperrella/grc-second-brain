@@ -24,9 +24,11 @@ from grc_sidecar.api.ledger import router as ledger_router
 from grc_sidecar.api.questionnaire import router as questionnaire_router
 from grc_sidecar.api.readiness import router as readiness_router
 from grc_sidecar.api.reality import router as reality_router
+from grc_sidecar.api.vault_index import router as vault_index_router
 from grc_sidecar.config import Settings
 from grc_sidecar.contradiction_runtime import build_contradiction_runtime
 from grc_sidecar.contradictions.runs import ContradictionRuns
+from grc_sidecar.index_runtime import build_index_runtime
 from grc_sidecar.jobs import JobSlot
 from grc_sidecar.ledger.service import LedgerService, build_ledger_service
 from grc_sidecar.llm.model_gate import ModelGate
@@ -36,6 +38,7 @@ from grc_sidecar.questionnaire.runtime import build_runtime
 from grc_sidecar.reality.runtime import RealityRuntime, build_reality_runtime
 from grc_sidecar.security.auth import ASGIApp, AuthMiddleware
 from grc_sidecar.vault.clock import SystemClock
+from grc_sidecar.vault.index_jobs import IndexJobs
 
 LOOPBACK_HOST: Final = "127.0.0.1"
 
@@ -71,6 +74,8 @@ def _model_check_lifespan(
         )
         app.state.ledger = ledger
         app.state.reality = build_reality_runtime(settings)
+        indexing = build_index_runtime(settings, gate, client, slot)
+        app.state.index_jobs = None if indexing is None else indexing.jobs
         check = asyncio.create_task(gate.refresh())
         try:
             yield
@@ -82,6 +87,8 @@ def _model_check_lifespan(
                 await runtime.aclose()
             if contradictions is not None:
                 await contradictions.aclose()
+            if indexing is not None:
+                await indexing.aclose()
             if close_ledger is not None:
                 await close_ledger()
             await client.aclose()
@@ -98,6 +105,7 @@ def create_app(
     reality: RealityRuntime | None = None,
     ledger: LedgerService | None = None,
     contradictions: ContradictionRuns | None = None,
+    index_jobs: IndexJobs | None = None,
 ) -> ASGIApp:
     """Build the app with authentication wrapped around it from the outside.
 
@@ -117,6 +125,7 @@ def create_app(
     api.state.reality = reality
     api.state.ledger = ledger
     api.state.contradictions = contradictions
+    api.state.index_jobs = index_jobs
     register_error_handlers(api)
     api.include_router(health_router)
     api.include_router(readiness_router)
@@ -124,6 +133,7 @@ def create_app(
     api.include_router(contradictions_router)
     api.include_router(reality_router)
     api.include_router(ledger_router)
+    api.include_router(vault_index_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own
     # error handling, so even 404/405/422/500 responses require the token.
     return AuthMiddleware(api, token)

@@ -37,9 +37,10 @@ from grc_sidecar.errors import (
     RecallRefusedError,
     VaultRootNotConfiguredError,
 )
+from grc_sidecar.ledger.draft import DraftRows, read_draft_rows
 from grc_sidecar.ledger.recall import SCOPE, STATEMENT, RecallResult, check_promise
 from grc_sidecar.ledger.review import ReviewMark, classify_review, shorten_other
-from grc_sidecar.ledger.reviewed import ReviewedRow, read_reviewed
+from grc_sidecar.ledger.reviewed import ReviewedRow, cell_unchanged, read_reviewed
 from grc_sidecar.questionnaire.loader import load_questionnaire, read_input_bytes
 from grc_sidecar.repositories.base import (
     Customer,
@@ -224,17 +225,6 @@ def _answer_text(row: ReviewedRow) -> str | None:
     return row.answer
 
 
-def _unchanged(cell: object, recorded_sha256: str | None) -> bool:
-    """Is the cell exactly what ALIBI wrote? A blank cell matches only 'nothing was written'."""
-    if cell is None:
-        return recorded_sha256 is None
-    return (
-        isinstance(cell, str)
-        and recorded_sha256 is not None
-        and sha256_hex(cell) == recorded_sha256
-    )
-
-
 @dataclass(frozen=True)
 class _Ready:
     """A row that passed every check, with the values the promise is made from."""
@@ -258,9 +248,9 @@ def _plan(
         return "not_approved"
     if answer.status == "NEEDS_REVIEW" or text is None:
         return "no_answer"
-    if not _unchanged(row.status, answer.status_cell_sha256):
+    if not cell_unchanged(row.status, answer.status_cell_sha256):
         return "status_edited"
-    if not _unchanged(row.evidence, answer.evidence_cell_sha256):
+    if not cell_unchanged(row.evidence, answer.evidence_cell_sha256):
         return "evidence_edited"
     if baseline is None:
         return "baseline_unavailable"
@@ -371,6 +361,13 @@ class LedgerService:
             promise_ids=tuple(created_ids),
             already_changed_since_draft=await self._count_already_changed(created),
         )
+
+    async def draft_rows(self, file: str) -> DraftRows:
+        """The rows of a finished draft, joined with its run record. Read-only (ADR-021)."""
+        root = self._export_root
+        if root is None:
+            raise ExportRootNotConfiguredError
+        return await read_draft_rows(self._repo, root, file)
 
     async def _count_already_changed(self, created: list[Promise]) -> int | None:
         """Information for the owner at import: how many new promises start life flagged.

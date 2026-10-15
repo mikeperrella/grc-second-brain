@@ -375,6 +375,24 @@ class _LedgerStore:
         self._clock = clock
 
     @classmethod
+    def open_existing(cls, path: Path, clock: Clock) -> Self | None:
+        """Open an existing ledger without creating or changing anything; None if there is none.
+
+        A missing file, or an empty one (no tables), is "no ledger yet". A file with tables must be
+        exactly this schema, as in `open`.
+        """
+        if path.is_dir():
+            raise LedgerStoreError
+        if not path.exists():
+            return None
+        names, version = _inspect(path)
+        if not names:
+            return None
+        if version != SCHEMA_VERSION or not set(_TABLES) <= names:
+            raise LedgerSchemaMismatchError
+        return cls(_connect(path), clock)
+
+    @classmethod
     def open(cls, path: Path, clock: Clock) -> Self:
         if path.is_dir():
             raise LedgerStoreError
@@ -481,6 +499,16 @@ class _LedgerStore:
         if row is None:
             return None
         return RunRecord.model_validate(_verified("run_record", _RUN_RECORD_COLS, row))
+
+    def get_run_record_by_file_name(self, file_name: str) -> RunRecord | None:
+        # Exact match on the whole recorded name (SQLite `=` on TEXT is case-sensitive). Two rows
+        # with one name is ambiguous, and an ambiguous name matches nothing.
+        rows = self._con.execute(
+            _SELECT["run_record"] + " WHERE file_name = ? LIMIT 2", (file_name,)
+        ).fetchall()
+        if len(rows) != 1:
+            return None
+        return RunRecord.model_validate(_verified("run_record", _RUN_RECORD_COLS, rows[0]))
 
     def list_run_answers(self, run_id: str) -> list[StoredRunAnswer]:
         rows = self._con.execute(
@@ -683,6 +711,17 @@ class SqliteLedgerRepository:
             return
         path, clock = self._path, self._clock
         self._core = await self._run(lambda: _LedgerStore.open(path, clock))
+
+    async def open_existing(self) -> bool:
+        if self._core is not None:
+            return True
+        path, clock = self._path, self._clock
+        self._core = await self._run(lambda: _LedgerStore.open_existing(path, clock))
+        return self._core is not None
+
+    async def get_run_record_by_file_name(self, file_name: str) -> RunRecord | None:
+        store = self._store()
+        return await self._run(lambda: store.get_run_record_by_file_name(file_name))
 
     async def add_run_record(self, record: NewRunRecord, answers: Sequence[RunAnswer]) -> None:
         store = self._store()

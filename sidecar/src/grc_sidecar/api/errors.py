@@ -14,6 +14,7 @@ from grc_sidecar.errors import (
     ConfigurationError,
     ContradictionsNotConfiguredError,
     ControlMapTooLargeError,
+    DraftRefusedError,
     ExportRefusedError,
     ExportRootNotConfiguredError,
     ImportRefusedError,
@@ -122,6 +123,16 @@ async def _import_refused(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
 
 
+async def _draft_refused(_request: Request, exc: Exception) -> JSONResponse:
+    """`code` is a fixed word and `counts` holds integers only, never text from the workbook."""
+    body: dict[str, object] = {"error": "draft_refused", "code": "unknown"}
+    if isinstance(exc, DraftRefusedError):
+        body["code"] = exc.code
+        if exc.counts:
+            body["counts"] = exc.counts
+    return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
+
+
 async def _recall_refused(_request: Request, exc: Exception) -> JSONResponse:
     """`code` is a fixed word and `counts` holds integers only."""
     body: dict[str, object] = {"error": "recall_refused", "code": "unknown"}
@@ -166,6 +177,7 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(CheckRefusedError, _check_refused)
     app.add_exception_handler(LedgerRefusedError, _ledger_refused)
     app.add_exception_handler(ImportRefusedError, _import_refused)
+    app.add_exception_handler(DraftRefusedError, _draft_refused)
     app.add_exception_handler(RecallRefusedError, _recall_refused)
     app.add_exception_handler(BlastRadiusRefusedError, _blast_radius_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)

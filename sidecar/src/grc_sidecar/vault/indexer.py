@@ -38,6 +38,8 @@ from grc_sidecar.vault.scan import scan_vault
 
 DEFAULT_COLLECTION = "vault"
 
+ProgressCallback = Callable[[int, int], None]  # (documents done, documents total)
+
 
 class FailedDocument(BaseModel):
     """A document that could not be embedded. Never contains document text."""
@@ -130,8 +132,14 @@ class Indexer:
         # pack folder name); without it every document gets `collection`.
         self._collection_of = collection_of or (lambda _source_path: collection)
 
-    async def sync(self) -> SyncReport:
+    async def sync(self, on_progress: ProgressCallback | None = None) -> SyncReport:
         """Bring the index up to date with the vault. See the module docstring for the order.
+
+        `on_progress(done, total)` is called before each document with the number already dealt
+        with (embedded, unchanged or failed), and once at the end with `done == total`. It carries
+        two integers and nothing else. The callback must be cheap and must not raise; it may be
+        called from a thread other than the one that reads the counters, so it has to be
+        thread-safe.
 
         Raises ModelMissingError, EmbeddingDimensionError, EmbeddingUnavailableError (a
         connection-level problem aborts the run) or a repository error. Whatever was marked stale
@@ -149,7 +157,10 @@ class Indexer:
         failed: list[FailedDocument] = []
         unchanged = 0
         chunks_embedded = 0
-        for item in prepared:
+        total = len(prepared)
+        for done, item in enumerate(prepared):
+            if on_progress is not None:
+                on_progress(done, total)  # `done` documents are finished before this one starts
             state = states.get(item.doc.source_path)
             if state is not None and not state.stale:
                 unchanged += 1
@@ -172,6 +183,8 @@ class Indexer:
             )
             indexed.append(item.doc.source_path)
             chunks_embedded += len(item.chunks)
+        if on_progress is not None:
+            on_progress(total, total)
 
         known = ResolutionIndex((p.doc.source_path, p.doc.frontmatter.doc_id) for p in prepared)
         await self._repo.re_resolve_links(known)
