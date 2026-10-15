@@ -65,9 +65,9 @@ The owner (Mike) must be able to explain every design decision and every line of
 
 | Layer | Choice |
 |---|---|
-| Frontend | React, TypeScript (strict), TailwindCSS, React Flow, Zod |
+| Frontend | React, TypeScript (strict), TailwindCSS, React Flow (M6.5), Zod |
 | Host | Tauri v2, Rust (stable) |
-| Sidecar | Python 3.11, FastAPI, Uvicorn, Pydantic v2, packaged with PyInstaller |
+| Sidecar | Python 3.11, FastAPI, Uvicorn, Pydantic v2, packaged with PyInstaller (M8) |
 | Generation model | `llama3.1:8b` via Ollama (configurable; default pinned) |
 | Embedding model | `nomic-embed-text` via Ollama |
 | Vector store | `sqlite-vec` behind a `VectorRepository` protocol (see ADR-001) |
@@ -77,7 +77,7 @@ The owner (Mike) must be able to explain every design decision and every line of
 
 **Resolved spec decisions (do not revert without an ADR):**
 - `llama3.2:8b` does not exist (Llama 3.2 text models are 1B and 3B only). Default generation model is `llama3.1:8b`.
-- ADR-001: `sqlite-vec` is the default vector store: single file, no server process, no telemetry, packages cleanly with PyInstaller. ChromaDB remains a swappable implementation behind the same interface.
+- ADR-001: `sqlite-vec` is the default vector store: single file, no server process, no telemetry, packages cleanly with PyInstaller (M8). ChromaDB remains a swappable implementation behind the same interface.
 - Answer status is defined in Section 8.4 and ADR-013: it is computed from checks, and the model's confidence can only lower it.
 
 ---
@@ -119,7 +119,7 @@ grc-second-brain/
 
 ### 5.1 Sidecar settings (`GRC_*` environment variables)
 
-Built from `sidecar/src/grc_sidecar/config.py`, the only source. Settings come from the environment only (no `.env` file). There is no host, port or token setting; `GRC_AUTH_TOKEN` is handled separately and is not a setting (M1b). No setting is required to exist for the sidecar to start. A directory setting that is set must be an absolute path, and `validate_runtime_dirs` also requires it to exist as a directory (a set but invalid one makes the sidecar exit 2). "Overlap" means equal to, inside or containing the other folder (checked lexically at load and again on resolved paths at startup).
+Built from `sidecar/src/grc_sidecar/config.py`, the only source. Settings come from the environment only (no `.env` file). There is no host, port or token setting; `GRC_AUTH_TOKEN` is handled separately and is not a setting (M1b). No setting is required to exist for the sidecar to start. A directory setting that is set must be an absolute path, and `validate_runtime_dirs` also requires it to exist as a directory (a set but invalid one makes the sidecar exit 2). "Overlap" means equal to, inside or containing the other folder (checked lexically at load and again on resolved paths at startup). In M6 core (planned, not built) the desktop host will save the folders the user chooses and pass them to the sidecar as these variables at the next launch; the table itself is unchanged.
 
 | Environment variable | What it is | Default | Required at startup | Folder-overlap rule |
 |---|---|---|---|---|
@@ -132,7 +132,7 @@ Built from `sidecar/src/grc_sidecar/config.py`, the only source. Settings come f
 | `GRC_EXPORT_DIR` | Where answers files are written | Unset (questionnaire routes refuse with a typed error) | No | May not overlap the vault or index; import and ledger folders may not overlap it |
 | `GRC_IMPORT_DIR` | Where offline IT exports (reality check) are read from | Unset (reality routes refuse, 503) | No | May not overlap the vault, index, questionnaire or export folder; the ledger folder may not overlap it |
 | `GRC_LEDGER_DIR` | Where the promise ledger (`ledger.sqlite3`) lives | Unset (ledger routes refuse, 503) | No | May not overlap the vault, index, questionnaire, export or import folder |
-| `GRC_PACKS_DIR` | Bundled framework packs | Unset (existence checked when packs are loaded) | No | None |
+| `GRC_PACKS_DIR` | Bundled framework packs (bundling is M8) | Unset (existence checked when packs are loaded) | No | None |
 | `GRC_EMBEDDING_MODEL` | Embedding model name | `nomic-embed-text` | No | None |
 | `GRC_GENERATION_MODEL` | Generation model name (non-empty) | `llama3.1:8b` | No | None |
 | `GRC_EMBEDDING_DIMENSION` | Vector size the embedding model must produce (1 to 8192) | `768` | No | None |
@@ -222,7 +222,7 @@ The status contract, with its reasons, is ADR-013 (status and grounding). The fi
   - `PARTIAL`: those checks pass (except the review date and the coverage and confidence conditions) and a limit applies: review overdue, partial coverage, confidence in [0.40, 0.90), keyword-only retrieval, or files withheld because they changed after indexing. The answer is written and the limits are in the `Reason` column.
   - `NEEDS_REVIEW`: anything else, including every "no evidence" result and confidence below 0.40. The answer cell stays blank and the `Reason` column says why. Every reason that applies is recorded. Never write a compliance claim.
 - Nothing in M5 is approved. Review state is a separate field from evidence status, always `unreviewed` in M5, so approval can be added later without renaming a status.
-- Progress streams as Server-Sent Events from the sidecar (e.g. `Question 37/150 completed`), carrying counts, indexes and status codes, never document or question text. The Rust host proxy comes in M6.
+- Progress streams as Server-Sent Events from the sidecar (e.g. `Question 37/150 completed`), carrying counts, indexes and status codes, never document or question text. The sidecar serves progress both as SSE and as `completed`/`total` on the status route; the M6 window will poll the status route through the host proxy (planned for M6 core, not built), and the host will not relay SSE.
 
 ### 8.5 Policy-to-code engine
 - Pipeline: Control Requirement, Policy Gap, Evidence, Remediation Objective, structured plan (Ollama), Terraform/Docker patch, static validation, **human approval**.
@@ -251,14 +251,15 @@ The status contract, with its reasons, is ADR-013 (status and grounding). The fi
 | M2 | Tauri host | Token generation, sidecar spawn, handshake with timeout, typed proxy command, least-privilege capabilities |
 | M3 | Vault indexer | Frontmatter parsing, deterministic chunking, `sqlite-vec` repository, change-driven re-index |
 | M4 | Retrieval | Hybrid keyword and vector retrieval merged by Reciprocal Rank Fusion, explicit-link graph expansion with citations, typed `source_kind`, framework cap, withdrawn handling, staleness flags |
-| M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, authenticated sidecar routes with SSE progress (no host change: the file picker, the Rust path check and the SSE proxy are in M6) |
+| M5 | Questionnaire engine | Non-destructive Excel output, grounding check, computed status, authenticated sidecar routes with SSE progress (no host change: the file picker and the Rust path check are in M6, and progress will be polled through the host proxy, with no SSE proxy) |
 | M5.5 | Promise ledger and recall, blast-radius preview, contradiction detector, reality check (offline import of IT exports checked against policy claims) | Each has tests and mutation proofs |
-| M6 | UI | Progress view, review queue for `NEEDS_REVIEW`, React Flow graph view, plus the host side deferred from M5: the questionnaire and vault folder pickers, the Rust path check (`canonicalize` + `starts_with`, 3.6) and the Rust SSE proxy, with the questionnaire and export roots passed to the sidecar (G9) |
+| M6 | UI core (debug build only until M8) | Folder pickers (saved by the host, applied on the next launch), the host's path check (`canonicalize` + `starts_with`, 3.6) and a typed proxy, vault index action, questionnaire run with polled progress, review queue of the finished draft; five roots passed to the sidecar (G9) |
+| M6.5 | UI screens and graph | Ledger, recall, blast-radius, contradiction and reality screens, React Flow graph view with its sidecar route and dependency, G35, G40, F32-2 `flags_now`, screen tests for F31-4b and F33-9, tooling and skills decision |
 | M7 | Policy-to-code | Structured plan, patch generation, static validation, approval gate |
 | M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
 
-**Current milestone: M6.**
+**Current milestone: M6 core (6a1 to 6i), debug build only until M8.**
 
 ---
 

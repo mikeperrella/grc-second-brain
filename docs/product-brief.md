@@ -18,7 +18,7 @@ Later: vCISOs and GRC consultancies serving many clients (needs separate client 
 
 ## The promise
 
-A desktop compliance workbench that answers questionnaires from your own policies, cites the exact line behind every answer, says "no evidence" instead of guessing, checks one Okta MFA export against one policy claim (MFA required), records every answer you send and flags it when its cited lines change, and ALIBI itself never sends a byte off your machine: it talks only to Ollama on this computer.
+A desktop compliance workbench that answers questionnaires from your own policies, cites the exact line behind every answer, says "no evidence" instead of guessing, checks one Okta MFA export against one policy claim (MFA required), records every answer you send and flags it when its cited lines change, and ALIBI itself never sends a byte off your machine: it talks only to Ollama on this computer. Until M8 it runs only as a debug build started from the repository, with the dev sidecar; there is no installer.
 
 ## How it works
 
@@ -30,14 +30,14 @@ AI proposes, code verifies. A local model (through Ollama) reads policies and dr
 |---|---|---|
 | Secure offline foundation | Zero-trust host and sidecar, confined processes, strict CSP, CI-proven no-network operation | Built (M0 to M2, ADR-007) |
 | Policy vault and indexing | Markdown vault with owners and review dates, change-driven indexing | Built (M3) |
-| Search | Hybrid keyword and meaning search with citations, framework text kept separate from company evidence | Built (M4, internal; UI in M6) |
-| Cited questionnaire answers | Excel in, cited answers out, original file never modified | Built (M5, ADR-012 to ADR-014; sidecar routes only, no screen until M6). The original is only read, the output is a new file marked as an unreviewed draft, and code checks that every quote appears word for word in a company policy file. It does not check that the quote answers the question: in the held-out runs a right answer cited the wrong document in some cases (ADR-013, "Live check B results"). Speed on the owner's CPU-only laptop was about 40 to 60 seconds per question |
-| Honest blanks | Unsupported questions flagged for a human, never guessed | Partly built (M5). Code blanks an answer when its quote is not verbatim, not from company policy, too short, or does not contain the identifier asked about, and records the reason. Whether an absent-topic, near-miss, conflict or framework-bait question ends blank mostly depends on the model choosing "no evidence", and it does not always. On the held-out split, blank-labeled items were answered in 4, 5 and 3 of 9 items in three runs, and the acceptance check (every blank-labeled item ends blank) failed in all three. Human review, which arrives with the M6 review queue, is the control for these |
+| Search | Hybrid keyword and meaning search with citations, framework text kept separate from company evidence | Built (M4, internal; no search screen is planned, retrieval is reached through questionnaire runs) |
+| Cited questionnaire answers | Excel in, cited answers out, original file never modified | Built (M5, ADR-012 to ADR-014; sidecar routes only; a screen is planned for M6 core). The original is only read, the output is a new file marked as an unreviewed draft, and code checks that every quote appears word for word in a company policy file. It does not check that the quote answers the question: in the held-out runs a right answer cited the wrong document in some cases (ADR-013, "Live check B results"). Speed on the owner's CPU-only laptop was about 40 to 60 seconds per question |
+| Honest blanks | Unsupported questions flagged for a human, never guessed | Partly built (M5). Code blanks an answer when its quote is not verbatim, not from company policy, too short, or does not contain the identifier asked about, and records the reason. Whether an absent-topic, near-miss, conflict or framework-bait question ends blank mostly depends on the model choosing "no evidence", and it does not always. On the held-out split, blank-labeled items were answered in 4, 5 and 3 of 9 items in three runs, and the acceptance check (every blank-labeled item ends blank) failed in all three. Human review is the control for these: the M6 review queue (planned for M6 core, not built) will be for reading the finished draft, and approval will be done in the workbook |
 | Deal unblocker metrics | Measured turnaround, reuse and review counts per questionnaire, never estimated | Partly built (M5): a finished run reports its seconds, its counts of each status and its reason codes. Reuse and review counts are not built |
-| Promise ledger and recall | Records every answer sent; flags it when its source policy changes | Built (M5.5 PR 2, ADR-017); sidecar routes only, no screen until M6. Recall watches the cited lines only: an edit elsewhere in the file still reads intact |
-| Blast-radius preview | Shows what a policy edit would break, before you make it | Built (M5.5 PR 2, ADR-018); sidecar route only. Covers promises only: controls and linking documents are not built (G36) |
-| Contradiction detector | Finds pairs of company-policy statements whose numbers disagree and shows both quotes with file and lines | Partly built (M5.5 PR 4, ADR-019); sidecar route only, no screen until M6. Numbers only. Code finds the pairs; the local model confirms a real conflict only sometimes: in three identical held-out runs the same pair got different answers (4, 1 and 4 of 8 expected conflicts confirmed), and 1 of 9 scope-difference item-runs was wrongly confirmed. Findings are never stored. No finding does not mean the policies agree |
-| Reality check | Offline import of one Okta "MFA Enrollment by User" CSV, checked against one claim in the policies (MFA required) | Built in a narrow form (M5.5 PR 1, ADR-016): other formats, other claims and the administrators' hardware-key claim are not checked |
+| Promise ledger and recall | Records every answer sent; flags it when its source policy changes | Built (M5.5 PR 2, ADR-017); sidecar routes only, no screen until M6.5. Recall watches the cited lines only: an edit elsewhere in the file still reads intact |
+| Blast-radius preview | Shows what a policy edit would break, before you make it | Built (M5.5 PR 2, ADR-018); sidecar route only, no screen until M6.5. Covers promises only: controls and linking documents are not built (G36) |
+| Contradiction detector | Finds pairs of company-policy statements whose numbers disagree and shows both quotes with file and lines | Partly built (M5.5 PR 4, ADR-019); sidecar route only, no screen until M6.5. Numbers only. Code finds the pairs; the local model confirms a real conflict only sometimes: in three identical held-out runs the same pair got different answers (4, 1 and 4 of 8 expected conflicts confirmed), and 1 of 9 scope-difference item-runs was wrongly confirmed. Findings are never stored. No finding does not mean the policies agree |
+| Reality check | Offline import of one Okta "MFA Enrollment by User" CSV, checked against one claim in the policies (MFA required) | Built in a narrow form (M5.5 PR 1, ADR-016): other formats, other claims and the administrators' hardware-key claim are not checked; no screen until M6.5 |
 | Answer receipts | A tamper-evident fingerprint of the source text behind each answer | Planned |
 | Egress attestation | A report of every connection ALIBI's own process made (loopback only), plus an OS-level check | Planned |
 | Trust packet | A proactive security overview built from approved, cited answers | Later |
@@ -49,11 +49,13 @@ AI proposes, code verifies. A local model (through Ollama) reads policies and dr
 ## The demo (about 3 minutes)
 
 1. The flood: Wi-Fi off. A messy 150-question spreadsheet fills in with a citation for each answer: the document, the exact lines and the quoted text, shown as plain text in the Evidence column (ALIBI sets no hyperlinks in the file, ADR-014). Clickable citations are not built and are not on the M6 milestone list (CLAUDE.md Section 9); if they come, it would be in the M6 review screen and would need its own decision. Unsupported questions stay blank and flagged.
-2. The checks: an answer whose source policy is past its review date is flagged (`PARTIAL`, with the reason), and recall reports changes to the lines an answer cited (sidecar routes, no screen until M6). The contradiction detector compares numbers only and shows both quotes for each pair that disagrees; the local model confirms a real conflict only sometimes (see the feature table). An auditor that challenges your answers is planned (Later), not built.
-3. The ripple: edit a policy line, and the blast radius shows a broken promise to a customer.
+2. The checks: an answer whose source policy is past its review date is flagged (`PARTIAL`, with the reason), and recall reports changes to the lines an answer cited (sidecar routes, no screen until M6.5). The contradiction detector compares numbers only and shows both quotes for each pair that disagrees; the local model confirms a real conflict only sometimes (see the feature table). An auditor that challenges your answers is planned (Later), not built.
+3. The ripple: edit a policy line, and the blast radius shows a broken promise to a customer (needs the blast-radius screen, M6.5).
 4. The proof: export with receipts, plus the report showing nothing left the machine.
 
 Second demo: the reality check. "Your policy says MFA is required. Your identity export shows 3 users without it."
+
+Until M8 the demos run from a debug build started from the repository, with the dev sidecar; there is no installer.
 
 ## First frameworks
 
@@ -77,6 +79,8 @@ Cloud tools (Conveyor, Vanta, Drata) and some local-first projects (RepliSec, QR
 Competitor details come from desk research in October 2026 and will be re-verified before public release.
 
 ## Demo success criteria
+
+Until M8 these are checked in a debug build started from the repository, with the dev sidecar; there is no installer.
 
 - A realistic spreadsheet (merged cells, dropdowns) fills in without breaking.
 - Every filled answer names the document and exact lines it came from, as text a person can look up.
