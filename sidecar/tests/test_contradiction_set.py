@@ -42,7 +42,7 @@ def test_ids_are_unique_and_the_splits_are_the_planned_size() -> None:
     items = load_set().items
     ids = [i.id for i in items]
     assert len(ids) == len(set(ids))
-    assert Counter(i.split for i in items) == {"dev": 16, "heldout": 14}
+    assert Counter(i.split for i in items) == {"dev": 16, "heldout": 17}
 
 
 def test_the_categories_of_the_adr_are_covered() -> None:

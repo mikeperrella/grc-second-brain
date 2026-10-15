@@ -155,7 +155,7 @@ def test_every_not_paired_and_excluded_item_has_both_claims_extracted_by_code() 
 def test_the_two_splits_have_the_planned_size() -> None:
     items = load_set().items
     assert sum(i.split == "dev" for i in items) == 16
-    assert sum(i.split == "heldout" for i in items) == 14
+    assert sum(i.split == "heldout" for i in items) == 17  # 14 plus the owner pairs CD-115 to 117
 
 
 def test_a_dev_pair_expected_to_end_as_a_value_conflict_is_one_the_ceiling_allows(

@@ -1,5 +1,5 @@
 {
-  "description": "SYNTHETIC evaluation set for the contradiction detector (ADR-019, M5.5 PR 4). Every note it points at is fictional and labelled synthetic. Not frozen: the freeze is chunk 4c.",
+  "description": "SYNTHETIC evaluation set for the contradiction detector (ADR-019, M5.5 PR 4). Every note it points at is fictional and labelled synthetic. Frozen at chunk 4c: tests/test_contradiction_freeze.py pins the items and every note (ADR-019).",
   "schema": {
     "label": "conflict | no_conflict: the owner's reading of the two statements",
     "expected_status": "what the finished design should end with for a model that behaves: VALUE_CONFLICT, CANDIDATE, NOT_PAIRED (code must not pair them) or EXCLUDED (framework text, never compared)",
@@ -232,6 +232,27 @@
       "chunk_b": {"path": "retention-notes-b.md", "start_line": 39, "end_line": 39, "phrase": "Laptop batteries are replaced after 36 months."},
       "label": "no_conflict", "expected_status": "NOT_PAIRED", "offline_status": "NOT_PAIRED",
       "notes": "Months against months, different subjects."
+    },
+    {
+      "id": "CD-115", "split": "heldout", "category": "scope_difference",
+      "chunk_a": {"path": "housekeeping-notes-a.md", "start_line": 13, "end_line": 13, "phrase": "Monitoring alerts are acknowledged within 2 hours during business hours."},
+      "chunk_b": {"path": "housekeeping-notes-b.md", "start_line": 13, "end_line": 13, "phrase": "Monitoring alerts are acknowledged within 12 hours outside business hours."},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Owner pair 1: business hours against outside business hours. Written by the reviewer assistant after reading the extraction rules: not blind, not from the rule author's session."
+    },
+    {
+      "id": "CD-116", "split": "heldout", "category": "scope_difference",
+      "chunk_a": {"path": "housekeeping-notes-a.md", "start_line": 17, "end_line": 17, "phrase": "Operating system updates are installed within 7 days on internet-facing servers."},
+      "chunk_b": {"path": "housekeeping-notes-b.md", "start_line": 17, "end_line": 17, "phrase": "Operating system updates are installed within 30 days on internal servers."},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Owner pair 2: internet-facing against internal servers. Written by the reviewer assistant after reading the extraction rules: not blind, not from the rule author's session."
+    },
+    {
+      "id": "CD-117", "split": "heldout", "category": "value_mismatch_days",
+      "chunk_a": {"path": "housekeeping-notes-a.md", "start_line": 21, "end_line": 21, "phrase": "Expense reports are due within 14 days of the purchase date."},
+      "chunk_b": {"path": "housekeeping-notes-b.md", "start_line": 21, "end_line": 21, "phrase": "Expense reports must be filed within 30 days of the purchase date."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Owner pair 3: same subject, 14 against 30 days. Written by the reviewer assistant after reading the extraction rules: not blind, not from the rule author's session."
     }
   ]
 }
