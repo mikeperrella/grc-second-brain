@@ -10,7 +10,7 @@ ALIBI was formerly called GRC Second Brain. Some internal names predate the rena
 
 ## Status: early development
 
-The secure offline foundation and the questionnaire engine (M5) exist. The app window still only shows the live status of its local sidecar process: there is no screen for the questionnaire engine until M6. The other compliance features below are not built, and the status column says so (see [CLAUDE.md](CLAUDE.md), Section 9).
+The secure offline foundation and the questionnaire engine (M5) exist. The app window still only shows the live status of its local sidecar process: there is no screen for the questionnaire engine until M6. The reality check, the promise ledger with recall, the blast-radius preview and the contradiction detector (M5.5) are built as sidecar routes only, also with no screen until M6. The other compliance features below are not built, and the status column says so (see [CLAUDE.md](CLAUDE.md), Section 9).
 
 ## The problem map
 
@@ -18,10 +18,10 @@ The secure offline foundation and the questionnaire engine (M5) exist. The app w
 |---|---|---|
 | Hundreds of reworded questions answered by copy and paste from old documents | Excel in, cited answers out; the original file is never modified | Built (M5), sidecar only, no screen until M6 |
 | AI answers that are confident but cannot be defended | Every quote is verified word for word against its source. Blanks with reasons are only partly reliable: some questions that should stay blank are answered (see "Known limits" below) | Partly built (M5) |
-| Answers drift out of sync with policies | A promise ledger records every answer sent and flags it when its source policy changes | Planned (M5.5) |
-| Nobody sees what a policy edit would break | Blast-radius preview, before you make the edit | Planned (M5.5) |
-| Policies that contradict each other go unnoticed | Contradiction detector | Planned (M5.5) |
-| Policies claim controls that IT systems do not enforce | Reality check: offline import of IT exports (identity, device, cloud reports) checked against policy claims | Planned (M5.5) |
+| Answers drift out of sync with policies | A promise ledger records every answer sent and flags it when its source policy changes | Built (M5.5 PR 2), sidecar routes only. Recall watches the cited lines only |
+| Nobody sees what a policy edit would break | Blast-radius preview, before you make the edit | Built (M5.5 PR 2), sidecar route only. Covers promises only |
+| Policies that contradict each other go unnoticed | Contradiction detector: finds pairs of policy statements whose numbers disagree and shows both quotes | Partly built (M5.5 PR 4), sidecar route only. Numbers only. Code finds the pairs; the model confirms a real conflict only sometimes |
+| Policies claim controls that IT systems do not enforce | Reality check: one Okta "MFA Enrollment by User" CSV checked against one claim (MFA required) | Built in a narrow form (M5.5 PR 1) |
 | Sensitive policies have to be sent to a cloud service | Zero-trust host and sidecar, confined processes, strict CSP, and a CI test that proves the sidecar runs with no network | Built (M0 to M2, ADR-007). This is the foundation only: no ALIBI feature runs on it yet |
 
 The full feature list, including the items marked Later, the demo plan and the non-goals, is in [docs/product-brief.md](docs/product-brief.md).
@@ -36,7 +36,7 @@ The full feature list, including the items marked Later, the demo plan and the n
 
 - **Slow on a CPU-only machine.** On the owner's laptop, about 40 to 60 seconds per question.
 - **Right answer, wrong source.** A quote can be real company text and still not be the best source for the question. In the held-out runs one question was answered correctly from a different document in all three runs.
-- **Some questions that should stay blank get an answer.** The code checks that a quote is real, current company text that was in the context. It cannot check that the quote answers the question, so items such as a near miss or a planned contradiction between two policies can still be answered. On the held-out split the acceptance check failed in all three runs. This is why every output is an unreviewed draft, and why the review queue (M6) matters.
+- **Some questions that should stay blank get an answer.** The code checks that a quote is real, current company text that was in the context. It cannot check that the quote answers the question, so items such as a near miss or a contradiction between two policies can still be answered (the contradiction detector compares numbers only). On the held-out split the acceptance check failed in all three runs. This is why every output is an unreviewed draft, and why the review queue (M6) matters.
 - **Results vary from run to run**, even with a fixed seed.
 
 For the details and the evidence, see [ADR-012](docs/adr/012-generation-client.md) (the model client and its limits), [ADR-013](docs/adr/013-answer-status-and-grounding.md) (how status is computed, and the measured results) and [ADR-014](docs/adr/014-questionnaire-files-and-runs.md) (reading and writing the workbook, runs and routes).

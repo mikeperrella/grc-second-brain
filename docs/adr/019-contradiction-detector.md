@@ -1,6 +1,6 @@
 # ADR-019: Contradiction detector
 
-Status: Proposed (M5.5 PR 4, chunk 4a-1; the code half was built in chunk 4a-2, see "Chunk 4a-2: details" at the end). This is the design record, written before any detector code so the owner could review it. The decisions below keep their original **planned** tags and the chunk that builds each; **"Chunk 4a-2: details" says which of them are now built** (decisions 3 to 9 for the code-only part, 12, 13 and 15 (a) and (b)), and nothing of the model half (decisions 10 and 11, the verdict in 9, the route) was built then. **Chunk 4b (see "Chunk 4b: details" at the end) built the model half: the verdict in decision 9, decisions 10 and 11 and the route, offline with a fake model only; the template text is pending the owner's approval (STOP C1).** **Chunk 4c (see "Chunk 4c: details" at the end) built decisions 14 and 16: the freeze test, the three owner pairs CD-115 to CD-117 and the live-check harness with the exact live check C commands; it makes no model call of any kind, and nothing is committed until the owner says so.** The chunks are the plan's (`M5_5_PLAN.md`, Section 4): **4a-2** the code half (claim extraction, units, candidate pairs, verification, the evaluation files; no model call), **4b** the model half (schema, template, service, route, adversarial fixtures; a fake Ollama only), **4c** the freeze (hashes of both splits, the owner's commands for live check C), **4d** the close (results as counts, the brief, README, threat-model rows). Chunk 4a-1, this one, is the docs half of the plan's chunk 4a (owner decision, 2026-10-14): this ADR, the planned threat-model rows F33-1 to F33-10 (13 rows, with F33-2a, F33-2b and F33-2c) and the closing of backlog item G38; it contains no detector code. The design is from the approved M5.5 plan (revision 2b, with deviations M55-1 to M55-7) and the owner's answers Q11, Q12 and N5 to N7. This ADR records what the plan fixed and nothing beyond it.
+Status: **Accepted (M5.5 PR 4).** Chunk commits: 4a-1 `6a192ce`, 4a-2 `d1e61a4`, 4b `9effbdc`, 4c `c92ba79`, 4d the PR 4 close commit (docs only). Decisions 14, 15 (c) and 16 are **measured** (see "Live check C: results", with its limits). The "planned" tags on the other decisions are the original ones; "Chunk 4a-2: details", "Chunk 4b: details" and "Chunk 4c: details" at the end say what each chunk built. This ADR records what the plan fixed (revision 2b, deviations M55-1 to M55-7 and the owner's answers Q11, Q12 and N5 to N7) and nothing beyond it.
 
 ## Context
 
@@ -43,13 +43,13 @@ The detector finds pairs of company-policy statements whose **numbers** disagree
 
 **13. The two known cases, and what EV-113 is (planned, 4a-2 and 4c).** **EV-021 / D-06** (security logs 90 days, `data-retention-policy.md:23`, against 365 days, `incident-response-plan.md:26`; a dev item, `eval-set.json:138`) and **EV-113** (backups kept 35 days, `backup-and-recovery-standard.md:14`, against overwritten after 30 days, `data-retention-policy.md:28`; a held-out item, `eval-set.json:263`) are scored apart from the splits. Both **must be found by code alone, offline**, as code-found pairs shown as `CANDIDATE` with `model_not_consulted`; a miss means the generator is wrong and is not a tuning candidate. **EV-113 came from M5's spent held-out split. It is used here as a fixed design requirement, not as unseen test data.** The scored held-out set contains new pairs written after this design is fixed.
 
-**14. Splits, the freeze and the held-out runs (built in 4c; the runs are the owner's).** Dev is used to tune the pair cap, thresholds and template wording. The held-out set is written, **hashed and frozen before any model run**, and no assistant runs it. **The dev split may be run more than once while the template is tuned, and every dev run is reported; any template change changes its hash, needs a tuning-log entry in this ADR, the owner's approval and a new pin in `test_contradiction_freeze.py` before the next run, and the held-out runs start only after the template is final (owner decision, 4c review).** **The owner reviews every held-out label at STOP C1 before the freeze.** A test (`test_contradiction_freeze.py`, as `test_eval_freeze.py` does for M5) pins hashes of both splits and every note. **The held-out split is run three times, all three runs are reported, and none is selected or averaged away** (the same rule as ADR-013 live check B). Results are counts ("2 of 3 value mismatches kept"), never percentages, and with a set this small every number is a small-sample observation.
+**14. Splits, the freeze and the held-out runs (built in 4c; the runs are the owner's; measured, see "Live check C: results").** Dev is used to tune the pair cap, thresholds and template wording. The held-out set is written, **hashed and frozen before any model run**, and no assistant runs it. **The dev split may be run more than once while the template is tuned, and every dev run is reported; any template change changes its hash, needs a tuning-log entry in this ADR, the owner's approval and a new pin in `test_contradiction_freeze.py` before the next run, and the held-out runs start only after the template is final (owner decision, 4c review).** **The owner reviews every held-out label at STOP C1 before the freeze.** A test (`test_contradiction_freeze.py`, as `test_eval_freeze.py` does for M5) pins hashes of both splits and every note. **The held-out split is run three times, all three runs are reported, and none is selected or averaged away** (the same rule as ADR-013 live check B). Results are counts ("2 of 3 value mismatches kept"), never percentages, and with a set this small every number is a small-sample observation.
 
-**15. Acceptance, pre-registered here before any result (planned, 4a-2 for (a) and (b), live check C for (c)).** (a) Offline: both known cases are found as code-found pairs, `CANDIDATE` with `model_not_consulted`, and every planted pair in both splits is a code-found pair (a deterministic count, "n of m"). (b) Verification: no finding is ever shown with an unverified quote (a test and a mutation proof). (c) Model step: counts per category, **no percentages and no targets**. A false `VALUE_CONFLICT` on a `no_conflict` item is recorded and is a tuning candidate unless a deterministic check misfired. The model-dependent claims get **no pass or fail test**: they are measured live and reported as counts, the same stance as ADR-013 decision 15.
+**15. Acceptance, pre-registered here before any result (built in 4a-2 for (a) and (b); (c) measured at live check C, see "Live check C: results").** (a) Offline: both known cases are found as code-found pairs, `CANDIDATE` with `model_not_consulted`, and every planted pair in both splits is a code-found pair (a deterministic count, "n of m"). (b) Verification: no finding is ever shown with an unverified quote (a test and a mutation proof). (c) Model step: counts per category, **no percentages and no targets**. A false `VALUE_CONFLICT` on a `no_conflict` item is recorded and is a tuning candidate unless a deterministic check misfired. The model-dependent claims get **no pass or fail test**: they are measured live and reported as counts, the same stance as ADR-013 decision 15.
 
-**16. Live check C (built in 4c: the harness and the commands, below; the runs are the owner's, at STOP C2).** After chunk 4c the owner runs live check C: `ollama --version`, `ollama list`, the environment check from the M5 plan, then the dev split, then the held-out split three times, selecting the split by name so that no canary or stopped-Ollama test runs by accident. The assistant gives the exact commands, the directory and the success output in chunk 4c, and records only what the owner pastes. **The plan states no further pass criterion than decision 15**, and this ADR adds none. No assistant runs the model at any point in M5.5.
+**16. Live check C (built in 4c: the harness and the commands, below; the runs are the owner's, at STOP C2; measured, see "Live check C: results").** After chunk 4c the owner runs live check C: `ollama --version`, `ollama list`, the environment check from the M5 plan, then the dev split, then the held-out split three times, selecting the split by name so that no canary or stopped-Ollama test runs by accident. The assistant gives the exact commands, the directory and the success output in chunk 4c, and records only what the owner pastes. **The plan states no further pass criterion than decision 15**, and this ADR adds none. No assistant runs the model at any point in M5.5.
 
-**17. What this changes elsewhere, and what it does not (planned, 4d).** "No known contradiction" in questionnaire answers (ADR-013 decision 13) is **not changed** by M5.5. Recall's blindness outside the cited lines (ADR-017 decision 18, F31-4a) is left to this detector, and the detector does not change recall. At the close only the brief's four Planned rows change, to what measured results support.
+**17. What this changes elsewhere, and what it does not (done in 4d).** "No known contradiction" in questionnaire answers (ADR-013 decision 13) is **not changed** by M5.5. Recall's blindness outside the cited lines (ADR-017 decision 18, F31-4a) is left to this detector, and the detector does not change recall. At the close only the brief's four Planned rows change, to what measured results support.
 
 ## Consequences
 
@@ -254,3 +254,186 @@ Then the same block with `heldout-run-2.txt`, then `heldout-run-3.txt` (only the
 **The pre-registered counts to report (decision 15 (c), unchanged; this ADR adds no pass criterion).** For each run, exactly the counts the report prints: counts by category (items, code-found, `VALUE_CONFLICT`, `CANDIDATE`, raw `conflict` true, raw `conflict` false, no verdict); "expected `VALUE_CONFLICT` items ending `VALUE_CONFLICT`: n of m" (for held-out, 6 of 8 can reach it, because CD-101 and CD-102 are capped by the code); "`no_conflict` items ending `VALUE_CONFLICT` (wrongly kept): n of m", with the ids; the raw verdict counts, which are reported **separately from the status counts** because CD-112, CD-101 and CD-102 cannot be measured through status alone; `model_status` counts; attempts; the line of model calls and `other_pairs` (counted, not sent); and the two known cases. **All three held-out runs are reported in full; none is selected, averaged or discarded, and if they differ the differences are the result.** Counts only, never percentages, no targets. A false `VALUE_CONFLICT` on a `no_conflict` item is recorded and is a tuning candidate unless a deterministic check misfired (decision 15). With a set this small, every number is a small-sample observation.
 
 **Limits, stated.** The held-out set has 17 items; three of them (CD-115 to CD-117) were written by an assistant that had read the extraction rules, and CD-107 is no longer unseen for the code half (4a-2). **Tuning rule (owner decision at the 4c review, replacing "the dev split runs once"):** the dev split may be run more than once while the template is tuned, and every dev run is reported. Any template change changes its hash (`PAIR_TEMPLATE_SHA256`), needs a tuning-log entry in this ADR, the owner's approval and a new pin in `test_contradiction_freeze.py` before the next run; the held-out runs start only after the template is final. The held-out split is run three times, and none is selected, averaged or discarded. The scoring measures the model on pairs the code found. Every number is unmeasured until the owner pastes it.
+
+## Live check C: results
+
+Run by the owner on 2026-10-15 on the owner's machine; the assistant ran nothing against Ollama (decision 16). **What was given to me:** the four results files below (read from `C:\Users\miker\Downloads\m55-live-c\`, copied by the owner to `C:\Users\miker\OneDrive\Documents\alibi-plans\m55-live-c`). **What the owner ran before the dev run and pasted to the reviewer (steps 1 and 2):** Ollama version 0.40.4; `llama3.1:8b` ID `46e0c10c039e` (4.9 GB); `nomic-embed-text:latest` ID `0a109f422b47`; the environment check at 01:55 on 2026-10-15 showed all six values empty (`OLLAMA_DEBUG` and `OLLAMA_DEBUG_LOG_REQUESTS`, each at Process, User and Machine) and no `ollama-request-logs-*` folder found. The terminal output of each run is not stored in the repository; the results files hold the same text. **Every run is reported, in order: the dev run, then held-out runs 1, 2 and 3. None was selected, averaged, ranked or discarded.** Counts only, no percentages, no targets (decision 15 (c)).
+
+**The setup, from the header of every results file (identical in all four):** `model=llama3.1:8b`, `digest=46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`, `template_sha256=70898002f9b13eeffb3ba0f904466aba6f2662e3d5c5e80b6c5aaed10ce1e1e3` (the pinned template, unchanged), `cap=1000`, `num_ctx=11264`, `num_predict=1900`, `seed=42`; temperature 0 by design (decision 10). No template, rule, item, note or pin was changed between runs. Each results file prints its per-item table twice (once after the header and once before the counts); the two copies hold the same item rows.
+**The files (sha256, from the owner's `Get-FileHash`, not recomputed):**
+
+| File | sha256 |
+|---|---|
+| `dev-run-1.txt` | `01DB254D9BCF1803894D2AB16F52EC1C5CDB9499B670711228E99C8DCCCC02BA` |
+| `heldout-run-1.txt` | `58E5C85899EF0E417E90C6A6FEE53394441AF472188EEBFA59CA1B0C79AC9A5C` |
+| `heldout-run-2.txt` | `C2593920BE5FE3C7056F4D43FB51033335E56EF34ECC8453F6E72E2F8CBB1A39` |
+| `heldout-run-3.txt` | `531FF5364421CFA841EF018AE4AD019F053A34D0AFA3AEA59E0D2CC75DF6682E` |
+
+### Dev run (1 run; 16 items and 2 known cases)
+
+```
+COUNTS BY CATEGORY (statuses and raw verdicts are reported separately)
+  value_mismatch_days            items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  value_mismatch_years           items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  value_mismatch_hours           items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  value_mismatch_percent         items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  scope_difference               items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  same_number_different_subject  items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  days_vs_months                 items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  number_words                   items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  frequency                      items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  table_row                      items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  same_document                  items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  framework_against_policy       items=1 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+  injection_report_no_conflicts  items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  unrelated                      items=3 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+expected VALUE_CONFLICT items ending VALUE_CONFLICT: 7 of 9
+no_conflict items ending VALUE_CONFLICT (wrongly kept): 0 of 6
+planted pairs found by code in this per-item setup: 12 of 12; items with a pair: 12
+raw verdicts (code-found items): [conflict=false relation=unrelated]=4, [conflict=true relation=same_subject_value_mismatch]=8
+model calls: one pair per item, 12 items asked, 12 replies in all; other code-found pairs in the copies, counted and NOT sent: 40
+model_status: available=12, pair not found=4
+attempts per code-found item: 1=12
+```
+
+Known cases, dev run: **EV-021** `conflict=false relation=unrelated`, status `CANDIDATE`, 1 attempt, 9 other pairs; **EV-113** `conflict=false relation=unrelated`, status `CANDIDATE`, 1 attempt, 1 other pair.
+
+### Held-out run 1
+
+```
+COUNTS BY CATEGORY (statuses and raw verdicts are reported separately)
+  value_mismatch_days            items=2 code_found=2 VALUE_CONFLICT=1 CANDIDATE=1 conflict_true=2 conflict_false=0 no_verdict=0
+  value_mismatch_hours           items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  value_mismatch_percent         items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  scope_difference               items=3 code_found=3 VALUE_CONFLICT=1 CANDIDATE=2 conflict_true=1 conflict_false=2 no_verdict=0
+  same_number_different_subject  items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  days_vs_months                 items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  number_words                   items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  frequency                      items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  table_row                      items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  same_document                  items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  framework_against_policy       items=1 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+  injection_report_a_conflict    items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  unrelated                      items=2 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+expected VALUE_CONFLICT items ending VALUE_CONFLICT: 4 of 8
+no_conflict items ending VALUE_CONFLICT (wrongly kept): 1 of 8 (CD-104)
+planted pairs found by code in this per-item setup: 14 of 14; items with a pair: 14
+raw verdicts (code-found items): [conflict=false relation=unrelated]=5, [conflict=true relation=same_subject_value_mismatch]=9
+model calls: one pair per item, 14 items asked, 14 replies in all; other code-found pairs in the copies, counted and NOT sent: 77
+model_status: available=14, pair not found=3
+attempts per code-found item: 1=14
+```
+
+Known cases, held-out run 1: **EV-021** `conflict=true relation=same_subject_value_mismatch`, status `VALUE_CONFLICT`; **EV-113** `conflict=false relation=unrelated`, status `CANDIDATE` (1 attempt each).
+
+### Held-out run 2
+
+```
+COUNTS BY CATEGORY (statuses and raw verdicts are reported separately)
+  value_mismatch_days            items=2 code_found=2 VALUE_CONFLICT=1 CANDIDATE=1 conflict_true=2 conflict_false=0 no_verdict=0
+  value_mismatch_hours           items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  value_mismatch_percent         items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  scope_difference               items=3 code_found=3 VALUE_CONFLICT=0 CANDIDATE=3 conflict_true=0 conflict_false=3 no_verdict=0
+  same_number_different_subject  items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  days_vs_months                 items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  number_words                   items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  frequency                      items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  table_row                      items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  same_document                  items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  framework_against_policy       items=1 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+  injection_report_a_conflict    items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  unrelated                      items=2 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+expected VALUE_CONFLICT items ending VALUE_CONFLICT: 1 of 8
+no_conflict items ending VALUE_CONFLICT (wrongly kept): 0 of 8
+planted pairs found by code in this per-item setup: 14 of 14; items with a pair: 14
+raw verdicts (code-found items): [conflict=false relation=scope_difference]=2, [conflict=false relation=unrelated]=7, [conflict=true relation=same_subject_value_mismatch]=5
+model calls: one pair per item, 14 items asked, 14 replies in all; other code-found pairs in the copies, counted and NOT sent: 77
+model_status: available=14, pair not found=3
+attempts per code-found item: 1=14
+```
+
+Known cases, held-out run 2: **EV-021** `conflict=false relation=same_subject_value_mismatch`, status `CANDIDATE` (a reply the status rule lowers: it keeps a pair only with `conflict` true); **EV-113** `conflict=false relation=unrelated`, status `CANDIDATE` (1 attempt each).
+
+### Held-out run 3
+
+```
+COUNTS BY CATEGORY (statuses and raw verdicts are reported separately)
+  value_mismatch_days            items=2 code_found=2 VALUE_CONFLICT=1 CANDIDATE=1 conflict_true=2 conflict_false=0 no_verdict=0
+  value_mismatch_hours           items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  value_mismatch_percent         items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  scope_difference               items=3 code_found=3 VALUE_CONFLICT=0 CANDIDATE=3 conflict_true=0 conflict_false=3 no_verdict=0
+  same_number_different_subject  items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  days_vs_months                 items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  number_words                   items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  frequency                      items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=0 conflict_false=1 no_verdict=0
+  table_row                      items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  same_document                  items=1 code_found=1 VALUE_CONFLICT=1 CANDIDATE=0 conflict_true=1 conflict_false=0 no_verdict=0
+  framework_against_policy       items=1 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+  injection_report_a_conflict    items=1 code_found=1 VALUE_CONFLICT=0 CANDIDATE=1 conflict_true=1 conflict_false=0 no_verdict=0
+  unrelated                      items=2 code_found=0 VALUE_CONFLICT=0 CANDIDATE=0 conflict_true=0 conflict_false=0 no_verdict=0
+expected VALUE_CONFLICT items ending VALUE_CONFLICT: 4 of 8
+no_conflict items ending VALUE_CONFLICT (wrongly kept): 0 of 8
+planted pairs found by code in this per-item setup: 14 of 14; items with a pair: 14
+raw verdicts (code-found items): [conflict=false relation=unrelated]=6, [conflict=true relation=same_subject_value_mismatch]=8
+model calls: one pair per item, 14 items asked, 14 replies in all; other code-found pairs in the copies, counted and NOT sent: 77
+model_status: available=14, pair not found=3
+attempts per code-found item: 1=14
+```
+
+Known cases, held-out run 3: **EV-021** `conflict=true relation=same_subject_value_mismatch`, status `VALUE_CONFLICT`; **EV-113** `conflict=false relation=unrelated`, status `CANDIDATE` (1 attempt each).
+
+### Per-item raw verdicts across the held-out runs
+
+`T` = `conflict=true relation=same_subject_value_mismatch`; `F-u` = `conflict=false relation=unrelated`; `F-s` = `conflict=false relation=scope_difference`; `F-m` = `conflict=false relation=same_subject_value_mismatch`. After the verdict, the final status: `VC` = `VALUE_CONFLICT`, `C` = `CANDIDATE`. "Label" is the item's label in the frozen set. Every item had one attempt in every run; no reply was rejected.
+
+| Item | Category | Label | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|---|---|
+| CD-101 | value_mismatch_days | conflict | T, C | T, C | T, C |
+| CD-102 | value_mismatch_hours | conflict | T, C | T, C | T, C |
+| CD-103 | value_mismatch_percent | conflict | F-u, C | F-u, C | F-u, C |
+| CD-104 | scope_difference | no_conflict | T, VC | F-u, C | F-u, C |
+| CD-105 | same_number_different_subject | no_conflict | F-u, C | F-u, C | F-u, C |
+| CD-106 | days_vs_months | conflict | T, C | T, C | T, C |
+| CD-107 | number_words | conflict | T, VC | F-u, C | T, VC |
+| CD-108 | frequency | conflict | T, VC | F-u, C | F-u, C |
+| CD-109 | table_row | conflict | F-u, C | F-u, C | T, VC |
+| CD-110 | same_document | conflict | T, VC | F-u, C | T, VC |
+| CD-111 | framework_against_policy | no_conflict | pair not found | pair not found | pair not found |
+| CD-112 | injection_report_a_conflict | no_conflict | T, C | T, C | T, C |
+| CD-113 | unrelated | no_conflict | pair not found | pair not found | pair not found |
+| CD-114 | unrelated | no_conflict | pair not found | pair not found | pair not found |
+| CD-115 | scope_difference | no_conflict | F-u, C | F-s, C | F-u, C |
+| CD-116 | scope_difference | no_conflict | F-u, C | F-s, C | F-u, C |
+| CD-117 | value_mismatch_days | conflict | T, VC | T, VC | T, VC |
+| EV-021 (known case) | known_case | none | T, VC | F-m, C | T, VC |
+| EV-113 (known case) | known_case | none | F-u, C | F-u, C | F-u, C |
+
+CD-101, CD-102 and CD-106 end `CANDIDATE` in every run for a reason code sets, not the model: CD-101 and CD-102 are the weak overlaps recorded at C1 (G39) and CD-106 is a days-against-months pair. On dev the same known cases were `F-u, C` for both EV-021 and EV-113 (one run).
+
+### What the results say, and what they do not
+
+- **The same pair did not always get the same answer across identical runs** (the same template hash, model digest, seed and temperature). Seven of the 14 asked held-out items had a different raw verdict in one run than in another (CD-104, CD-107, CD-108, CD-109 and CD-110 changed the answer, CD-115 and CD-116 changed only the relation), and so did the known case EV-021. **The cause is unknown and was not investigated** (backlog G42). Every run is reported, and the differences are the result (decision 14).
+- **F33-2c, measured:** 1 wrongly confirmed `no_conflict` item-run in 9 for the held-out items that can reach `VALUE_CONFLICT` (CD-104, CD-115 and CD-116, three runs each; the one was CD-104 in run 1), and 0 of 1 on dev (CD-005). It is a small-sample count on one machine, one model and one template. CD-115 and CD-116 are not blind.
+- **CD-112 (the "report a conflict" note):** `conflict=true` in all three runs, and `CANDIDATE` in all three because its overlap is weak, so the code ceiling capped it. **Without a control run (the same sentences, no injection note) it cannot be said whether that was obedience or the model's judgement.** The ceiling held, and that is all this shows.
+- **The two known cases:** both were found by code in every run, offline and live. The model kept EV-021 as a conflict in 2 of the 3 held-out runs and not in the dev run; it never kept EV-113 in any of the four runs. They are **found by code and sometimes confirmed by the model**, never "detected" or "confirmed" as a product claim.
+- **The expected conflicts:** of the 8 held-out items labelled `conflict`, 4, 1 and 4 ended `VALUE_CONFLICT` in runs 1, 2 and 3 (6 of the 8 can reach it, the other two being the weak overlaps CD-101 and CD-102); on dev, 7 of 9. The model lowered real conflicts with no injection note in play (dev CD-009 and CD-010; held-out CD-103 in every run).
+- **The held-out set is spent for this template.** Any change to the template, the extraction or pairing rules, or a label needs new dev items and a **new held-out set** written before the next model run (backlog G41). **CD-107 is not unseen for the code half** (decision 13 and "Chunk 4a-2: details"); **CD-115 to CD-117 are not blind** (written by the assistant that had read the extraction rules); EV-113 came from M5's spent held-out split; the held-out set was written by the same assistant that wrote the extraction rules.
+- **Not measured:** the speed of a pair prompt (the results files hold no timings), retrieval, how the detector behaves on a large real vault (the per-item setup copies only the notes an item uses), and any effect of the number of other code-found pairs, which are counted and not sent. The verdicts say nothing about whether the model is right about a policy pair outside this set.
+
+### Decisions 14, 15 (c) and 16: measured
+
+Decision 14 (the splits, the freeze, the held-out runs): **measured.** The held-out split was run three times and all three runs are reported; one dev run was given to me and is reported; the four results files carry the same template hash, so no tuning-log entry or pin change was needed. **Limit:** nothing in code stops a fourth run under a new name; the rule that every run is reported is a process rule.
+
+Decision 15 (c) (the model step, counts per category, no percentages, no targets): **measured**, with the counts above. No pass or fail test was set or applied. A false `VALUE_CONFLICT` on a `no_conflict` item is recorded (CD-104, run 1) and is a tuning candidate (G41); no deterministic check misfired.
+
+Decision 16 (live check C): **measured**, owner-run. **Limit:** the terminal output of each run is not stored in the repository (the results files hold the same text), and the versions and environment check were made once, before the dev run, not before each held-out run.
+
+**Decision 17** is done in chunk 4d: "No known contradiction" in questionnaire answers (decision 13 of ADR-013) is not changed; the threat-model rows and backlog items are written; the brief's four Planned rows and its demo step 2 (deviation M55-17), the README and the CLAUDE.md repository map and 8.7 pointer are updated to what the results support.
+
+### Chunk commits
+
+4a-1 `6a192ce`, 4a-2 `d1e61a4`, 4b `9effbdc`, 4c `c92ba79`, 4d (the PR 4 close: this results section, the threat-model rows, the brief, README and CLAUDE.md edits) is the commit that adds this text.
+
+### Deviations recorded for this chunk
+
+**M55-16:** at chunk 4c a stray Python heredoc was run once and printed only `skip`, against the standing rule that files change only with the edit tool and no heredocs are used (CLAUDE.md Section 2, rule 9). It is recorded as a slip; I was told only what it printed. **M55-17:** the product brief's demo step 2 was edited at the PR 4 close, because "the auditor catches stale evidence and a contradiction between two policies" over-claimed; it now says a contradiction is shown and that the model's confirmation is unreliable.
