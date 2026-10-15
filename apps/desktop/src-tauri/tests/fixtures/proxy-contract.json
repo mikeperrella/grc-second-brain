@@ -1,0 +1,46 @@
+{
+  "errors": [
+    {
+      "error": "not_ready"
+    },
+    {
+      "error": "unauthorized"
+    },
+    {
+      "error": "unreachable"
+    },
+    {
+      "error": "timeout"
+    },
+    {
+      "error": "too_large"
+    },
+    {
+      "error": "bad_request"
+    },
+    {
+      "error": "bad_response"
+    },
+    {
+      "error": "internal"
+    }
+  ],
+  "forwarded_statuses": [
+    200,
+    202,
+    400,
+    404,
+    409,
+    422,
+    503
+  ],
+  "route_names": [
+    "readiness",
+    "questionnaire_inspect",
+    "questionnaire_start",
+    "questionnaire_status",
+    "vault_index_start",
+    "vault_index_status",
+    "draft_rows"
+  ]
+}
