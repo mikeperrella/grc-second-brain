@@ -193,9 +193,9 @@ impl TryFrom<String> for HexId {
 #[serde(deny_unknown_fields)]
 pub struct NoArgs {}
 
-/// A file name in the questionnaire or export folder (`questionnaire_inspect`, `draft_rows`). The
-/// path-component and containment checks are the host's folder work (chunk 6e); this checks only
-/// the sidecar's own length rule.
+/// A file name in the questionnaire or export folder (`questionnaire_inspect`, `draft_rows`). This
+/// checks only the sidecar's own length rule. The path-component and containment checks are the
+/// host's (`host::check_request_file`, `folders::files`), run before the request is forwarded.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FileArgs {
@@ -230,6 +230,13 @@ pub struct RunIdArgs {
 #[serde(deny_unknown_fields)]
 pub struct JobIdArgs {
     pub job_id: HexId,
+}
+
+/// Which of the user's folders a file name refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileFolder {
+    Questionnaires,
+    Exports,
 }
 
 /// What the window sends: a route name in `route` plus that route's own fields, nothing else.
@@ -278,6 +285,32 @@ impl RouteRequest {
     /// the input) is dropped.
     pub fn from_json(text: &str) -> Result<Self, ProxyError> {
         serde_json::from_str(text).map_err(|_| ProxyError::BadRequest)
+    }
+
+    /// The same for a value the Tauri command already holds (the `sidecar_call` argument). Taking
+    /// a JSON value instead of this type keeps a malformed argument out of Tauri's own error text,
+    /// which can quote the input: every failure is the fixed word `bad_request`.
+    pub fn from_value(value: serde_json::Value) -> Result<Self, ProxyError> {
+        serde_json::from_value(value).map_err(|_| ProxyError::BadRequest)
+    }
+
+    /// The file name this request carries and the folder it is a name in: the questionnaire folder
+    /// for `questionnaire_inspect` and `questionnaire_start`, the export folder for `draft_rows`
+    /// (the sidecar resolves them the same way). `None` for a route with no file name.
+    pub fn file(&self) -> Option<(FileFolder, &str)> {
+        match self {
+            RouteRequest::QuestionnaireInspect(args) => {
+                Some((FileFolder::Questionnaires, args.file.as_str()))
+            }
+            RouteRequest::QuestionnaireStart(args) => {
+                Some((FileFolder::Questionnaires, args.file.as_str()))
+            }
+            RouteRequest::DraftRows(args) => Some((FileFolder::Exports, args.file.as_str())),
+            RouteRequest::Readiness(_)
+            | RouteRequest::QuestionnaireStatus(_)
+            | RouteRequest::VaultIndexStart(_)
+            | RouteRequest::VaultIndexStatus(_) => None,
+        }
     }
 
     pub fn route(&self) -> Route {
@@ -508,6 +541,53 @@ mod tests {
         for text in cases {
             let outcome = RouteRequest::from_json(&text).and_then(|request| request.prepare());
             assert_eq!(outcome, Err(ProxyError::BadRequest), "{text}");
+        }
+    }
+
+    #[test]
+    fn only_the_three_file_routes_carry_a_file_name_and_each_has_its_own_folder() {
+        let file_of = |json: &str| {
+            RouteRequest::from_json(json)
+                .unwrap()
+                .file()
+                .map(|(folder, name)| (folder, name.to_owned()))
+        };
+        assert_eq!(
+            file_of(r#"{"route":"questionnaire_inspect","file":"a.xlsx"}"#),
+            Some((FileFolder::Questionnaires, "a.xlsx".to_owned()))
+        );
+        assert_eq!(
+            file_of(
+                r#"{"route":"questionnaire_start","file":"b.xlsx","mapping":{"sheet":"S","header_row":1,"question_col":1}}"#
+            ),
+            Some((FileFolder::Questionnaires, "b.xlsx".to_owned()))
+        );
+        assert_eq!(
+            file_of(r#"{"route":"draft_rows","file":"c.xlsx"}"#),
+            Some((FileFolder::Exports, "c.xlsx".to_owned()))
+        );
+        for json in [
+            r#"{"route":"readiness"}"#.to_owned(),
+            r#"{"route":"vault_index_start"}"#.to_owned(),
+            format!(r#"{{"route":"questionnaire_status","run_id":"{ID}"}}"#),
+            format!(r#"{{"route":"vault_index_status","job_id":"{ID}"}}"#),
+        ] {
+            assert_eq!(file_of(&json), None, "{json}");
+        }
+    }
+
+    #[test]
+    fn from_value_gives_bad_request_for_anything_that_does_not_fit() {
+        let ok = serde_json::json!({"route": "readiness"});
+        assert!(RouteRequest::from_value(ok).is_ok());
+        for value in [
+            serde_json::json!(null),
+            serde_json::json!("readiness"),
+            serde_json::json!({"route": "readiness", "url": "evil"}),
+            serde_json::json!({"route": "draft_rows"}),
+            serde_json::json!({"route": "nope"}),
+        ] {
+            assert_eq!(RouteRequest::from_value(value), Err(ProxyError::BadRequest));
         }
     }
 

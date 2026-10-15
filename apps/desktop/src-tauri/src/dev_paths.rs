@@ -2,21 +2,20 @@
 //!
 //! * **Index directory:** under the app's local data directory (`app_local_data_dir()/index`),
 //!   chosen by the host, never by the environment or the window.
-//! * **Vault directory:** until the folder picker (M6) there is no way for a user to choose one.
-//!   In a DEBUG build a developer may point at a vault with the `GRC_VAULT_DIR` environment
-//!   variable of the host process. In a RELEASE build the host never reads that variable, so a
-//!   release app cannot be handed an arbitrary path through its environment.
+//! * **Vault directory:** the user's saved vault wins (`folders`, chunk 6e). In a DEBUG build a
+//!   developer may still point at a vault with the `GRC_VAULT_DIR` environment variable of the host
+//!   process, but it is used ONLY when no vault is saved. In a RELEASE build the host never reads
+//!   that variable, so a release app cannot be handed an arbitrary path through its environment.
 //!
-//! No Tauri command takes a path in M4, so the Rust-side `canonicalize` + `starts_with` check of
-//! CLAUDE.md 3.6 (for paths from the window) is still owned by the folder-picker chunk. What is
-//! checked here is only the developer's debug variable: it must be absolute, must exist, must be a
-//! directory, and is passed on in canonical form without Windows' `\\?\` prefix (the sidecar
-//! refuses UNC and device paths).
+//! This file also holds the path primitives the folder code reuses: a path must be on a drive
+//! letter, exist, and is passed on in canonical form without Windows' `\\?\` prefix (the sidecar
+//! refuses UNC and device paths). The folder and file-name checks of CLAUDE.md 3.6 are in
+//! `folders`.
 
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf, Prefix};
 
 /// The environment variable of the HOST process that debug builds read.
 pub(crate) const DEV_VAULT_ENV: &str = "GRC_VAULT_DIR";
@@ -49,10 +48,38 @@ fn without_verbatim_prefix(path: PathBuf) -> Option<PathBuf> {
     is_drive_path.then(|| PathBuf::from(rest))
 }
 
+/// Whether `path` starts with a drive letter (`C:\x` or `\\?\C:\x`). A UNC share (`\\server\share`),
+/// a device path (`\\.\COM1`) or a path with no prefix is not. Lexical only: nothing is opened.
+///
+/// Checked BEFORE `fs::canonicalize`, because canonicalizing a UNC path asks the network for it
+/// (CLAUDE.md 3.2: no external network). A mapped network drive keeps a drive letter and cannot be
+/// told apart here; that is a known limit (see the 6e report).
+pub(crate) fn is_local_drive_path(path: &Path) -> bool {
+    matches!(
+        path.components().next(),
+        Some(Component::Prefix(prefix))
+            if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+    )
+}
+
 /// The existing directory behind `path`, canonical and without the verbatim prefix, or `None`.
+/// A path that is not on a drive letter is refused without being opened.
 pub(crate) fn existing_directory(path: PathBuf) -> Option<PathBuf> {
+    if !is_local_drive_path(&path) {
+        return None;
+    }
     let canonical = without_verbatim_prefix(fs::canonicalize(path).ok()?)?;
     canonical.is_dir().then_some(canonical)
+}
+
+/// The existing regular file behind `path`, canonical and without the verbatim prefix, or `None`.
+/// Every link on the way is followed, so the answer is where the bytes really are.
+pub(crate) fn existing_file(path: PathBuf) -> Option<PathBuf> {
+    if !is_local_drive_path(&path) {
+        return None;
+    }
+    let canonical = without_verbatim_prefix(fs::canonicalize(path).ok()?)?;
+    canonical.is_file().then_some(canonical)
 }
 
 /// The debug-only vault directory for this process, ready to pass to the sidecar. Always `None`
@@ -158,5 +185,42 @@ mod tests {
         let file = manifest_dir().join("Cargo.toml");
         assert!(file.is_file(), "the test needs the manifest to exist");
         assert_eq!(existing_directory(file), None);
+    }
+
+    #[test]
+    fn only_a_drive_letter_path_is_local() {
+        for path in [r"C:\vault", r"c:\vault", r"\\?\C:\vault", r"C:\"] {
+            assert!(is_local_drive_path(Path::new(path)), "{path}");
+        }
+        // UNC and device forms would make `canonicalize` reach the network or a device. A path with
+        // no prefix has no drive to be on.
+        for path in [
+            r"\\server\share\x",
+            r"\\?\UNC\server\share",
+            r"\\.\COM1",
+            r"\\?\GLOBALROOT\Device\x",
+            r"\vault",
+            r"vault",
+            "",
+        ] {
+            assert!(!is_local_drive_path(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn a_unc_or_device_path_is_refused_before_it_is_opened() {
+        for path in [r"\\server\share\x", r"\\?\UNC\server\share", r"\\.\NUL"] {
+            assert_eq!(existing_directory(PathBuf::from(path)), None, "{path}");
+            assert_eq!(existing_file(PathBuf::from(path)), None, "{path}");
+        }
+    }
+
+    #[test]
+    fn an_existing_file_is_returned_canonical_and_a_directory_is_not_a_file() {
+        let found = existing_file(manifest_dir().join("Cargo.toml")).unwrap();
+        assert!(found.is_file());
+        assert!(!found.to_string_lossy().starts_with(VERBATIM_PREFIX));
+        assert_eq!(existing_file(manifest_dir()), None);
+        assert_eq!(existing_file(manifest_dir().join("no-such-file")), None);
     }
 }

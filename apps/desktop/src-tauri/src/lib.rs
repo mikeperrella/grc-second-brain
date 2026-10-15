@@ -8,6 +8,7 @@ pub mod app_commands;
 pub mod child_env;
 mod commands;
 mod dev_paths;
+pub mod folders;
 pub mod health;
 pub mod host;
 pub mod proxy;
@@ -16,11 +17,17 @@ pub mod sidecar;
 pub mod sidecar_client;
 pub mod token;
 
+use std::fs;
+
 use tauri::{Manager, RunEvent, WindowEvent};
 
 use crate::dev_paths::vault_dir_for_this_build;
+use crate::folders::FolderSettings;
 use crate::host::{HostState, SidecarDirs, SidecarHost};
 use crate::sidecar::supervisor::FailureKind;
+
+/// The saved-folders file inside the app config directory (ADR-020 decision 5).
+const SAVED_FOLDERS_FILE: &str = "folders.json";
 
 /// Build and run the app. Returns when the last window is closed.
 ///
@@ -30,9 +37,32 @@ use crate::sidecar::supervisor::FailureKind;
 /// even if the host is killed (ADR-004).
 pub fn run() -> Result<(), tauri::Error> {
     let app = tauri::Builder::default()
+        // The native folder dialog, called from Rust only (commands.rs). The window is granted no
+        // dialog permission (tests/security_config.rs), and the fs plugin that it depends on is
+        // never registered.
+        .plugin(tauri_plugin_dialog::init())
         .manage(HostState::default())
-        .invoke_handler(tauri::generate_handler![commands::sidecar_health])
+        .invoke_handler(tauri::generate_handler![
+            commands::sidecar_health,
+            commands::sidecar_call,
+            commands::folders_get,
+            commands::folder_pick,
+            commands::folder_list_files,
+        ])
         .setup(|app| {
+            // The index folder is the host's own choice; the saved-folders file lives in the app
+            // config directory. Neither is ever a path from the window.
+            let index_dir = app
+                .path()
+                .app_local_data_dir()
+                .ok()
+                .map(|dir| dir.join("index"));
+            let config_file = app
+                .path()
+                .app_config_dir()
+                .ok()
+                .map(|dir| dir.join(SAVED_FOLDERS_FILE));
+            app.manage(FolderSettings::new(config_file, index_dir));
             start_sidecar_in_background(app.handle());
             Ok(())
         })
@@ -65,25 +95,38 @@ fn start_sidecar_in_background(handle: &tauri::AppHandle) {
             return;
         }
     };
-    // The index lives under the app's local data directory, chosen here by the host. The vault is
-    // a developer's debug-build setting until the folder picker (M6); release builds pass none.
+    // The index lives under the app's local data directory, chosen here by the host. If there is
+    // no such directory, or it cannot be created, the start fails with its own kind (G8).
     let index_dir = match handle.path().app_local_data_dir() {
         Ok(dir) => dir.join("index"),
         Err(_) => {
             handle
                 .state::<HostState>()
-                .finish_start(Err(FailureKind::EnvRejected));
+                .finish_start(Err(FailureKind::IndexDirUnavailable));
             return;
         }
     };
-    let vault_dir = vault_dir_for_this_build();
     let spawned = std::thread::Builder::new()
         .name("sidecar-start".to_owned())
         .spawn(move || {
+            // The index folder must exist before the folders are checked against it. Canonicalizing
+            // the user's folders can touch slow drives, which is why this runs here and not in
+            // `setup`, where it would delay the window.
+            if fs::create_dir_all(&index_dir).is_err() {
+                state_handle
+                    .state::<HostState>()
+                    .finish_start(Err(FailureKind::IndexDirUnavailable));
+                return;
+            }
+            // The saved folders, validated afresh at every start. A saved vault wins; the debug-only
+            // host variable is used only when no vault is saved and never in a release build.
+            let resolved = state_handle
+                .state::<FolderSettings>()
+                .startup(vault_dir_for_this_build());
             let dirs = SidecarDirs {
                 log_dir: &log_dir,
                 index_dir: &index_dir,
-                vault_dir: vault_dir.as_deref(),
+                folders: resolved.user_folders(),
             };
             let result = SidecarHost::start_dev(&dirs);
             state_handle.state::<HostState>().finish_start(result);

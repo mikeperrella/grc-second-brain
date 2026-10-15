@@ -4,8 +4,9 @@
 //! * [`error`]: [`ProxyError`] (unit variants) and [`ProxyReply`] (`{status, body}`).
 //! * [`call`]: the function that sends one request and checks the answer.
 //!
-//! Not yet reachable from the window: there is no Tauri command and no capability entry. Chunk 6e
-//! adds both, with the folder work.
+//! Reachable from the window through the one `sidecar_call` command (chunk 6e), which hands the
+//! typed request to `host::SidecarHost::call`; that checks a file name in the request before
+//! anything is sent.
 
 pub mod call;
 pub mod error;

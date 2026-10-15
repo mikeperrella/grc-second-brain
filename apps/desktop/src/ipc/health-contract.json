@@ -143,6 +143,12 @@
     },
     {
       "reason": {
+        "kind": "index_dir_unavailable"
+      },
+      "status": "failed"
+    },
+    {
+      "reason": {
         "kind": "system_root_unavailable"
       },
       "status": "failed"

@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use common::{
     assert_exits, wait_for_venv_sidecar_shape, Reaper, Scratch, TestResult, SHAPE_SETTLE_BOUND,
 };
+use desktop_lib::folders::UserFolders;
 use desktop_lib::health::HealthReply;
 use desktop_lib::host::{SidecarDirs, SidecarHost};
 use desktop_lib::sidecar::job::{describe_processes, ProcessInfo};
@@ -58,7 +59,7 @@ fn the_real_sidecar_starts_answers_health_and_stops() -> TestResult {
     let dirs = SidecarDirs {
         log_dir: scratch.path(),
         index_dir: &index_dir,
-        vault_dir: None,
+        folders: UserFolders::default(),
     };
     let host = SidecarHost::start_dev(&dirs)
         .map_err(|kind| format!("the real sidecar did not start: {kind:?}"))?;

@@ -16,6 +16,7 @@ use std::thread::JoinHandle;
 use common::{
     assert_exits, fake_sidecar_path, Reaper, Scratch, TestResult, SETTLE_SLACK, TEST_HANDSHAKE,
 };
+use desktop_lib::folders::UserFolders;
 use desktop_lib::health::{HealthError, HealthReply};
 use desktop_lib::host::{SidecarDirs, SidecarHost};
 use desktop_lib::sidecar::supervisor::{FailureKind, SidecarState};
@@ -32,7 +33,7 @@ fn start_with(
     let dirs = SidecarDirs {
         log_dir: scratch.path(),
         index_dir: &index_dir,
-        vault_dir: None,
+        folders: UserFolders::default(),
     };
     let host = SidecarHost::start(fake_sidecar_path(), args, &dirs, TEST_HANDSHAKE)
         .map_err(|kind| format!("the host did not start: {kind:?}"))?;
@@ -205,7 +206,7 @@ fn a_program_that_does_not_exist_is_a_spawn_failure_not_a_panic() -> TestResult 
     let dirs = SidecarDirs {
         log_dir: scratch.path(),
         index_dir: &index_dir,
-        vault_dir: None,
+        folders: UserFolders::default(),
     };
     let result = SidecarHost::start(
         scratch.file("no_such_program.exe"),

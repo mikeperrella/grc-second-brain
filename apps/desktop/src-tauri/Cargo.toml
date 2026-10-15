@@ -44,6 +44,11 @@ log = "=0.4.34"
 # already in the lockfile (Tauri pulls it for other targets); on Windows it adds hyper, tokio, tower
 # and friends, all MIT or Apache-2.0. The client is built only in health.rs, with `.no_proxy()`.
 reqwest = { version = "=0.13.5", default-features = false }
+# M6e (ADR-020 decision 8), approved after the source and licence review: the native folder picker,
+# called from Rust only (commands.rs). No permission is granted to the window, so the window cannot
+# call plugin:dialog|*. Apache-2.0 OR MIT. It pulls tauri-plugin-fs and rfd; the fs plugin is never
+# registered (tests/security_config.rs checks lib.rs and every capability).
+tauri-plugin-dialog = "=2.8.3"
 
 # M2b: Job Object, suspended-spawn thread resume and the system directory (ADR-004). Windows is the
 # only supported target; sidecar/mod.rs refuses to compile elsewhere. Already in the graph through

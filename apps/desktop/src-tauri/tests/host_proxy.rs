@@ -6,8 +6,10 @@ mod common;
 mod proxy_support;
 
 use std::ffi::OsString;
+use std::fs;
 
 use common::{Reaper, Scratch, TestResult, SETTLE_SLACK, TEST_HANDSHAKE};
+use desktop_lib::folders::UserFolders;
 use desktop_lib::host::{SidecarDirs, SidecarHost};
 use desktop_lib::proxy::{ProxyError, ProxyReply, RouteRequest};
 use proxy_support::{json_response, Server};
@@ -16,11 +18,19 @@ fn start_with(
     scratch: &Scratch,
     args: Vec<OsString>,
 ) -> Result<SidecarHost, Box<dyn std::error::Error>> {
+    start_with_folders(scratch, args, &UserFolders::default())
+}
+
+fn start_with_folders(
+    scratch: &Scratch,
+    args: Vec<OsString>,
+    folders: &UserFolders<'_>,
+) -> Result<SidecarHost, Box<dyn std::error::Error>> {
     let index_dir = scratch.file("index");
     let dirs = SidecarDirs {
         log_dir: scratch.path(),
         index_dir: &index_dir,
-        vault_dir: None,
+        folders: *folders,
     };
     SidecarHost::start(common::fake_sidecar_path(), args, &dirs, TEST_HANDSHAKE)
         .map_err(|kind| format!("the host did not start: {kind:?}").into())
@@ -86,6 +96,92 @@ fn a_ready_sidecar_is_called_on_the_port_it_announced() -> TestResult {
         .find_map(|line| line.strip_prefix("x-grc-auth: "))
         .ok_or("the call carried no X-GRC-Auth header")?;
     assert_eq!(token.len(), 64);
+
+    host.supervisor().shutdown()?;
+    Ok(())
+}
+
+#[test]
+fn a_bad_file_name_is_bad_request_and_no_connection_is_opened() -> TestResult {
+    let scratch = Scratch::new("host_proxy_file_names")?;
+    let questionnaires = scratch.file("questionnaires");
+    let exports = scratch.file("exports");
+    fs::create_dir(&questionnaires)?;
+    fs::create_dir(&exports)?;
+    fs::write(questionnaires.join("q.xlsx"), b"synthetic")?;
+    fs::write(exports.join("draft.xlsx"), b"synthetic")?;
+    // A real file outside both folders, which a `..` name would reach if it were let through.
+    fs::write(scratch.file("outside.xlsx"), b"synthetic")?;
+
+    let server = Server::start(json_response("200 OK", r#"{"ok":true}"#))?;
+    let folders = UserFolders {
+        questionnaire: Some(&questionnaires),
+        export: Some(&exports),
+        ..UserFolders::default()
+    };
+    let host = start_with_folders(
+        &scratch,
+        vec![
+            OsString::from("ready-on"),
+            OsString::from(server.port.to_string()),
+        ],
+        &folders,
+    )?;
+    let mut reaper = Reaper::new();
+    reaper.add(host.supervisor().child_pid());
+    host.supervisor()
+        .wait_until_settled(TEST_HANDSHAKE + SETTLE_SLACK)?;
+
+    let mapping = r#""mapping":{"sheet":"S","header_row":1,"question_col":1}"#;
+    let bad_names = [
+        r"..\\outside.xlsx",
+        "../outside.xlsx",
+        r"sub\\..\\..\\outside.xlsx",
+        "C:\\\\Windows\\\\win.ini",
+        r"\\\\server\\share\\q.xlsx",
+        "NUL.xlsx",
+        "q.xlsx.",
+        "q.xlsx:stream",
+        "missing.xlsx",
+        "q.xlsx\\u0000",
+    ];
+    for name in bad_names {
+        for json in [
+            format!(r#"{{"route":"questionnaire_inspect","file":"{name}"}}"#),
+            format!(r#"{{"route":"questionnaire_start","file":"{name}",{mapping}}}"#),
+            format!(r#"{{"route":"draft_rows","file":"{name}"}}"#),
+        ] {
+            assert_eq!(call(&host, &json), Err(ProxyError::BadRequest), "{json}");
+        }
+    }
+    // The right file name in the WRONG folder is a missing file there: a draft is looked up in the
+    // export folder, a workbook in the questionnaire folder.
+    assert_eq!(
+        call(&host, r#"{"route":"draft_rows","file":"q.xlsx"}"#),
+        Err(ProxyError::BadRequest)
+    );
+    assert_eq!(
+        call(
+            &host,
+            r#"{"route":"questionnaire_inspect","file":"draft.xlsx"}"#
+        ),
+        Err(ProxyError::BadRequest)
+    );
+    assert_eq!(
+        server.accepted(),
+        0,
+        "a refused name must open no connection"
+    );
+
+    // The same routes with the right names go through to the announced port.
+    let inspect = call(
+        &host,
+        r#"{"route":"questionnaire_inspect","file":"q.xlsx"}"#,
+    )?;
+    assert_eq!(inspect.status, 200);
+    let draft = call(&host, r#"{"route":"draft_rows","file":"draft.xlsx"}"#)?;
+    assert_eq!(draft.status, 200);
+    assert_eq!(server.accepted(), 2);
 
     host.supervisor().shutdown()?;
     Ok(())

@@ -54,6 +54,16 @@ describe("the contract fixture written by the Rust test", () => {
     expect([...fixtureStatuses].sort()).toEqual([...schemaStatuses].sort());
     expect([...fixtureErrors].sort()).toEqual([...schemaErrors].sort());
   });
+
+  it("has 25 failure kinds, including index_dir_unavailable (G8, chunk 6e)", () => {
+    // A pin: a kind added or removed on one side must show up here, in review.
+    expect(schemaKinds).toHaveLength(25);
+    expect(schemaKinds).toContain("index_dir_unavailable");
+    expect(schemaKinds).toContain("env_rejected");
+    expect(
+      parseHealthResult({ status: "failed", reason: { kind: "index_dir_unavailable" } }),
+    ).toEqual({ state: "failed", source: "sidecar", code: "index_dir_unavailable" });
+  });
 });
 
 describe("parseHealthResult: valid replies", () => {
