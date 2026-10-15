@@ -6,7 +6,7 @@ Read this entire file before any task. Rules marked **MUST** are non-negotiable.
 
 ## 1. What this project is
 
-The product is named **ALIBI** (Answers Linked to Immutable, Backed Information), formerly GRC Second Brain. The problem, audience, promise, features and non-goals are in `docs/product-brief.md`.
+The product is named **ALIBI** (Answers Linked to Immutable, Backed Information; immutable to the application, not tamper-evident, ADR-017 decision 9), formerly GRC Second Brain. The problem, audience, promise, features and non-goals are in `docs/product-brief.md`.
 
 A local-first, air-gapped desktop GRC (Governance, Risk, and Compliance) application. It uses local LLMs through Ollama to:
 
@@ -116,6 +116,26 @@ grc-second-brain/
     adr/                       Architecture Decision Records
     threat-model.md
 ```
+
+### 5.1 Sidecar settings (`GRC_*` environment variables)
+
+Built from `sidecar/src/grc_sidecar/config.py`, the only source. Settings come from the environment only (no `.env` file). There is no host, port or token setting; `GRC_AUTH_TOKEN` is handled separately and is not a setting (M1b). No setting is required to exist for the sidecar to start. A directory setting that is set must be an absolute path, and `validate_runtime_dirs` also requires it to exist as a directory (a set but invalid one makes the sidecar exit 2). "Overlap" means equal to, inside or containing the other folder (checked lexically at load and again on resolved paths at startup).
+
+| Environment variable | What it is | Default | Required at startup | Folder-overlap rule |
+|---|---|---|---|---|
+| `GRC_LOG_DIR` | Folder for the local log file | `~/.grc-second-brain/logs` (a typed configuration error if no home directory exists and this is unset) | No | None |
+| `GRC_LOG_LEVEL` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; case-insensitive) | `INFO` | No | None |
+| `GRC_OLLAMA_BASE_URL` | Ollama endpoint; must be a loopback URL | `http://127.0.0.1:11434` | No | None |
+| `GRC_VAULT_DIR` | The knowledge vault folder | Unset (no vault) | No | Index, questionnaire, export, import and ledger folders may not overlap it |
+| `GRC_INDEX_DIR` | Where the derived search index lives | Unset; worked out when the index is opened as `~/.grc-second-brain/index` | No | May not be inside the vault, and the vault may not be inside it; questionnaire, export, import and ledger folders may not overlap it |
+| `GRC_QUESTIONNAIRE_DIR` | Where questionnaire workbooks are read from | Unset (questionnaire routes refuse with a typed error) | No | May not overlap the vault or index; import and ledger folders may not overlap it |
+| `GRC_EXPORT_DIR` | Where answers files are written | Unset (questionnaire routes refuse with a typed error) | No | May not overlap the vault or index; import and ledger folders may not overlap it |
+| `GRC_IMPORT_DIR` | Where offline IT exports (reality check) are read from | Unset (reality routes refuse, 503) | No | May not overlap the vault, index, questionnaire or export folder; the ledger folder may not overlap it |
+| `GRC_LEDGER_DIR` | Where the promise ledger (`ledger.sqlite3`) lives | Unset (ledger routes refuse, 503) | No | May not overlap the vault, index, questionnaire, export or import folder |
+| `GRC_PACKS_DIR` | Bundled framework packs | Unset (existence checked when packs are loaded) | No | None |
+| `GRC_EMBEDDING_MODEL` | Embedding model name | `nomic-embed-text` | No | None |
+| `GRC_GENERATION_MODEL` | Generation model name (non-empty) | `llama3.1:8b` | No | None |
+| `GRC_EMBEDDING_DIMENSION` | Vector size the embedding model must produce (1 to 8192) | `768` | No | None |
 
 ---
 

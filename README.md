@@ -1,6 +1,6 @@
 # ALIBI
 
-**Answers Linked to Immutable, Backed Information**
+**Answers Linked to Immutable, Backed Information** (immutable to the application, not tamper-evident, ADR-017 decision 9)
 
 *Every compliance answer needs an alibi.*
 
