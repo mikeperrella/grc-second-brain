@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -213,6 +214,54 @@ def test_names_with_spaces_and_mixed_case_are_scanned(vault: Path) -> None:
     _write(vault, "Mixed Case.md", doc_id="MIXED")  # the file name is not the doc_id
     _write(vault, "with space/inner.md", doc_id="INNER")
     assert _paths(scan_vault(vault).documents) == ["Mixed Case.md", "with space/inner.md"]
+
+
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows-only path behavior")
+
+
+@windows_only
+def test_a_junction_to_a_folder_outside_the_vault_is_not_entered(vault: Path) -> None:  # [NEG]
+    import _winapi
+
+    outside = vault.parent / "elsewhere"
+    _write(outside, "secret.md", doc_id="OUT")
+    _write(vault, "ok.md")
+    _winapi.CreateJunction(str(outside), str(vault / "junc"))
+    result = scan_vault(vault)
+    assert _paths(result.documents) == ["ok.md"]
+    assert [(i.code, i.source_path, i.severity) for i in result.issues] == [
+        ("unsafe_path", "junc", "error")
+    ]
+    assert "secret" not in repr(result)
+
+
+@windows_only
+def test_a_junction_to_a_folder_inside_the_vault_is_refused(vault: Path) -> None:  # [NEG]
+    # F9-1b: without the refusal, one file would appear under two paths (real/a.md, alias/a.md).
+    import _winapi
+
+    _write(vault, "real/a.md", doc_id="A")
+    _winapi.CreateJunction(str(vault / "real"), str(vault / "alias"))
+    result = scan_vault(vault)
+    assert _paths(result.documents) == ["real/a.md"]
+    assert [(i.code, i.source_path) for i in result.issues] == [("unsafe_path", "alias")]
+
+
+@windows_only
+def test_the_path_guard_refuses_a_file_reached_through_a_junction(vault: Path) -> None:  # [NEG]
+    # The second layer on its own, as if a junction had been swapped in after the listing was
+    # read: the resolved path differs from the walked path, for a target inside and outside.
+    import _winapi
+
+    outside = vault.parent / "elsewhere"
+    _write(outside, "secret.md", doc_id="OUT")
+    _write(vault, "real/a.md", doc_id="A")
+    _winapi.CreateJunction(str(outside), str(vault / "out"))
+    _winapi.CreateJunction(str(vault / "real"), str(vault / "alias"))
+    root = vault.resolve()
+    assert _safe_file(root, "out/secret.md") is None
+    assert _safe_file(root, "alias/a.md") is None
+    assert _safe_file(root, "real/a.md") == root / "real" / "a.md"
 
 
 def test_the_path_guard_refuses_a_link_even_if_the_walker_missed_it(
