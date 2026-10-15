@@ -87,3 +87,7 @@ What this shows and does not show:
 - The permission is what allows the call: with it the call works, without it the call is refused with a message naming the permission. Together with the mode B probes, the trimmed capability, the CSP and the live status are proven in the bundled app.
 - It does not show that no other permission is needed for features not yet built (events, window control). Each is added individually when needed, never as `core:default`.
 - The devtools toggle (Ctrl+Shift+I) is still not granted; F12 opens DevTools in debug builds regardless.
+
+## Amended (planned, ADR-020), 2026-10-15
+
+Planned for M6 chunk 6e, not built. Decision 3 (one capability, one command) and the tests in decision 4 will change: the app commands become exactly `sidecar_health`, `sidecar_call`, `folders_get`, `folder_pick` and `folder_list_files` (provisional names), and `capabilities/main-window.json` will list exactly the matching `allow-*` entries and no plugin permission. `tauri-plugin-dialog` will be registered in Rust only; the window gets no dialog permission, and `security_config.rs` gains tests for that ([ADR-020](020-host-proxy-folders-polling.md) decision 8). Decisions 1, 2 and 5 (CSP, where it is verified, generated permissions) are unchanged. The text above stays as written; it describes the code until 6e merges.

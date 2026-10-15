@@ -134,3 +134,7 @@ Notes and known gaps:
 
 - OWASP RAG Security Cheat Sheet: sections on data deletion and retention (4), document poisoning and integrity manifests (1), index integrity (7) and fail-closed design (14). https://cheatsheetseries.owasp.org/cheatsheets/RAG_Security_Cheat_Sheet.html
 - PEP 578: audit hooks are not a sandbox (relevant to ADR-007).
+
+## Amended (planned, ADR-020), 2026-10-15
+
+Planned for M6 chunk 6e, not built. "How the sidecar gets its folders (M4b, implemented)" describes five environment keys and a debug-only host variable for the vault. The host is planned to save the folders the user chooses in a small config file and pass them at the next launch, as nine keys (`SYSTEMROOT`, `GRC_AUTH_TOKEN` and seven folder variables), re-validated at every start ([ADR-020](020-host-proxy-folders-polling.md) decisions 5 to 7). The debug-only `GRC_VAULT_DIR` fallback stays and is used only when no vault is saved. "a release app cannot be handed an arbitrary path through its environment" stays true; a saved config file is a new, same-user-writable source (O1). The Rust-side `canonicalize` + `starts_with` check this ADR left to the folder-picker chunk is that chunk, 6e.
