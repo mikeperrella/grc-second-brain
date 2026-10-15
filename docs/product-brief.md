@@ -18,7 +18,7 @@ Later: vCISOs and GRC consultancies serving many clients (needs separate client 
 
 ## The promise
 
-A desktop compliance workbench that answers questionnaires from your own policies, cites the exact line behind every answer, says "no evidence" instead of guessing, checks your policies against what your IT systems actually show, remembers every promise you've made, and ALIBI itself never sends a byte off your machine: it talks only to Ollama on this computer.
+A desktop compliance workbench that answers questionnaires from your own policies, cites the exact line behind every answer, says "no evidence" instead of guessing, checks one Okta MFA export against one policy claim (MFA required), records every answer you send and flags it when its cited lines change, and ALIBI itself never sends a byte off your machine: it talks only to Ollama on this computer.
 
 ## How it works
 
@@ -49,7 +49,7 @@ AI proposes, code verifies. A local model (through Ollama) reads policies and dr
 ## The demo (about 3 minutes)
 
 1. The flood: Wi-Fi off. A messy 150-question spreadsheet fills in with a citation for each answer: the document, the exact lines and the quoted text, shown as plain text in the Evidence column (ALIBI sets no hyperlinks in the file, ADR-014). Clickable citations are not built and are not on the M6 milestone list (CLAUDE.md Section 9); if they come, it would be in the M6 review screen and would need its own decision. Unsupported questions stay blank and flagged.
-2. The attack: the auditor catches stale evidence, and a contradiction between two policies is shown with both quotes (the model's confirmation of it is unreliable, see the feature table).
+2. The checks: an answer whose source policy is past its review date is flagged (`PARTIAL`, with the reason), and recall reports changes to the lines an answer cited (sidecar routes, no screen until M6). The contradiction detector compares numbers only and shows both quotes for each pair that disagrees; the local model confirms a real conflict only sometimes (see the feature table). An auditor that challenges your answers is planned (Later), not built.
 3. The ripple: edit a policy line, and the blast radius shows a broken promise to a customer.
 4. The proof: export with receipts, plus the report showing nothing left the machine.
 
