@@ -151,6 +151,11 @@ class ModelGate:
         if refused:  # configured names only, never anything Ollama said
             _log.info("model refused as non-local: %s", list(refused))
 
+    def refused_as_non_local(self, model: str) -> bool:
+        """True if the gate treats `model` as one Ollama would run elsewhere (cloud-named, or
+        listed with `remote_host` or `remote_model`). Does not contact Ollama."""
+        return self._is_non_local(model)
+
     def _is_non_local(self, model: str) -> bool:
         """Installed as far as the listing goes, but Ollama would run it elsewhere."""
         if is_cloud_model_name(model):

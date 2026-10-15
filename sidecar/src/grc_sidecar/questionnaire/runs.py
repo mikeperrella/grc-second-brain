@@ -41,6 +41,7 @@ from grc_sidecar.errors import (
     VaultChangedError,
     WorkbookWriteError,
 )
+from grc_sidecar.jobs import JobSlot
 from grc_sidecar.llm.ollama_embeddings import ModelEntry
 from grc_sidecar.questionnaire.loader import LoadedWorkbook, load_questionnaire, read_input_bytes
 from grc_sidecar.questionnaire.mapping import (
@@ -115,6 +116,9 @@ class RunDependencies:
     new_run_id: Callable[[], str] = field(default=lambda: uuid.uuid4().hex)
     run_recorder: RunRecorder | None = None  # None means no ledger is configured
     read_cited: CitedReader = _cited_nowhere
+    # The one-heavy-job slot. The app passes the same slot to the contradiction detector, so a run
+    # of either refuses (409) while the other is going (ADR-019 decision 11).
+    slot: JobSlot = field(default_factory=JobSlot)
 
 
 @dataclass(frozen=True)
@@ -223,28 +227,35 @@ class QuestionnaireRuns:
         async with self._starting:
             if self._active is not None and not self._active.done():
                 raise RunInProgressError
-            data = await asyncio.to_thread(read_input_bytes, file, self._deps.questionnaire_root)
-            loaded = await asyncio.to_thread(load_questionnaire, data)
+            self._deps.slot.begin()  # refuses while a contradiction run holds the slot
             try:
-                questions = await asyncio.to_thread(extract_questions, loaded.workbook, mapping)
-                if not questions.questions:
-                    raise QuestionMappingError("no_mapping")
-                digest_before = await self._preflight()
+                data = await asyncio.to_thread(
+                    read_input_bytes, file, self._deps.questionnaire_root
+                )
+                loaded = await asyncio.to_thread(load_questionnaire, data)
+                try:
+                    questions = await asyncio.to_thread(extract_questions, loaded.workbook, mapping)
+                    if not questions.questions:
+                        raise QuestionMappingError("no_mapping")
+                    digest_before = await self._preflight()
+                except BaseException:
+                    loaded.close()
+                    raise
+                state = RunState(
+                    run_id=self._deps.new_run_id(),
+                    total=len(questions.questions),
+                    input_sha256=loaded.scan.sha256,
+                )
+                self._remember(state)
+                await self._emit(
+                    state, RunEvent("started", {"run_id": state.run_id, "total": state.total})
+                )
+                self._active = asyncio.create_task(
+                    self._execute(state, loaded, mapping, questions, file, digest_before)
+                )
             except BaseException:
-                loaded.close()
+                self._deps.slot.end()  # a refusal never keeps the slot; `_execute` frees it later
                 raise
-            state = RunState(
-                run_id=self._deps.new_run_id(),
-                total=len(questions.questions),
-                input_sha256=loaded.scan.sha256,
-            )
-            self._remember(state)
-            await self._emit(
-                state, RunEvent("started", {"run_id": state.run_id, "total": state.total})
-            )
-            self._active = asyncio.create_task(
-                self._execute(state, loaded, mapping, questions, file, digest_before)
-            )
             return state
 
     async def _preflight(self) -> str | None:
@@ -337,6 +348,7 @@ class QuestionnaireRuns:
             await self._emit(state, RunEvent("failed", {"code": code}))
         finally:
             loaded.close()
+            self._deps.slot.end()
 
     async def _answer_all(self, state: RunState, questions: QuestionSet) -> dict[int, AnswerResult]:
         results: dict[int, AnswerResult] = {}

@@ -66,6 +66,16 @@ class CheckSkips(unittest.TestCase):
         code, _, _ = self.run_main(junit(skipped("b", REASON + " (extra)")), "--allow", REASON)
         self.assertEqual(code, 1)
 
+    def test_the_docs_absent_reason_is_allowed_only_when_named_and_matched_exactly(self) -> None:
+        docs = "docs/ is not present in this environment"
+        xml = junit(skipped("b", docs), skipped("c", REASON))
+        code, out, _ = self.run_main(xml, "--allow", REASON, "--allow", docs)
+        self.assertEqual(code, 0)
+        self.assertIn("2 skipped (2 with an allowed reason)", out)
+        self.assertEqual(self.run_main(xml, "--allow", REASON)[0], 1)  # not allowed unless named
+        near = junit(skipped("b", docs + "."))
+        self.assertEqual(self.run_main(near, "--allow", docs)[0], 1)  # exact match only
+
     def test_xfail_counts_as_a_skip(self) -> None:
         code, _, _ = self.run_main(
             junit(skipped("b", "expected", "pytest.xfail")), "--allow", REASON

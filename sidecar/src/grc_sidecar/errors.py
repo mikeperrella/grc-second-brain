@@ -665,9 +665,20 @@ class QuestionnaireNotConfiguredError(GrcError):
 
 
 class RunInProgressError(GrcError):
-    """A questionnaire run is already going. One run at a time (ADR-014)."""
+    """A questionnaire run or a contradiction run is already going. One heavy job at a time
+    (ADR-014, ADR-019 decision 11)."""
 
     default_message = "A questionnaire run is already in progress"
+
+
+class ContradictionsNotConfiguredError(GrcError):
+    """The contradiction route was asked for a run but the vault folder is not configured.
+
+    A contradiction run needs only the vault (`GRC_VAULT_DIR`) and its index; with it unset the
+    route refuses instead of guessing a folder.
+    """
+
+    default_message = "The vault folder is not configured"
 
 
 class RunNotFoundError(GrcError):

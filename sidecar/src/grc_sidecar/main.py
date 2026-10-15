@@ -17,6 +17,7 @@ from typing import Final, TextIO
 import uvicorn
 from fastapi import FastAPI
 
+from grc_sidecar.api.contradictions import router as contradictions_router
 from grc_sidecar.api.errors import register_error_handlers
 from grc_sidecar.api.health import router as health_router
 from grc_sidecar.api.ledger import router as ledger_router
@@ -24,6 +25,9 @@ from grc_sidecar.api.questionnaire import router as questionnaire_router
 from grc_sidecar.api.readiness import router as readiness_router
 from grc_sidecar.api.reality import router as reality_router
 from grc_sidecar.config import Settings
+from grc_sidecar.contradiction_runtime import build_contradiction_runtime
+from grc_sidecar.contradictions.runs import ContradictionRuns
+from grc_sidecar.jobs import JobSlot
 from grc_sidecar.ledger.service import LedgerService, build_ledger_service
 from grc_sidecar.llm.model_gate import ModelGate
 from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
@@ -57,8 +61,11 @@ def _model_check_lifespan(
             client, (settings.embedding_model, settings.generation_model), SystemClock()
         )
         app.state.gate = gate
-        runtime = build_runtime(settings, gate, client)
+        slot = JobSlot()  # one heavy job at a time, shared by questionnaire and contradiction runs
+        runtime = build_runtime(settings, gate, client, slot=slot)
         app.state.questionnaire = None if runtime is None else runtime.runs
+        contradictions = build_contradiction_runtime(settings, gate, slot)
+        app.state.contradictions = None if contradictions is None else contradictions.runs
         ledger, close_ledger = build_ledger_service(
             settings, None if runtime is None else runtime.ledger, SystemClock()
         )
@@ -73,6 +80,8 @@ def _model_check_lifespan(
                 await check
             if runtime is not None:
                 await runtime.aclose()
+            if contradictions is not None:
+                await contradictions.aclose()
             if close_ledger is not None:
                 await close_ledger()
             await client.aclose()
@@ -88,14 +97,16 @@ def create_app(
     questionnaire: QuestionnaireRuns | None = None,
     reality: RealityRuntime | None = None,
     ledger: LedgerService | None = None,
+    contradictions: ContradictionRuns | None = None,
 ) -> ASGIApp:
     """Build the app with authentication wrapped around it from the outside.
 
     With `settings`, startup builds the Ollama client and a model gate and checks the models in
     the background, and, if the vault, questionnaire and export folders are all configured, the
     questionnaire runs; with the import and vault folders configured, the reality check; with the
-    ledger folder configured, the run record. A ready-made `gate`, `questionnaire`, `reality` and
-    `ledger` are for tests; with none of them,
+    ledger folder configured, the run record; with the vault folder configured, the contradiction
+    detector. A ready-made `gate`, `questionnaire`, `reality`, `ledger` and `contradictions` are for
+    tests; with none of them,
     `/readiness` and anything that needs a model or a folder refuse (503) instead of proceeding
     unchecked.
     """
@@ -105,10 +116,12 @@ def create_app(
     api.state.questionnaire = questionnaire
     api.state.reality = reality
     api.state.ledger = ledger
+    api.state.contradictions = contradictions
     register_error_handlers(api)
     api.include_router(health_router)
     api.include_router(readiness_router)
     api.include_router(questionnaire_router)
+    api.include_router(contradictions_router)
     api.include_router(reality_router)
     api.include_router(ledger_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own

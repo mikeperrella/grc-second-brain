@@ -104,11 +104,14 @@ grc-second-brain/
       retrieval/               Query builder, hybrid merge, graph expansion, context budget
       repositories/            VectorRepository protocol + implementations
       questionnaire/           Excel engine
+      reality/                 Reality check: offline IT-export import checked against a policy claim (ADR-016)
+      ledger/                  Promise ledger, run record, recall, blast radius (ADR-017, ADR-018)
+      contradictions/          Contradiction detector: code finds the pairs, the model can only keep or lower (ADR-019)
       remediation/             Policy-to-code engine
     tests/
   vault-sample/                Synthetic Obsidian vault (fictional company); pinned by the M4 golden tests
   vault-demo/                  Second synthetic vault for the M5 evaluation set and demo (M5b)
-  fixtures/                    Synthetic questionnaires and test files (eval/ holds the labeled eval set)
+  fixtures/                    Synthetic questionnaires and test files (eval/ holds the labeled eval sets; vault-contradictions/ holds the contradiction detector's synthetic notes)
   docs/
     adr/                       Architecture Decision Records
     threat-model.md
@@ -210,6 +213,10 @@ The status contract, with its reasons, is ADR-013 (status and grounding). The fi
 - Vault content, vendor documents, and questionnaire text are untrusted data. Wrap them in clearly labeled delimiters and instruct the model to treat them as data only.
 - The model has no tools. It can only return schema-validated JSON. All file writes and process execution are performed by backend code acting on validated fields, never on free text.
 - Include adversarial test fixtures (instructions hidden in vault notes and questionnaire cells) in the test suite.
+
+### 8.7 Contradiction detector
+- The contract and the measured results are ADR-019. Code finds the claims and the pairs; the model can only keep a finding or lower it, never raise it. `VALUE_CONFLICT` needs a valid model verdict, so with no verdict every finding is a `CANDIDATE` flagged `model_not_consulted`.
+- Both quotes must be found verbatim in company-policy chunks. Findings are derived on demand and never stored. Numbers only: no finding does not mean the policies agree.
 
 ---
 

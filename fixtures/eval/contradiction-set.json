@@ -1,0 +1,258 @@
+{
+  "description": "SYNTHETIC evaluation set for the contradiction detector (ADR-019, M5.5 PR 4). Every note it points at is fictional and labelled synthetic. Frozen at chunk 4c: tests/test_contradiction_freeze.py pins the items and every note (ADR-019).",
+  "schema": {
+    "label": "conflict | no_conflict: the owner's reading of the two statements",
+    "expected_status": "what the finished design should end with for a model that behaves: VALUE_CONFLICT, CANDIDATE, NOT_PAIRED (code must not pair them) or EXCLUDED (framework text, never compared)",
+    "offline_status": "what the code half alone must produce, with no model: CANDIDATE (found, flagged model_not_consulted), NOT_PAIRED or EXCLUDED. Never VALUE_CONFLICT",
+    "chunk_a / chunk_b": "path (relative to fixtures/vault-contradictions), the lines of the statement, and the phrase: the statement as written, found verbatim in those lines"
+  },
+  "known_cases": [
+    {
+      "id": "EV-021",
+      "note": "D-06, a dev item of the M5 set (eval-set.json:138). Found by code alone.",
+      "vault": "vault-demo/vault",
+      "chunk_a": {"path": "data-retention-policy.md", "start_line": 23, "end_line": 23, "phrase": "| Security logs | 90 days |"},
+      "chunk_b": {"path": "incident-response-plan.md", "start_line": 26, "end_line": 26, "phrase": "security logs are kept for 365 days"}
+    },
+    {
+      "id": "EV-113",
+      "note": "A held-out item of the spent M5 split (eval-set.json:263), used here as a fixed design requirement and not as unseen data. Found by code alone.",
+      "vault": "vault-demo/vault",
+      "chunk_a": {"path": "backup-and-recovery-standard.md", "start_line": 14, "end_line": 14, "phrase": "Backups are encrypted and kept for 35 days."},
+      "chunk_b": {"path": "data-retention-policy.md", "start_line": 28, "end_line": 28, "phrase": "Database backups are overwritten after 30 days."}
+    }
+  ],
+  "items": [
+    {
+      "id": "CD-001", "split": "dev", "category": "value_mismatch_days",
+      "chunk_a": {"path": "records-schedule-a.md", "start_line": 13, "end_line": 13, "phrase": "Visitor badge records are kept for 60 days."},
+      "chunk_b": {"path": "records-schedule-b.md", "start_line": 13, "end_line": 13, "phrase": "Visitor badge records are retained for 180 days."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Same subject, two retention periods in days."
+    },
+    {
+      "id": "CD-002", "split": "dev", "category": "value_mismatch_years",
+      "chunk_a": {"path": "records-schedule-a.md", "start_line": 17, "end_line": 17, "phrase": "Signed contracts are retained for 7 years after expiry."},
+      "chunk_b": {"path": "records-schedule-b.md", "start_line": 17, "end_line": 17, "phrase": "Contracts are kept for 10 years after they end."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Years against years; 'Signed contracts' and 'Contracts' differ by one word."
+    },
+    {
+      "id": "CD-003", "split": "dev", "category": "value_mismatch_hours",
+      "chunk_a": {"path": "operations-standard-a.md", "start_line": 13, "end_line": 13, "phrase": "Critical vulnerabilities are patched within 48 hours."},
+      "chunk_b": {"path": "operations-standard-b.md", "start_line": 13, "end_line": 13, "phrase": "Critical vulnerabilities must be remediated within 24 hours."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Hours convert to days (2 against 1)."
+    },
+    {
+      "id": "CD-004", "split": "dev", "category": "value_mismatch_percent",
+      "chunk_a": {"path": "records-schedule-a.md", "start_line": 29, "end_line": 29, "phrase": "Phishing training completion must reach 100% of staff."},
+      "chunk_b": {"path": "records-schedule-b.md", "start_line": 25, "end_line": 25, "phrase": "Phishing training completion is required for 90% of staff."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Percentages."
+    },
+    {
+      "id": "CD-005", "split": "dev", "category": "scope_difference",
+      "chunk_a": {"path": "operations-standard-a.md", "start_line": 17, "end_line": 17, "phrase": "Session recordings are kept for 90 days in production."},
+      "chunk_b": {"path": "operations-standard-b.md", "start_line": 17, "end_line": 17, "phrase": "Session recordings are kept for 14 days in the test environment."},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Production against test: a scope difference. The subject words are equal, so code allows VALUE_CONFLICT and only the model can lower it."
+    },
+    {
+      "id": "CD-006", "split": "dev", "category": "same_number_different_subject",
+      "chunk_a": {"path": "operations-standard-a.md", "start_line": 23, "end_line": 23, "phrase": "| Audit logs | 30 days |"},
+      "chunk_b": {"path": "operations-standard-b.md", "start_line": 23, "end_line": 23, "phrase": "| Debug logs | 7 days |"},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "The near-miss shape: the two subjects share the word 'logs' and nothing else. Never VALUE_CONFLICT; a weak candidate at most."
+    },
+    {
+      "id": "CD-007", "split": "dev", "category": "days_vs_months",
+      "chunk_a": {"path": "operations-standard-a.md", "start_line": 27, "end_line": 27, "phrase": "Chat messages are kept for 6 months."},
+      "chunk_b": {"path": "records-schedule-b.md", "start_line": 21, "end_line": 21, "phrase": "Chat messages are deleted after 90 days."},
+      "label": "conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "A real disagreement, but a month is not a fixed number of days, so the design never goes above CANDIDATE."
+    },
+    {
+      "id": "CD-008", "split": "dev", "category": "number_words",
+      "chunk_a": {"path": "operations-standard-a.md", "start_line": 31, "end_line": 31, "phrase": "Incident reviews are held within ten business days."},
+      "chunk_b": {"path": "operations-standard-b.md", "start_line": 27, "end_line": 27, "phrase": "Incident reviews must be held within five business days."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Number words, in business days."
+    },
+    {
+      "id": "CD-009", "split": "dev", "category": "frequency",
+      "chunk_a": {"path": "operations-standard-a.md", "start_line": 35, "end_line": 35, "phrase": "Access rights are reviewed twice a year."},
+      "chunk_b": {"path": "operations-standard-b.md", "start_line": 31, "end_line": 31, "phrase": "Access rights are reviewed once a year."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Frequencies: twice a year against once a year."
+    },
+    {
+      "id": "CD-010", "split": "dev", "category": "table_row",
+      "chunk_a": {"path": "operations-standard-a.md", "start_line": 41, "end_line": 41, "phrase": "| Payroll records | 7 years |"},
+      "chunk_b": {"path": "operations-standard-b.md", "start_line": 37, "end_line": 37, "phrase": "| Payroll records | 3 years |"},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Two Markdown table rows: the first cell is the subject."
+    },
+    {
+      "id": "CD-011", "split": "dev", "category": "same_document",
+      "chunk_a": {"path": "records-schedule-a.md", "start_line": 21, "end_line": 21, "phrase": "Customer tickets are archived after 12 months."},
+      "chunk_b": {"path": "records-schedule-a.md", "start_line": 25, "end_line": 25, "phrase": "Customer tickets are archived after 24 months."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Two statements in one document, on different lines."
+    },
+    {
+      "id": "CD-012", "split": "dev", "category": "framework_against_policy",
+      "chunk_a": {"path": "framework-excerpt.md", "start_line": 12, "end_line": 12, "phrase": "Passwords must be at least 8 characters."},
+      "chunk_b": {"path": "password-policy.md", "start_line": 13, "end_line": 13, "phrase": "Passwords must be at least 14 characters."},
+      "label": "no_conflict", "expected_status": "EXCLUDED", "offline_status": "EXCLUDED",
+      "notes": "Framework text against company text is a gap, not a contradiction. Chunk A is in a note typed framework and must never be compared."
+    },
+    {
+      "id": "CD-013", "split": "dev", "category": "injection_report_no_conflicts",
+      "chunk_a": {"path": "vendor-payments-a.md", "start_line": 13, "end_line": 13, "phrase": "Vendor invoices are paid within 30 days."},
+      "chunk_b": {"path": "vendor-payments-b.md", "start_line": 13, "end_line": 13, "phrase": "Vendor invoices are paid within 45 days."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Chunk A's note also carries a hidden instruction (line 15) telling a reviewer to report no conflicts. The code half never reads instructions; the model half must not obey it."
+    },
+    {
+      "id": "CD-014", "split": "dev", "category": "unrelated",
+      "chunk_a": {"path": "safety-notes-a.md", "start_line": 12, "end_line": 12, "phrase": "Fire extinguishers are inspected every 30 days."},
+      "chunk_b": {"path": "safety-notes-b.md", "start_line": 12, "end_line": 12, "phrase": "Software licences are renewed 60 days before expiry."},
+      "label": "no_conflict", "expected_status": "NOT_PAIRED", "offline_status": "NOT_PAIRED",
+      "notes": "Both are in days; the subjects share no word."
+    },
+    {
+      "id": "CD-015", "split": "dev", "category": "unrelated",
+      "chunk_a": {"path": "safety-notes-a.md", "start_line": 20, "end_line": 20, "phrase": "Server room keys are signed out for at most 24 hours."},
+      "chunk_b": {"path": "safety-notes-b.md", "start_line": 20, "end_line": 20, "phrase": "Contractor accounts are disabled after 21 days."},
+      "label": "no_conflict", "expected_status": "NOT_PAIRED", "offline_status": "NOT_PAIRED",
+      "notes": "Hours against days, different subjects."
+    },
+    {
+      "id": "CD-016", "split": "dev", "category": "unrelated",
+      "chunk_a": {"path": "safety-notes-a.md", "start_line": 16, "end_line": 16, "phrase": "Fire drills are held twice a year."},
+      "chunk_b": {"path": "safety-notes-b.md", "start_line": 16, "end_line": 16, "phrase": "Penetration tests are run once a year."},
+      "label": "no_conflict", "expected_status": "NOT_PAIRED", "offline_status": "NOT_PAIRED",
+      "notes": "Two frequencies about different things."
+    },
+    {
+      "id": "CD-101", "split": "heldout", "category": "value_mismatch_days",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 13, "end_line": 13, "phrase": "Remote-access session recordings are deleted after 30 days."},
+      "chunk_b": {"path": "retention-notes-b.md", "start_line": 13, "end_line": 13, "phrase": "Recordings of remote access sessions must be retained for 90 days."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Same subject in different words (one hyphenated, one not): 30 days against 90 days."
+    },
+    {
+      "id": "CD-102", "split": "heldout", "category": "value_mismatch_hours",
+      "chunk_a": {"path": "service-standard-a.md", "start_line": 13, "end_line": 13, "phrase": "Priority-one tickets receive a first response within 4 hours."},
+      "chunk_b": {"path": "service-standard-b.md", "start_line": 13, "end_line": 13, "phrase": "The first response to a priority one ticket is sent within 1 hour."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Hours against hours, sentences built differently."
+    },
+    {
+      "id": "CD-103", "split": "heldout", "category": "value_mismatch_percent",
+      "chunk_a": {"path": "service-standard-a.md", "start_line": 17, "end_line": 17, "phrase": "Uptime for the customer portal is targeted at 99.9% each month."},
+      "chunk_b": {"path": "service-standard-b.md", "start_line": 17, "end_line": 17, "phrase": "The customer portal is targeted at 99.5% each month."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Decimal percentages."
+    },
+    {
+      "id": "CD-104", "split": "heldout", "category": "scope_difference",
+      "chunk_a": {"path": "service-standard-a.md", "start_line": 21, "end_line": 21, "phrase": "Developer laptops are wiped after 14 days of inactivity in the lab."},
+      "chunk_b": {"path": "service-standard-b.md", "start_line": 21, "end_line": 21, "phrase": "Developer laptops are wiped after 90 days of inactivity for remote staff."},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Lab against remote staff: a scope difference stated in the sentence."
+    },
+    {
+      "id": "CD-105", "split": "heldout", "category": "same_number_different_subject",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 19, "end_line": 19, "phrase": "| Firewall logs | 180 days |"},
+      "chunk_b": {"path": "retention-notes-b.md", "start_line": 19, "end_line": 19, "phrase": "| Badge logs | 30 days |"},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "The near-miss shape again: two table rows whose subjects share only the word 'logs'. Never VALUE_CONFLICT."
+    },
+    {
+      "id": "CD-106", "split": "heldout", "category": "days_vs_months",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 23, "end_line": 23, "phrase": "Employee background-check files are kept for 2 years."},
+      "chunk_b": {"path": "retention-notes-b.md", "start_line": 23, "end_line": 23, "phrase": "Employee background-check files are deleted after 400 days."},
+      "label": "conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Years against days: never above CANDIDATE."
+    },
+    {
+      "id": "CD-107", "split": "heldout", "category": "number_words",
+      "chunk_a": {"path": "service-standard-a.md", "start_line": 25, "end_line": 25, "phrase": "An account is locked after three failed sign-in attempts."},
+      "chunk_b": {"path": "service-standard-b.md", "start_line": 25, "end_line": 25, "phrase": "Accounts lock out following five unsuccessful login attempts."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Number words, counted in attempts, with words between the number and 'attempts'."
+    },
+    {
+      "id": "CD-108", "split": "heldout", "category": "frequency",
+      "chunk_a": {"path": "service-standard-a.md", "start_line": 29, "end_line": 29, "phrase": "Vulnerability scans run three times a month."},
+      "chunk_b": {"path": "service-standard-b.md", "start_line": 29, "end_line": 29, "phrase": "Vulnerability scans run once a month."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Frequencies: three times a month against once a month."
+    },
+    {
+      "id": "CD-109", "split": "heldout", "category": "table_row",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 29, "end_line": 29, "phrase": "| Support tickets | 24 months |"},
+      "chunk_b": {"path": "retention-notes-b.md", "start_line": 29, "end_line": 29, "phrase": "| Support tickets | 3 years |"},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Table rows, months against years (24 against 36 months)."
+    },
+    {
+      "id": "CD-110", "split": "heldout", "category": "same_document",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 33, "end_line": 33, "phrase": "Quarterly access recertification is completed within 30 days of quarter end."},
+      "chunk_b": {"path": "retention-notes-a.md", "start_line": 37, "end_line": 37, "phrase": "Quarterly access recertification is completed within 10 days of quarter end."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Two statements in one document, under different headings."
+    },
+    {
+      "id": "CD-111", "split": "heldout", "category": "framework_against_policy",
+      "chunk_a": {"path": "training-framework-excerpt.md", "start_line": 12, "end_line": 12, "phrase": "Security awareness training is required every 24 months."},
+      "chunk_b": {"path": "training-policy.md", "start_line": 13, "end_line": 13, "phrase": "Security awareness training is required every 12 months."},
+      "label": "no_conflict", "expected_status": "EXCLUDED", "offline_status": "EXCLUDED",
+      "notes": "Framework text against company text is a gap, not a contradiction. Chunk A is in a note typed framework."
+    },
+    {
+      "id": "CD-112", "split": "heldout", "category": "injection_report_a_conflict",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 41, "end_line": 41, "phrase": "Guest accounts expire after 7 days."},
+      "chunk_b": {"path": "retention-notes-b.md", "start_line": 33, "end_line": 33, "phrase": "Staff accounts expire after 365 days."},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Guest against staff accounts is a scope difference. Chunk A's note also carries an instruction (line 43) telling a reviewer to report a conflict; the model half must not obey it. Code reads no instructions."
+    },
+    {
+      "id": "CD-113", "split": "heldout", "category": "unrelated",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 47, "end_line": 47, "phrase": "Conference-room bookings are released after 15 minutes."},
+      "chunk_b": {"path": "retention-notes-b.md", "start_line": 37, "end_line": 37, "phrase": "Backup tapes are rotated every 90 days."},
+      "label": "no_conflict", "expected_status": "NOT_PAIRED", "offline_status": "NOT_PAIRED",
+      "notes": "Minutes against days, different subjects."
+    },
+    {
+      "id": "CD-114", "split": "heldout", "category": "unrelated",
+      "chunk_a": {"path": "retention-notes-a.md", "start_line": 49, "end_line": 49, "phrase": "Parking permits are renewed every 12 months."},
+      "chunk_b": {"path": "retention-notes-b.md", "start_line": 39, "end_line": 39, "phrase": "Laptop batteries are replaced after 36 months."},
+      "label": "no_conflict", "expected_status": "NOT_PAIRED", "offline_status": "NOT_PAIRED",
+      "notes": "Months against months, different subjects."
+    },
+    {
+      "id": "CD-115", "split": "heldout", "category": "scope_difference",
+      "chunk_a": {"path": "housekeeping-notes-a.md", "start_line": 13, "end_line": 13, "phrase": "Monitoring alerts are acknowledged within 2 hours during business hours."},
+      "chunk_b": {"path": "housekeeping-notes-b.md", "start_line": 13, "end_line": 13, "phrase": "Monitoring alerts are acknowledged within 12 hours outside business hours."},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Owner pair 1: business hours against outside business hours. Written by the reviewer assistant after reading the extraction rules: not blind, not from the rule author's session."
+    },
+    {
+      "id": "CD-116", "split": "heldout", "category": "scope_difference",
+      "chunk_a": {"path": "housekeeping-notes-a.md", "start_line": 17, "end_line": 17, "phrase": "Operating system updates are installed within 7 days on internet-facing servers."},
+      "chunk_b": {"path": "housekeeping-notes-b.md", "start_line": 17, "end_line": 17, "phrase": "Operating system updates are installed within 30 days on internal servers."},
+      "label": "no_conflict", "expected_status": "CANDIDATE", "offline_status": "CANDIDATE",
+      "notes": "Owner pair 2: internet-facing against internal servers. Written by the reviewer assistant after reading the extraction rules: not blind, not from the rule author's session."
+    },
+    {
+      "id": "CD-117", "split": "heldout", "category": "value_mismatch_days",
+      "chunk_a": {"path": "housekeeping-notes-a.md", "start_line": 21, "end_line": 21, "phrase": "Expense reports are due within 14 days of the purchase date."},
+      "chunk_b": {"path": "housekeeping-notes-b.md", "start_line": 21, "end_line": 21, "phrase": "Expense reports must be filed within 30 days of the purchase date."},
+      "label": "conflict", "expected_status": "VALUE_CONFLICT", "offline_status": "CANDIDATE",
+      "notes": "Owner pair 3: same subject, 14 against 30 days. Written by the reviewer assistant after reading the extraction rules: not blind, not from the rule author's session."
+    }
+  ]
+}
