@@ -192,6 +192,7 @@ Built 2026-10-15 offline with a scripted fake model only; no real model call was
 - The model can still be steered inside the ceiling in either direction (F33-2a, F33-2c); the raw-verdict counts exist to measure that. An injection note can deny the strongest status and can confirm a conflict that is a scope difference.
 - A pair is asked about one sentence or table row each plus its chunk; a scope that is stated elsewhere in the document is invisible to the model.
 - The cancelled-before-start case of a questionnaire task (only at shutdown) does not release the slot; the process is ending.
+- `sidecar/tests/test_contradiction_verdict.py::test_the_template_hash_is_recorded_in_adr_019` is skipped in the air-gap container because `docs/` is absent there (the skip reason is on the container job's allow-list, exact match, deviation M55-18), and it runs in the Windows job, which allows 0 skips.
 - Nothing here was run against a real model, so the template's behaviour, the speed and every model-dependent claim are unmeasured until live check C.
 
 ## Chunk 4c: details

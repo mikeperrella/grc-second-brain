@@ -66,7 +66,7 @@ jobs:
             grc-airgap sh -c '
             python -m pytest -rs -p no:cacheprovider --junitxml=/tmp/junit.xml
             pytest_status=$?
-            python /ci-scripts/check_junit_skips.py /tmp/junit.xml --allow "Windows-only path behavior" --allow "Repository root not found (air-gap container holds only sidecar/)"
+            python /ci-scripts/check_junit_skips.py /tmp/junit.xml --allow "Windows-only path behavior" --allow "Repository root not found (air-gap container holds only sidecar/)" --allow "docs/ is not present in this environment"
             skips_status=$?
             [ "$pytest_status" -eq 0 ] && [ "$skips_status" -eq 0 ]
           '
