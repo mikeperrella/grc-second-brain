@@ -56,3 +56,7 @@ Notes and known gaps:
 - Row 14's test uses a stand-in for "the model call" (a flag set after `require`), and also asserts that no request other than `GET /api/tags` reached the fake Ollama. Real model-dependent operations (the embedding of a query) are wired to the gate in M4e, which adds its own refusal test.
 - Rows 15, 25 and 26 break different lines of the same method (`require`), and each failed on its own test. Row 25 would also break the lock test's "one request in total" assertion; that test is named for the lock and is mutation-checked separately (row 26).
 - The path check required by CLAUDE.md 3.6 on the Rust side is not part of this ADR (no path-taking command exists); it stays with the folder-picker chunk (ADR-009).
+
+## Amended (planned, ADR-020), 2026-10-15
+
+Planned, not built. Two known limits in the Consequences will change. (1) "Known limit (M4b): `EnvRejected` is reused" is closed in chunk 6e by a dedicated failure kind (provisional `index_dir_unavailable`), which changes the Rust enum, `health-contract.json`, `health.ts` and its test together (24 kinds become 25; G8). (2) "the host does not read `/readiness` yet (no UI consumer until M6)" stops being true when the host proxy (6d) and the status bar (6f) read it: the `readiness` route is planned as a GET with a 5 s timeout and a 1 KiB cap, polled every 5 s only while health is healthy (G11). `/health` and `/readiness` stay separate. See [ADR-020](020-host-proxy-folders-polling.md).
