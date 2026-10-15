@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 
 from grc_sidecar.config import Settings, resolve_index_dir
+from grc_sidecar.jobs import JobSlot
 from grc_sidecar.llm.generation_client import GenerationClient
 from grc_sidecar.llm.model_gate import ModelGate
 from grc_sidecar.llm.ollama_embeddings import OllamaEmbeddingClient
@@ -59,11 +60,13 @@ def build_runtime(
     embedder: OllamaEmbeddingClient,
     *,
     generator_transport: AsyncBaseTransport | None = None,
+    slot: JobSlot | None = None,
 ) -> QuestionnaireRuntime | None:
     """The runtime for these settings, or None when a required folder is not configured.
 
     `generator_transport` is for tests: it replaces the network under the generation client, so a
-    test never reaches a real Ollama.
+    test never reaches a real Ollama. `slot` is the one-heavy-job slot shared with the contradiction
+    detector; without it the runs get a slot of their own.
     """
     vault_dir = settings.vault_dir
     questionnaire_dir = settings.questionnaire_dir
@@ -106,6 +109,7 @@ def build_runtime(
         template_sha256=PROMPT_TEMPLATE_SHA256,
         run_recorder=None if ledger is None else LedgerRunRecorder(ledger),
         read_cited=lambda source_path, ranges: read_cited_file(vault_dir, source_path, ranges),
+        slot=JobSlot() if slot is None else slot,
     )
     runtime = QuestionnaireRuntime(QuestionnaireRuns(deps), ledger=ledger)
     if ledger is not None:

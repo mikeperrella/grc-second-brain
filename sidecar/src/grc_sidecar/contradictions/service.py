@@ -1,7 +1,10 @@
-"""The detector's code half: read the index, find claims, make pairs, verify, set the status.
+"""The detector: read the index, find claims, make pairs, verify, ask the model, set the status.
 
-No model is called here (chunk 4a-2), so no finding is ever `VALUE_CONFLICT`. Every finding that
-survives verification is a `CANDIDATE` flagged `model_not_consulted`.
+The code half (claims, pairs, verification, the cap) never needs a model. With no model (`asker` is
+None, or it is unavailable) every finding that survives verification is a `CANDIDATE` flagged
+`model_not_consulted`, and none is ever `VALUE_CONFLICT`. With a model, each kept pair gets one
+question (`verdict.py`) and the status is computed by `status.py`: the verdict can keep a finding at
+the ceiling the code facts set, or lower it, and nothing it says can add a pair or change a fact.
 
 Reading goes through the existing `VectorRepository` and nothing else: the chunks come from
 `chunks_for`, their kind from the `documents` row (`source_kind_of`, the rule retrieval uses), and
@@ -10,15 +13,21 @@ withdrawn controls are never read into the comparison. A stale document has no r
 so a file that changed after indexing is never compared; the report counts those documents.
 """
 
+import logging
 from collections.abc import Mapping, Sequence
 
 from grc_sidecar.contradictions.claims import extract_claims
 from grc_sidecar.contradictions.models import (
     NUMERIC_ONLY_STATEMENT,
+    CandidateReason,
     ChunkText,
     Claim,
     DetectionReport,
     Finding,
+    FindingStatus,
+    Flag,
+    ModelUse,
+    ModelVerdictView,
     Pair,
 )
 from grc_sidecar.contradictions.pairs import (
@@ -27,7 +36,8 @@ from grc_sidecar.contradictions.pairs import (
     apply_cap,
     generate_pairs,
 )
-from grc_sidecar.contradictions.status import decide
+from grc_sidecar.contradictions.status import decide, decide_from_verdict
+from grc_sidecar.contradictions.verdict import Failure, PairAsker, VerdictOutcome
 from grc_sidecar.contradictions.verify import Verification, verify_pair
 from grc_sidecar.errors import IndexNotBuiltError
 from grc_sidecar.repositories.base import VectorRepository
@@ -35,14 +45,25 @@ from grc_sidecar.retrieval.query import build_lexical_query
 from grc_sidecar.retrieval.service import source_kind_of
 from grc_sidecar.retrieval.withdrawn import is_withdrawn_section
 
+_log = logging.getLogger(__name__)
+
+# A model that cannot be used at all: once one pair hits this, no further pair is asked.
+_SYSTEMIC: tuple[Failure, ...] = ("unavailable", "model_missing", "non_local_refused")
+
 
 def _place(path: str, lines: tuple[int, int]) -> str:
     first, last = lines
     return f"{path}:{first}" if first == last else f"{path}:{first}-{last}"
 
 
-def _finding(pair: Pair, check: Verification) -> Finding:
-    status, reasons, flags = decide(pair, keeps_conflict=None)
+def _finding(
+    pair: Pair,
+    check: Verification,
+    status: FindingStatus,
+    reasons: tuple[CandidateReason, ...],
+    flags: tuple[Flag, ...],
+    verdict: ModelVerdictView | None = None,
+) -> Finding:
     # A verified pair always has its located lines; the claim's own lines are only a fallback.
     lines_a = check.lines_a or (pair.a.start_line, pair.a.end_line)
     lines_b = check.lines_b or (pair.b.start_line, pair.b.end_line)
@@ -57,7 +78,37 @@ def _finding(pair: Pair, check: Verification) -> Finding:
         numbers=(pair.a.number.text, pair.b.number.text),
         flags=flags,
         reasons=reasons,
+        verdict=verdict,
     )
+
+
+def _drop(dropped: dict[str, int], reasons: Sequence[str]) -> None:
+    for reason in reasons:
+        dropped[reason] = dropped.get(reason, 0) + 1
+
+
+def _prepare(
+    texts: Mapping[str, ChunkText],
+    claims: Sequence[Claim],
+    neighbours: Mapping[str, frozenset[str]],
+    cap: int,
+) -> tuple[int, list[tuple[Pair, Verification]], dict[str, int], int]:
+    """Pairs, then verification, then the cap: (pairs made, kept pairs, drops by reason, left out).
+
+    Verification runs before the cap, so dropped pairs do not use the cap up."""
+    pairs = generate_pairs(claims, neighbours)
+    context_ids = frozenset(texts)
+    dropped: dict[str, int] = {}
+    verified: list[tuple[Pair, Verification]] = []
+    for pair in pairs:
+        check = verify_pair(pair, texts, context_ids)
+        if check.ok:
+            verified.append((pair, check))
+        _drop(dropped, check.reasons)
+    kept, left_out = apply_cap(verified, cap)
+    if left_out:
+        dropped["over_cap"] = left_out
+    return len(pairs), kept, dropped, left_out
 
 
 def build_report(
@@ -69,29 +120,122 @@ def build_report(
     withheld_stale: int = 0,
     excluded_chunks: int = 0,
 ) -> DetectionReport:
-    """Pairs, then verification, then the cap. Pure: no index and no model."""
-    pairs = generate_pairs(claims, neighbours)
-    context_ids = frozenset(texts)
-    dropped: dict[str, int] = {}
-    verified: list[tuple[Pair, Verification]] = []
-    for pair in pairs:
-        check = verify_pair(pair, texts, context_ids)
-        if check.ok:
-            verified.append((pair, check))
-        for reason in check.reasons:
-            dropped[reason] = dropped.get(reason, 0) + 1
-    kept, left_out = apply_cap(verified, cap)
-    if left_out:
-        dropped["over_cap"] = left_out
+    """The code half only. Pure: no index and no model, so every finding is a `CANDIDATE`."""
+    made, kept, dropped, left_out = _prepare(texts, claims, neighbours, cap)
+    findings = []
+    for pair, check in kept:
+        status, reasons, flags = decide(pair, keeps_conflict=None)
+        findings.append(_finding(pair, check, status, reasons, flags))
     return DetectionReport(
-        findings=tuple(_finding(pair, check) for pair, check in kept),
+        findings=tuple(findings),
         dropped=dropped,
         chunks_read=len(texts),
         excluded_chunks=excluded_chunks,
         claims_found=len(claims),
-        pairs_generated=len(pairs),
+        pairs_generated=made,
         withheld_stale=withheld_stale,
         says=NUMERIC_ONLY_STATEMENT,
+        over_cap=left_out,
+        model_status="unavailable",
+        no_verdict=len(kept),
+    )
+
+
+def _model_use(failure: Failure | None, asked: int, answered: int) -> ModelUse:
+    """The fixed word for how the model fared. `partial` is some pairs with a verdict and some
+    without; a model that could not be used at all is named by why."""
+    if failure is not None and failure in _SYSTEMIC:
+        if answered:
+            return "partial"
+        if failure == "model_missing":
+            return "model_missing"
+        if failure == "non_local_refused":
+            return "non_local_refused"
+        return "unavailable"
+    if asked and answered < asked:
+        return "partial"
+    return "available"
+
+
+async def build_report_with_model(
+    texts: Mapping[str, ChunkText],
+    claims: Sequence[Claim],
+    neighbours: Mapping[str, frozenset[str]],
+    *,
+    cap: int,
+    asker: PairAsker,
+    withheld_stale: int = 0,
+    excluded_chunks: int = 0,
+) -> DetectionReport:
+    """The code half, then one question per kept pair, strongest first (the cap's order).
+
+    Pairs are asked one after another. When the model cannot be used at all, the remaining pairs
+    are not asked and have no verdict. Every valid reply is counted by relation and `conflict`,
+    even when the ceiling caps the status (decision 9; the live-check measure of CD-112)."""
+    made, kept, dropped, left_out = _prepare(texts, claims, neighbours, cap)
+    findings: list[Finding] = []
+    counts: dict[str, dict[str, int]] = {}
+    answered = no_verdict = replies = 0
+    failure: Failure | None = None
+    for pair, check in kept:
+        if failure in _SYSTEMIC:
+            outcome = VerdictOutcome(None, False, (), failure, 0)  # not asked
+        else:
+            outcome = await asker.ask(pair, texts)
+            replies += outcome.replies
+            if outcome.failure in _SYSTEMIC:
+                failure = outcome.failure
+        verdict = outcome.verdict
+        if verdict is not None:
+            answered += 1
+            tally = counts.setdefault(verdict.relation, {"conflict_true": 0, "conflict_false": 0})
+            tally["conflict_true" if verdict.conflict else "conflict_false"] += 1
+        else:
+            no_verdict += 1
+        if outcome.shown_chunk_ids:
+            # "Cited in context" means the chunks actually in THIS prompt (ADR-019, chunk 4b).
+            shown = verify_pair(pair, texts, frozenset(outcome.shown_chunk_ids))
+            if not shown.ok:
+                _drop(dropped, shown.reasons)
+                continue
+        status, reasons, flags = decide_from_verdict(
+            pair, verdict, quote_invalid=outcome.quote_invalid
+        )
+        view = (
+            None
+            if verdict is None
+            else ModelVerdictView(
+                conflict=verdict.conflict,
+                relation=verdict.relation,
+                explanation=verdict.explanation,
+                model_confidence=verdict.model_confidence,
+            )
+        )
+        findings.append(_finding(pair, check, status, reasons, flags, view))
+    model_status = _model_use(failure, len(kept), answered)
+    _log.info(
+        "contradictions: pairs=%d kept=%d answered=%d no_verdict=%d over_cap=%d model=%s",
+        made,
+        len(kept),
+        answered,
+        no_verdict,
+        left_out,
+        model_status,
+    )
+    return DetectionReport(
+        findings=tuple(findings),
+        dropped=dropped,
+        chunks_read=len(texts),
+        excluded_chunks=excluded_chunks,
+        claims_found=len(claims),
+        pairs_generated=made,
+        withheld_stale=withheld_stale,
+        says=NUMERIC_ONLY_STATEMENT,
+        over_cap=left_out,
+        model_status=model_status,
+        model_calls=replies,
+        verdict_counts=counts,
+        no_verdict=no_verdict,
     )
 
 
@@ -114,8 +258,10 @@ def _in_scope(path: str, scope: str | None) -> bool:
 
 
 class ContradictionDetector:
-    def __init__(self, repo: VectorRepository) -> None:
+    def __init__(self, repo: VectorRepository, asker: PairAsker | None = None) -> None:
+        """`asker` asks the model about each kept pair; None means no model is consulted."""
         self._repo = repo
+        self._asker = asker
 
     async def detect(
         self, *, scope: str | None = None, cap: int = DEFAULT_PAIR_CAP
@@ -157,11 +303,21 @@ class ContradictionDetector:
                 hits = await self._repo.lexical_search(match, NEIGHBOURS_PER_CLAIM) if match else []
                 by_match[match] = frozenset(hit.chunk.chunk_id for hit in hits)
             neighbours[claim.claim_id] = by_match[match]
-        return build_report(
+        if self._asker is None:
+            return build_report(
+                texts,
+                claims,
+                neighbours,
+                cap=cap,
+                withheld_stale=stale,
+                excluded_chunks=excluded,
+            )
+        return await build_report_with_model(
             texts,
             claims,
             neighbours,
             cap=cap,
+            asker=self._asker,
             withheld_stale=stale,
             excluded_chunks=excluded,
         )

@@ -16,7 +16,7 @@ Every check is code. A pair that fails any of them is dropped and counted by rea
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from grc_sidecar.contradictions.models import ChunkText, Claim, DropReason, Pair
+from grc_sidecar.contradictions.models import ChunkText, Claim, DropReason, Pair, PairVerdict
 from grc_sidecar.contradictions.numbers import find_numbers
 from grc_sidecar.questionnaire.grounding import locate_all_quotes, long_enough
 
@@ -56,6 +56,28 @@ def _verify_claim(
     if claim.number not in [number for number, _, _ in find_numbers(claim.quote)]:
         reasons.add("number_not_in_quote")
     return reasons, (place.start_line, place.end_line)
+
+
+def model_quote_problem(verdict: PairVerdict, text_a: str, text_b: str) -> str | None:
+    """A fixed sentence saying why the model's quotes are not usable, or None if they are.
+
+    A quote the model returns is re-verified like any other (ADR-019 decision 10): every non-empty
+    one must occur verbatim, whitespace being the only leniency, in the text of the source it names
+    (`quote_a` in S1, `quote_b` in S2). A conflict needs both quotes: it cannot be kept on a
+    passage the model did not copy. An empty quote is allowed only with `conflict` false. The
+    sentence never repeats the model's own text, so it is safe to show the model on attempt 2.
+    """
+    for field, source_id, quote, text in (
+        ("quote_a", "S1", verdict.quote_a, text_a),
+        ("quote_b", "S2", verdict.quote_b, text_b),
+    ):
+        if not quote.strip():
+            if verdict.conflict:
+                return f"{field} is empty, but a conflict needs a passage copied from {source_id}"
+            continue
+        if not locate_all_quotes(text, quote):
+            return f"{field} is not copied exactly from {source_id}"
+    return None
 
 
 def verify_pair(

@@ -6,8 +6,10 @@
 #
 # The directory is not called "tests": grc-py-httpx-client-outside-factory excludes
 # "**/tests/**", so a "tests" directory would stop that rule from firing here.
+# ruleid: grc-py-contradictions-network-process-import
 import subprocess
 
+# ruleid: grc-py-contradictions-network-process-import
 import httpx
 
 # ---------- grc-py-subprocess-shell-true ----------
@@ -87,7 +89,7 @@ import openai
 import anthropic
 # ruleid: grc-py-forbidden-network-imports
 from boto3 import client
-# ruleid: grc-py-forbidden-network-imports
+# ruleid: grc-py-forbidden-network-imports, grc-py-contradictions-network-process-import
 import requests
 # ruleid: grc-py-forbidden-network-imports
 from pinecone import Index
@@ -335,3 +337,53 @@ sqlite_vec.load(connection)
 connection.execute("select 1")
 # ok: grc-py-extension-load-outside-repositories
 plugin_loader.load(connection)
+
+# ---------- grc-py-contradictions-network-process-import ----------
+# ruleid: grc-py-contradictions-network-process-import
+import socket
+# ruleid: grc-py-contradictions-network-process-import
+import urllib.request
+# ruleid: grc-py-contradictions-network-process-import
+from http import client as http_client
+# ruleid: grc-py-contradictions-network-process-import
+from subprocess import run as run_process
+# ruleid: grc-py-contradictions-network-process-import
+import multiprocessing
+# ruleid: grc-py-contradictions-network-process-import
+import asyncio.subprocess
+# ruleid: grc-py-contradictions-network-process-import
+from grc_sidecar.security import net
+# ruleid: grc-py-contradictions-network-process-import
+from grc_sidecar.security.net import create_async_client
+# ruleid: grc-py-contradictions-network-process-import
+import grc_sidecar.security.net
+# ok: grc-py-contradictions-network-process-import
+import httpx_like_name
+# ok: grc-py-contradictions-network-process-import
+import socketlike
+# ok: grc-py-contradictions-network-process-import
+from grc_sidecar.contradictions.models import Pair
+# ok: grc-py-contradictions-network-process-import
+from grc_sidecar.security import paths
+# ok: grc-py-contradictions-network-process-import
+from httplib_notes import table
+
+# ---------- grc-py-contradictions-llm-outside-model-module ----------
+# ruleid: grc-py-contradictions-llm-outside-model-module
+from grc_sidecar.llm.prompt import neutralize
+# ruleid: grc-py-contradictions-llm-outside-model-module
+import grc_sidecar.llm
+# ruleid: grc-py-contradictions-llm-outside-model-module
+from grc_sidecar.llm import generation_client
+# ruleid: grc-py-contradictions-llm-outside-model-module
+from grc_sidecar import llm
+# ruleid: grc-py-contradictions-llm-outside-model-module
+import grc_sidecar.llm.retry
+# ok: grc-py-contradictions-llm-outside-model-module
+from grc_sidecar.contradictions.verdict import ModelAsker
+# ok: grc-py-contradictions-llm-outside-model-module
+from grc_sidecar import errors
+# ok: grc-py-contradictions-llm-outside-model-module
+import grc_sidecar_llm_notes
+# ok: grc-py-contradictions-llm-outside-model-module
+from grc_sidecar.questionnaire.grounding import long_enough

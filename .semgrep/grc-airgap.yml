@@ -237,6 +237,51 @@ rules:
         - "**/tests/**"
     pattern-regex: '\b(UPDATE|DELETE\s+FROM|INSERT\s+OR\s+REPLACE\s+INTO|REPLACE\s+INTO)\s+(run_record|run_answer|customer|promise|promise_event|schema_info)\b'
 
+  # ---------- Python: the contradiction detector (ADR-019, F33-6) ----------
+  # Two rules, because a rule's `paths` apply to the whole rule. The package may import no network
+  # or process module in ANY file, not even the model module; it may import the llm package only in
+  # verdict.py. The AST test test_contradiction_hygiene.py is the second layer and also sees
+  # __import__ and importlib. Scoped to the package and to the rule fixtures, so `semgrep --test`
+  # can see them (the fixture's own top-level imports are annotated for this rule).
+  - id: grc-py-contradictions-network-process-import
+    languages: [python]
+    severity: ERROR
+    message: "Nothing under grc_sidecar/contradictions/ may import a network or process module, httpx, or grc_sidecar.security.net (ADR-019, F33-6). The detector talks to the model only through the generation client that is passed in to verdict.py; a second path would bypass the endpoint allowlist, the model gate and the exactly-two-messages rule (ADR-012)."
+    paths:
+      include:
+        - "**/contradictions/**"
+        - ".semgrep/fixtures/grc-airgap.py"
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: import $MOD
+              - pattern: from $MOD import $X
+          - metavariable-regex:
+              metavariable: $MOD
+              regex: ^(socket|ssl|http|urllib|httpx|requests|subprocess|multiprocessing|ctypes|asyncio\.subprocess|grc_sidecar\.security\.net)(\..*)?$
+      - pattern: from grc_sidecar.security import net
+      - pattern: from asyncio import subprocess
+
+  - id: grc-py-contradictions-llm-outside-model-module
+    languages: [python]
+    severity: ERROR
+    message: "Only grc_sidecar/contradictions/verdict.py may import the grc_sidecar.llm package (ADR-019 decision 11). That module builds the two messages, applies the shared two-attempt budget and re-verifies the model's quotes; the status code, the pair code and the route must only ever see its validated result."
+    paths:
+      include:
+        - "**/contradictions/**"
+        - ".semgrep/fixtures/grc-airgap.py"
+      exclude:
+        - "**/contradictions/verdict.py"
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: import $MOD
+              - pattern: from $MOD import $X
+          - metavariable-regex:
+              metavariable: $MOD
+              regex: ^grc_sidecar\.llm(\..*)?$
+      - pattern: from grc_sidecar import llm
+
   # ---------- Rust: no shell ----------
   - id: grc-rs-shell-command
     languages: [rust]
