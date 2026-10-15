@@ -294,7 +294,7 @@ def test_two_records_sharing_a_prefix_return_only_the_exact_match(tmp_path: Path
 def test_a_renamed_copy_is_refused_even_with_the_same_8_hex_digits(tmp_path: Path) -> None:  # [NEG]
     service, root, first, _ = two_drafts_sharing_a_prefix(tmp_path)
     renamed = "Renamed-UNREVIEWED-DRAFT-abcdef12.xlsx"  # same 8 hex digits, different name
-    for name in (renamed, "Copy of " + first, first.upper(), "x.xlsx"):
+    for name in (renamed, "Copy of " + first, "Different-" + first, "x.xlsx"):
         shutil.copyfile(root / first, root / name)
         response = post(service, {"file": name})
         assert response.status_code == 422, name
