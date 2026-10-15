@@ -300,6 +300,90 @@ def test_a_run_is_recorded_once_and_whole(ledger_file: Path) -> None:  # [NEG]
     asyncio.run(scenario())
 
 
+# ----- lookup by the recorded file name (ADR-021 decision 2) ---------------------------------
+
+
+def named_run(run_id: str, file_name: str) -> NewRunRecord:
+    return new_run(run_id).model_copy(update={"file_name": file_name})
+
+
+def test_a_run_is_found_by_its_full_recorded_file_name_only(ledger_file: Path) -> None:  # [NEG]
+    shared = "aaaaaaaa"  # two runs whose ids (and so output names) share the same 8 hex digits
+    first, second = shared + "1" * 24, shared + "2" * 24
+    name_first = f"Vendor-UNREVIEWED-DRAFT-{shared}.xlsx"
+    name_second = f"Other-UNREVIEWED-DRAFT-{shared}.xlsx"
+
+    async def scenario() -> None:
+        repo = await open_repo(ledger_file)
+        await repo.add_run_record(named_run(first, name_first), [answer(2, run_id=first)])
+        await repo.add_run_record(named_run(second, name_second), [answer(2, run_id=second)])
+        found = await repo.get_run_record_by_file_name(name_first)
+        assert found is not None and found.run_id == first
+        found = await repo.get_run_record_by_file_name(name_second)
+        assert found is not None and found.run_id == second
+        # Not by the 8 hex digits, a prefix, a different case or a renamed copy.
+        assert await repo.get_run_record_by_file_name(shared) is None
+        assert await repo.get_run_record_by_file_name(name_first[:-5]) is None
+        assert await repo.get_run_record_by_file_name(name_first.upper()) is None
+        assert await repo.get_run_record_by_file_name("Copy of " + name_first) is None
+        assert await repo.get_run_record_by_file_name("%") is None
+        assert await repo.get_run_record_by_file_name("") is None
+        await repo.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_file_name_shared_by_two_records_matches_neither(ledger_file: Path) -> None:  # [NEG]
+    async def scenario() -> None:
+        repo = await open_repo(ledger_file)
+        await repo.add_run_record(named_run("a" * 32, "same.xlsx"), [answer(2, run_id="a" * 32)])
+        assert (await repo.get_run_record_by_file_name("same.xlsx")) is not None
+        await repo.add_run_record(named_run("b" * 32, "same.xlsx"), [answer(2, run_id="b" * 32)])
+        assert await repo.get_run_record_by_file_name("same.xlsx") is None
+        await repo.close()
+
+    asyncio.run(scenario())
+
+
+def test_open_existing_never_creates_the_ledger(tmp_path: Path) -> None:  # [NEG]
+    folder = tmp_path / "ledger"
+    path = folder / LEDGER_FILE_NAME
+
+    async def scenario() -> None:
+        repo = SqliteLedgerRepository(path, FixedClock(TODAY))
+        assert await repo.open_existing() is False
+        assert not folder.exists()
+        folder.mkdir()
+        path.write_bytes(b"")  # an empty file is not a ledger yet
+        assert await repo.open_existing() is False
+        assert path.read_bytes() == b""
+        await repo.open_or_create()
+        await repo.close()
+        again = SqliteLedgerRepository(path, FixedClock(TODAY))
+        assert await again.open_existing() is True
+        assert await again.get_run_record_by_file_name("none.xlsx") is None
+        await again.close()
+
+    asyncio.run(scenario())
+
+
+def test_open_existing_refuses_a_file_that_is_not_this_ledger(tmp_path: Path) -> None:  # [NEG]
+    path = tmp_path / LEDGER_FILE_NAME
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE unrelated (x INTEGER)")
+    con.commit()
+    con.close()
+    before = path.read_bytes()
+
+    async def scenario() -> None:
+        repo = SqliteLedgerRepository(path, FixedClock(TODAY))
+        with pytest.raises(LedgerSchemaMismatchError):
+            await repo.open_existing()
+
+    asyncio.run(scenario())
+    assert path.read_bytes() == before
+
+
 # ----- customers ----------------------------------------------------------------------------
 
 

@@ -28,6 +28,21 @@ from grc_sidecar.vault.normalize import sha256_hex
 TEXT_TYPES = frozenset({"s", "f"})
 
 
+def cell_unchanged(cell: object, recorded_sha256: str | None) -> bool:
+    """Is the cell exactly what ALIBI wrote? A blank cell matches only 'nothing was written'.
+
+    Shared by the reviewed-workbook import and the draft-rows route, so the two cannot disagree
+    about what "edited" means.
+    """
+    if cell is None:
+        return recorded_sha256 is None
+    return (
+        isinstance(cell, str)
+        and recorded_sha256 is not None
+        and sha256_hex(cell) == recorded_sha256
+    )
+
+
 @dataclass(frozen=True)
 class ReviewedRow:
     """The cells of one question row, as read. Nothing here has been interpreted yet."""
