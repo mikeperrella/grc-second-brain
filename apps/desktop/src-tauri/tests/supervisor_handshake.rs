@@ -6,12 +6,14 @@ mod common;
 use std::collections::BTreeSet;
 use std::fs;
 use std::num::NonZeroU16;
+use std::path::PathBuf;
 
 use common::{
-    assert_exits, fake_spec, fake_spec_with_vault, Reaper, Scratch, TestResult, FAKE_PORT,
+    assert_exits, fake_spec, fake_spec_with_folders, Reaper, Scratch, TestResult, FAKE_PORT,
     SETTLE_SLACK, TEST_HANDSHAKE, TIMEOUT_TEST_HANDSHAKE,
 };
 use desktop_lib::child_env::ALLOWED_ENV_KEYS;
+use desktop_lib::folders::UserFolders;
 use desktop_lib::sidecar::supervisor::{FailureKind, SidecarState, Supervisor};
 
 fn fake_port() -> Result<NonZeroU16, &'static str> {
@@ -141,19 +143,19 @@ const HOST_ONLY_VARIABLES: [(&str, &str); 4] = [
 /// inherited the parent's environment would show them.
 fn reported_env_names(
     name: &str,
-    vault: Option<&std::path::Path>,
+    folders: &UserFolders<'_>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     for (key, value) in HOST_ONLY_VARIABLES {
         std::env::set_var(key, value);
     }
     let scratch = Scratch::new(name)?;
     let report = scratch.file("env.txt");
-    let supervisor = Supervisor::start(fake_spec_with_vault(
+    let supervisor = Supervisor::start(fake_spec_with_folders(
         &scratch,
         "env-report",
         Some(&report),
         TEST_HANDSHAKE,
-        vault,
+        folders,
     )?)?;
     let mut reaper = Reaper::new();
     reaper.add(supervisor.child_pid());
@@ -166,13 +168,47 @@ fn reported_env_names(
     Ok(text.lines().map(str::to_owned).collect())
 }
 
+/// The five user folders, distinct sub-folders of one scratch directory. The host does not need them
+/// to exist to build the environment; the fake only reports key names.
+struct FiveFolders {
+    vault: PathBuf,
+    questionnaire: PathBuf,
+    export: PathBuf,
+    import: PathBuf,
+    ledger: PathBuf,
+}
+
+impl FiveFolders {
+    fn under(scratch: &Scratch) -> Self {
+        Self {
+            vault: scratch.file("vault"),
+            questionnaire: scratch.file("questionnaires"),
+            export: scratch.file("exports"),
+            import: scratch.file("imports"),
+            ledger: scratch.file("ledger"),
+        }
+    }
+
+    fn all(&self) -> UserFolders<'_> {
+        UserFolders {
+            vault: Some(&self.vault),
+            questionnaire: Some(&self.questionnaire),
+            export: Some(&self.export),
+            import: Some(&self.import),
+            ledger: Some(&self.ledger),
+        }
+    }
+}
+
 #[test]
 fn the_child_environment_is_exactly_the_allowlist() -> TestResult {
-    let scratch_vault = Scratch::new("env_report_vault_dir")?;
-    let names = reported_env_names("env_report", Some(scratch_vault.path()))?;
+    let folder_scratch = Scratch::new("env_report_folders")?;
+    let five = FiveFolders::under(&folder_scratch);
+    let names = reported_env_names("env_report", &five.all())?;
 
     let found: BTreeSet<&str> = names.iter().map(String::as_str).collect();
     let allowed: BTreeSet<&str> = ALLOWED_ENV_KEYS.into_iter().collect();
+    assert_eq!(allowed.len(), 9);
     assert_eq!(found, allowed, "the child saw a different environment");
     for (key, _value) in HOST_ONLY_VARIABLES {
         assert!(!found.contains(key), "{key} reached the child");
@@ -181,17 +217,43 @@ fn the_child_environment_is_exactly_the_allowlist() -> TestResult {
 }
 
 #[test]
-fn with_no_vault_the_child_sees_every_allowlisted_key_but_the_vault_key() -> TestResult {
-    let names = reported_env_names("env_report_no_vault", None)?;
+fn with_no_user_folders_the_child_sees_only_the_four_always_present_keys() -> TestResult {
+    let names = reported_env_names("env_report_no_folders", &UserFolders::default())?;
 
     let found: BTreeSet<&str> = names.iter().map(String::as_str).collect();
-    let expected: BTreeSet<&str> = ALLOWED_ENV_KEYS
-        .into_iter()
-        .filter(|key| *key != "GRC_VAULT_DIR")
-        .collect();
+    let expected: BTreeSet<&str> = BTreeSet::from([
+        "SYSTEMROOT",
+        "GRC_AUTH_TOKEN",
+        "GRC_LOG_DIR",
+        "GRC_INDEX_DIR",
+    ]);
     assert_eq!(found, expected, "the child saw a different environment");
     for (key, _value) in HOST_ONLY_VARIABLES {
         assert!(!found.contains(key), "{key} reached the child");
     }
+    Ok(())
+}
+
+#[test]
+fn only_the_folders_that_are_given_reach_the_child() -> TestResult {
+    let folder_scratch = Scratch::new("env_report_some_folders")?;
+    let five = FiveFolders::under(&folder_scratch);
+    let some = UserFolders {
+        vault: Some(&five.vault),
+        ledger: Some(&five.ledger),
+        ..UserFolders::default()
+    };
+    let names = reported_env_names("env_report_some", &some)?;
+
+    let found: BTreeSet<&str> = names.iter().map(String::as_str).collect();
+    let expected: BTreeSet<&str> = BTreeSet::from([
+        "SYSTEMROOT",
+        "GRC_AUTH_TOKEN",
+        "GRC_LOG_DIR",
+        "GRC_INDEX_DIR",
+        "GRC_VAULT_DIR",
+        "GRC_LEDGER_DIR",
+    ]);
+    assert_eq!(found, expected);
     Ok(())
 }

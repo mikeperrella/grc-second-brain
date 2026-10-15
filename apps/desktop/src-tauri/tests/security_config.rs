@@ -78,8 +78,27 @@ fn there_is_exactly_one_capability_file() -> TestResult {
     Ok(())
 }
 
+/// The commands the window may call, exactly, in the order `app_commands.rs` lists them. A command
+/// added, removed or renamed is a security decision and must change this list on purpose.
+const EXPECTED_COMMANDS: [&str; 5] = [
+    "sidecar_health",
+    "sidecar_call",
+    "folders_get",
+    "folder_pick",
+    "folder_list_files",
+];
+
+/// The permissions that match, exactly: Tauri names the generated permission `allow-<command>`.
+const EXPECTED_PERMISSIONS: [&str; 5] = [
+    "allow-sidecar-health",
+    "allow-sidecar-call",
+    "allow-folders-get",
+    "allow-folder-pick",
+    "allow-folder-list-files",
+];
+
 #[test]
-fn the_capability_grants_exactly_the_health_command_to_the_main_window() -> TestResult {
+fn the_capability_grants_exactly_the_app_commands_to_the_main_window() -> TestResult {
     let capability = read_json(&crate_dir().join("capabilities/main-window.json"))?;
     let object = capability
         .as_object()
@@ -102,15 +121,332 @@ fn the_capability_grants_exactly_the_health_command_to_the_main_window() -> Test
     assert_eq!(string_list(&object["windows"])?, ["main"]);
     assert_eq!(
         string_list(&object["permissions"])?,
-        ["allow-sidecar-health"],
+        EXPECTED_PERMISSIONS,
         "no core:default, no plugin permission, nothing else"
     );
     Ok(())
 }
 
 #[test]
-fn the_app_manifest_commands_are_exactly_the_health_command() -> TestResult {
-    assert_eq!(APP_COMMANDS, ["sidecar_health"]);
+fn the_app_manifest_commands_are_exactly_the_app_commands() -> TestResult {
+    assert_eq!(APP_COMMANDS, EXPECTED_COMMANDS);
+    Ok(())
+}
+
+/// Every capability file's permission strings (there is exactly one file, checked above).
+fn all_permissions() -> Result<Vec<String>, Box<dyn Error>> {
+    let mut permissions = Vec::new();
+    for entry in fs::read_dir(crate_dir().join("capabilities"))? {
+        let capability = read_json(&entry?.path())?;
+        for permission in string_list(&capability["permissions"])? {
+            permissions.push(permission.to_owned());
+        }
+    }
+    Ok(permissions)
+}
+
+#[test]
+fn the_window_is_granted_no_plugin_permission() -> TestResult {
+    let permissions = all_permissions()?;
+    assert!(
+        !permissions.is_empty(),
+        "the check below would pass over nothing"
+    );
+    for permission in &permissions {
+        assert!(
+            permission.starts_with("allow-"),
+            "{permission} is not one of this app's own `allow-<command>` permissions"
+        );
+        assert!(
+            !permission.contains(':'),
+            "{permission} looks like a plugin or core permission (`plugin:name`)"
+        );
+        for forbidden in ["dialog", "core", "opener", "fs"] {
+            assert!(
+                !permission.starts_with(forbidden),
+                "{permission} begins with {forbidden}"
+            );
+        }
+        // The plugin names must not appear in any form: `allow-open` or `allow-save` would be the
+        // dialog plugin's own command permissions, which the window must never hold.
+        for forbidden in ["dialog", "allow-open", "allow-save", "allow-message", "fs:"] {
+            assert!(
+                !permission.contains(forbidden),
+                "{permission} contains {forbidden}"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The non-comment lines of a file that contain `needle`.
+fn lines_with(text: &str, needle: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with("//") && !line.starts_with('#'))
+        .filter(|line| line.contains(needle))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn exactly_one_plugin_crate_is_a_direct_dependency_and_it_is_pinned_exactly() -> TestResult {
+    let manifest = fs::read_to_string(crate_dir().join("Cargo.toml"))?;
+    let plugin_lines = lines_with(&manifest, "tauri-plugin-");
+    assert_eq!(
+        plugin_lines.len(),
+        1,
+        "any later plugin must be a visible test change: {plugin_lines:?}"
+    );
+    let line = &plugin_lines[0];
+    assert!(
+        line.starts_with("tauri-plugin-dialog"),
+        "the only plugin is the dialog plugin: {line}"
+    );
+    // An exact pin: `= "=2.x.y"`, not a range, a caret, a tilde, a wildcard or a path or git source.
+    let (_, version) = line
+        .split_once('=')
+        .ok_or("no version on the plugin line")?;
+    assert!(
+        version.trim().starts_with("\"=2."),
+        "the dialog plugin must be pinned with `=`: {line}"
+    );
+    for forbidden in ["git", "path", "*", "^", "~", ">", "<", "registry"] {
+        assert!(!version.contains(forbidden), "{line}");
+    }
+    Ok(())
+}
+
+/// Every Rust source file under `src/`, as (relative name, text).
+fn source_files() -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    fn walk(dir: &Path, out: &mut Vec<(String, String)>) -> Result<(), Box<dyn Error>> {
+        for entry in fs::read_dir(dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                walk(&path, out)?;
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                out.push((
+                    path.to_string_lossy().into_owned(),
+                    fs::read_to_string(&path)?,
+                ));
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    walk(&crate_dir().join("src"), &mut files)?;
+    Ok(files)
+}
+
+#[test]
+fn the_fs_plugin_is_never_registered_and_no_fs_permission_is_granted() -> TestResult {
+    // `tauri-plugin-fs` is in the lockfile only because the dialog plugin depends on it. Registering
+    // it would give the window file-system commands to ask permissions for.
+    let files = source_files()?;
+    assert!(
+        files.len() > 10,
+        "the walk found too few files to mean anything"
+    );
+    for (name, text) in &files {
+        assert!(
+            lines_with(text, "tauri_plugin_fs").is_empty(),
+            "{name} refers to the fs plugin"
+        );
+        assert!(
+            lines_with(text, "tauri_plugin_dialog").is_empty()
+                || name.ends_with("lib.rs")
+                || name.ends_with("commands.rs"),
+            "{name} uses the dialog plugin; only lib.rs registers it and commands.rs calls it"
+        );
+    }
+    let lib = files
+        .iter()
+        .find(|(name, _)| name.ends_with("lib.rs"))
+        .ok_or("src/lib.rs not found")?;
+    assert_eq!(
+        lines_with(&lib.1, ".plugin(").len(),
+        1,
+        "exactly one plugin is registered"
+    );
+    assert!(!lines_with(&lib.1, "tauri_plugin_dialog::init()").is_empty());
+    let manifest = fs::read_to_string(crate_dir().join("Cargo.toml"))?;
+    assert!(lines_with(&manifest, "tauri-plugin-fs").is_empty());
+    for permission in all_permissions()? {
+        assert!(
+            !permission.starts_with("fs")
+                && !permission.contains("fs:")
+                && !permission.contains("-fs-"),
+            "{permission} is a file-system permission"
+        );
+    }
+    Ok(())
+}
+
+/// The text of the item that starts at `header` (for example `pub struct FolderView`) up to its
+/// closing brace at the start of a line.
+fn item_block<'a>(source: &'a str, header: &str) -> Result<&'a str, Box<dyn Error>> {
+    let start = source
+        .find(header)
+        .ok_or_else(|| format!("{header} not found"))?;
+    let end = source[start..]
+        .find("\n}")
+        .ok_or_else(|| format!("{header} has no closing brace"))?;
+    Ok(&source[start..start + end + 2])
+}
+
+/// Split `text` at top-level commas (not inside `<...>`).
+fn top_level_split(text: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let (mut depth, mut current) = (0usize, String::new());
+    for character in text.chars() {
+        match character {
+            '<' | '(' => depth += 1,
+            '>' | ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(std::mem::take(&mut current));
+                continue;
+            }
+            _ => {}
+        }
+        current.push(character);
+    }
+    parts.push(current);
+    parts
+        .into_iter()
+        .map(|part| part.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+#[test]
+fn no_command_hands_the_window_a_path_it_can_submit_back() -> TestResult {
+    let source = fs::read_to_string(crate_dir().join("src/commands.rs"))?;
+    let allowed_arguments = [
+        "state: State<'_, HostState>",
+        "folders: State<'_, FolderSettings>",
+        "app: AppHandle",
+        "kind: FolderKind",
+        "request: Value",
+    ];
+    let allowed_ok = [
+        "HealthReply",
+        "ProxyReply",
+        "FoldersReply",
+        "PickReply",
+        "FileList",
+    ];
+    let allowed_err = ["HealthError", "ProxyError", "FolderError"];
+
+    let mut found = Vec::new();
+    for chunk in source.split("#[tauri::command]").skip(1) {
+        let after_fn = chunk
+            .split_once("fn ")
+            .ok_or("a #[tauri::command] with no function")?
+            .1;
+        let name = after_fn
+            .split('(')
+            .next()
+            .ok_or("no name")?
+            .trim()
+            .to_owned();
+        let open = after_fn.find('(').ok_or("no parameter list")?;
+        let close = after_fn.find(") ->").ok_or("no return type")?;
+        let arguments = top_level_split(&after_fn[open + 1..close]);
+        let returns_text = after_fn[close + 4..]
+            .split('{')
+            .next()
+            .ok_or("no body")?
+            .trim()
+            .to_owned();
+
+        for argument in &arguments {
+            assert!(
+                allowed_arguments.contains(&argument.as_str()),
+                "{name} takes `{argument}`; only a state, the app handle, an enum kind or the typed \
+                 route request may be arguments, never a path or a string"
+            );
+            for forbidden in [
+                "Path", "PathBuf", "String", "str", "OsStr", "OsString", "Vec",
+            ] {
+                assert!(
+                    !argument
+                        .split(|c: char| !c.is_alphanumeric())
+                        .any(|word| word == forbidden),
+                    "{name} takes `{argument}`"
+                );
+            }
+        }
+        let inner = returns_text
+            .strip_prefix("Result<")
+            .and_then(|rest| rest.strip_suffix('>'))
+            .ok_or_else(|| format!("{name} must return a Result"))?;
+        let pair = top_level_split(inner);
+        assert_eq!(pair.len(), 2, "{name}: {returns_text}");
+        assert!(
+            allowed_ok.contains(&pair[0].as_str()),
+            "{name} returns {}",
+            pair[0]
+        );
+        assert!(
+            allowed_err.contains(&pair[1].as_str()),
+            "{name} errors with {}",
+            pair[1]
+        );
+        found.push((name, arguments));
+    }
+
+    let names: Vec<&str> = found.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, EXPECTED_COMMANDS, "the commands in commands.rs");
+    for (name, arguments) in &found {
+        let has_kind = arguments
+            .iter()
+            .any(|argument| argument == "kind: FolderKind");
+        // The two folder commands that name a folder do it with the enum, and only with it.
+        assert_eq!(
+            has_kind,
+            name == "folder_pick" || name == "folder_list_files",
+            "{name}"
+        );
+    }
+
+    // The reply types are display values and words: no field of any of them can hold a path.
+    let folders = fs::read_to_string(crate_dir().join("src/folders/mod.rs"))?;
+    for header in [
+        "pub struct FoldersReply",
+        "pub struct FolderView",
+        "pub struct FileList",
+        "pub enum PickReply",
+        "pub enum FolderError",
+        "pub enum FolderProblem",
+        "pub enum FolderKind",
+    ] {
+        let block = item_block(&folders, header)?;
+        for forbidden in ["Path", "PathBuf", "OsString", "OsStr"] {
+            assert!(
+                !block.contains(forbidden),
+                "{header} holds a {forbidden}; a reply may carry only display strings and words"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn the_dialog_plugin_is_called_only_from_rust_and_never_with_a_window_argument_path() -> TestResult
+{
+    // `folder_pick` is the only place that opens the dialog, and it takes no path.
+    let source = fs::read_to_string(crate_dir().join("src/commands.rs"))?;
+    assert_eq!(lines_with(&source, ".blocking_pick_folder()").len(), 1);
+    assert!(!lines_with(&source, ".dialog()").is_empty());
+    let others: Vec<String> = source_files()?
+        .into_iter()
+        .filter(|(name, _)| !name.ends_with("commands.rs"))
+        .flat_map(|(_, text)| lines_with(&text, ".dialog()"))
+        .collect();
+    assert!(
+        others.is_empty(),
+        "the dialog is opened elsewhere: {others:?}"
+    );
     Ok(())
 }
 

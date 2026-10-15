@@ -42,6 +42,7 @@ export const failureKindSchema = z.discriminatedUnion("kind", [
   kind("job_assign_failed"),
   kind("unexpected_thread_state"),
   kind("log_dir_unavailable"),
+  kind("index_dir_unavailable"),
   kind("system_root_unavailable"),
   kind("random_unavailable"),
   kind("env_rejected"),

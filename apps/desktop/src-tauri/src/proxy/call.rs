@@ -1,7 +1,7 @@
 //! Making one proxied call (ADR-020 decisions 2 and 3).
 //!
 //! [`call`] is a plain function: a client, an endpoint and a typed request in, a [`ProxyReply`] or a
-//! [`ProxyError`] out. It is not a Tauri command yet (chunk 6e adds the command and the capability).
+//! [`ProxyError`] out. The `sidecar_call` command (chunk 6e) reaches it through `SidecarHost::call`.
 //!
 //! The path from request to reply, in order:
 //!

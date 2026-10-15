@@ -18,6 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use desktop_lib::child_env::build_child_env;
+use desktop_lib::folders::UserFolders;
 use desktop_lib::sidecar::job::{
     kill_process_by_pid, wait_for_process_exit, ProcessInfo, ProcessWait,
 };
@@ -119,24 +120,24 @@ pub fn fake_spec(
     file: Option<&Path>,
     handshake: Duration,
 ) -> Result<SidecarSpec, Box<dyn Error>> {
-    fake_spec_with_vault(scratch, mode, file, handshake, None)
+    fake_spec_with_folders(scratch, mode, file, handshake, &UserFolders::default())
 }
 
-/// Like [`fake_spec`], with an optional vault directory. The index directory is `scratch`'s
-/// `index` folder (the spec does not create it; the fake never touches it).
-pub fn fake_spec_with_vault(
+/// Like [`fake_spec`], with the user's folders. The index directory is `scratch`'s `index` folder
+/// (the spec does not create it; the fake never touches it).
+pub fn fake_spec_with_folders(
     scratch: &Scratch,
     mode: &str,
     file: Option<&Path>,
     handshake: Duration,
-    vault_dir: Option<&Path>,
+    folders: &UserFolders<'_>,
 ) -> Result<SidecarSpec, Box<dyn Error>> {
     let token = AuthToken::generate()?;
     let env = build_child_env(
         &system_windows_directory()?,
         scratch.path(),
         &scratch.file("index"),
-        vault_dir,
+        folders,
         &token,
     )?;
     let mut args = vec![OsString::from(mode)];

@@ -15,7 +15,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use crate::child_env::build_child_env;
+use crate::dev_paths::existing_directory;
+use crate::folders::{files, UserFolders};
 use crate::health::{HealthClient, HealthError, HealthReply, LoopbackEndpoint};
+use crate::proxy::route::FileFolder;
 use crate::proxy::{ProxyError, ProxyReply, RouteRequest};
 use crate::sidecar::resolve::{resolve_sidecar_program, SIDECAR_ARGS};
 use crate::sidecar::spawn::system_windows_directory;
@@ -53,27 +56,83 @@ pub(crate) fn endpoint_for(state: SidecarState) -> Result<LoopbackEndpoint, Prox
 }
 
 /// The directories the sidecar is told about. All must be absolute (the environment builder
-/// checks). `vault_dir` is `None` when no vault has been chosen (always so in release builds
-/// until the folder picker exists, M6).
+/// checks). `folders` holds the user's five folders that are valid for this run (`folders::resolve`
+/// decides); one that is `None` is not set, or was not valid, and its key is absent.
 #[derive(Debug, Clone, Copy)]
 pub struct SidecarDirs<'a> {
     pub log_dir: &'a Path,
     pub index_dir: &'a Path,
-    pub vault_dir: Option<&'a Path>,
+    pub folders: UserFolders<'a>,
+}
+
+/// The two folders a window-supplied file name is resolved in (CLAUDE.md 3.6, backlog G9). Canonical
+/// paths, taken from the same folders the sidecar was started with, so the host and the sidecar
+/// agree on where a name points. A folder that is `None` is not set: the sidecar then answers the
+/// route with its own typed refusal.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct FileRoots {
+    questionnaire: Option<PathBuf>,
+    export: Option<PathBuf>,
+}
+
+impl FileRoots {
+    pub(crate) fn from_folders(folders: &UserFolders<'_>) -> Self {
+        let canonical = |dir: Option<&Path>| dir.and_then(|dir| existing_directory(dir.to_owned()));
+        Self {
+            questionnaire: canonical(folders.questionnaire),
+            export: canonical(folders.export),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new(questionnaire: Option<PathBuf>, export: Option<PathBuf>) -> Self {
+        Self {
+            questionnaire,
+            export,
+        }
+    }
+}
+
+/// Check the file name a request carries BEFORE anything is sent: one plain path component, and the
+/// file it names in the right folder must be a regular file inside that folder (every link
+/// followed). Every failure is `bad_request`. A request with no file name passes. With the folder
+/// not set the containment step is skipped and the sidecar refuses the route itself; the
+/// one-component check still runs.
+pub(crate) fn check_request_file(
+    request: &RouteRequest,
+    roots: &FileRoots,
+) -> Result<(), ProxyError> {
+    let Some((folder, name)) = request.file() else {
+        return Ok(());
+    };
+    if !files::is_one_component(name) {
+        return Err(ProxyError::BadRequest);
+    }
+    let root = match folder {
+        FileFolder::Questionnaires => roots.questionnaire.as_deref(),
+        FileFolder::Exports => roots.export.as_deref(),
+    };
+    match root {
+        Some(root) => files::resolve_file(root, name)
+            .map(|_| ())
+            .map_err(|_| ProxyError::BadRequest),
+        None => Ok(()),
+    }
 }
 
 /// A started sidecar and the client for its `/health` endpoint.
 pub struct SidecarHost {
     supervisor: Supervisor,
     client: HealthClient,
+    roots: FileRoots,
 }
 
 impl SidecarHost {
     /// Start `program` with `args` as the sidecar. `log_dir` becomes the child's `GRC_LOG_DIR` and
     /// working directory and is created if missing. `index_dir` becomes `GRC_INDEX_DIR` and is
-    /// created if missing; `vault_dir`, if there is one, becomes `GRC_VAULT_DIR` (the caller has
-    /// already checked it exists). Returns as soon as the process is running; the handshake
-    /// continues on supervision threads (read it with `supervisor().state()`).
+    /// created if missing; each user folder that is given becomes its own key (the caller has
+    /// already validated them, `folders::resolve`). Returns as soon as the process is running; the
+    /// handshake continues on supervision threads (read it with `supervisor().state()`).
     ///
     /// `pub` because integration tests start the fake sidecar through it; the app's only caller is
     /// [`SidecarHost::start_dev`], which passes the resolved dev interpreter.
@@ -88,26 +147,23 @@ impl SidecarHost {
     ) -> Result<Self, FailureKind> {
         let log_dir = dirs.log_dir;
         fs::create_dir_all(log_dir).map_err(|_| FailureKind::LogDirUnavailable)?;
-        // A failure to prepare the index directory is reported as `EnvRejected`: the child's
-        // environment could not be built from it. A new failure kind would change the IPC
-        // contract with the window (health.ts, health-contract.json) for no new information.
-        fs::create_dir_all(dirs.index_dir).map_err(|_| FailureKind::EnvRejected)?;
+        // Its own failure kind (G8, ADR-011): "could not prepare the index folder" is not the same
+        // as "the environment could not be built".
+        fs::create_dir_all(dirs.index_dir).map_err(|_| FailureKind::IndexDirUnavailable)?;
         let system_root =
             system_windows_directory().map_err(|_| FailureKind::SystemRootUnavailable)?;
         let token = AuthToken::generate().map_err(|_| FailureKind::RandomUnavailable)?;
-        let env = build_child_env(
-            &system_root,
-            log_dir,
-            dirs.index_dir,
-            dirs.vault_dir,
-            &token,
-        )
-        .map_err(|_| FailureKind::EnvRejected)?;
+        let env = build_child_env(&system_root, log_dir, dirs.index_dir, &dirs.folders, &token)
+            .map_err(|_| FailureKind::EnvRejected)?;
         let client = HealthClient::new(&token).map_err(|_| FailureKind::HttpClientFailed)?;
         let spec = SidecarSpec::new(program, args, log_dir.to_owned(), env)
             .with_handshake_timeout(handshake_timeout);
         let supervisor = Supervisor::start(spec).map_err(FailureKind::from)?;
-        Ok(Self { supervisor, client })
+        Ok(Self {
+            supervisor,
+            client,
+            roots: FileRoots::from_folders(&dirs.folders),
+        })
     }
 
     /// Start the dev sidecar: the repository's venv interpreter (debug builds only; release builds
@@ -136,9 +192,12 @@ impl SidecarHost {
         }
     }
 
-    /// One proxied call (ADR-020). `not_ready` unless the sidecar has announced its port and is
-    /// running; otherwise the call goes to that port only. Not a Tauri command yet (chunk 6e).
+    /// One proxied call (ADR-020), the body of the `sidecar_call` command. A file name in the
+    /// request is checked first (`check_request_file`), so a bad name is `bad_request` and opens no
+    /// connection. Then `not_ready` unless the sidecar has announced its port and is running;
+    /// otherwise the call goes to that port only.
     pub async fn call(&self, request: &RouteRequest) -> Result<ProxyReply, ProxyError> {
+        check_request_file(request, &self.roots)?;
         let state = self
             .supervisor
             .state()
@@ -256,6 +315,15 @@ impl HostSlot<SidecarHost> {
             Current::Running(host) => host.health().await,
         }
     }
+
+    /// The reply for the `sidecar_call` command. Anything but a running host is `not_ready`, with no
+    /// network call. The lock is released before the call.
+    pub(crate) async fn call(&self, request: &RouteRequest) -> Result<ProxyReply, ProxyError> {
+        match self.current() {
+            Current::Running(host) => host.call(request).await,
+            Current::Starting | Current::Failed(_) | Current::Stopped => Err(ProxyError::NotReady),
+        }
+    }
 }
 
 /// What the Tauri app keeps in managed state.
@@ -320,6 +388,68 @@ mod tests {
         assert_eq!(
             endpoint_for(SidecarState::Ready { port: port(5000) }),
             Ok(LoopbackEndpoint::new(5000).unwrap())
+        );
+    }
+
+    fn file_request(route: &str, file: &str) -> RouteRequest {
+        RouteRequest::from_value(serde_json::json!({"route": route, "file": file})).unwrap()
+    }
+
+    #[test]
+    fn a_request_without_a_file_name_needs_no_file_check() {
+        let roots = FileRoots::default();
+        for json in [
+            r#"{"route":"readiness"}"#,
+            r#"{"route":"vault_index_start"}"#,
+            r#"{"route":"questionnaire_status","run_id":"0123456789abcdef"}"#,
+        ] {
+            let request = RouteRequest::from_json(json).unwrap();
+            assert_eq!(check_request_file(&request, &roots), Ok(()), "{json}");
+        }
+    }
+
+    #[test]
+    fn a_name_that_is_not_one_component_is_bad_request_even_with_no_folder_set() {
+        // No root at all: the one-component step has nothing to resolve against and still refuses.
+        let roots = FileRoots::new(None, None);
+        for route in ["questionnaire_inspect", "draft_rows"] {
+            for name in [
+                "..\\x.xlsx",
+                "a/b.xlsx",
+                "C:\\x.xlsx",
+                "NUL.xlsx",
+                "x.xlsx.",
+                "q:s",
+            ] {
+                assert_eq!(
+                    check_request_file(&file_request(route, name), &roots),
+                    Err(ProxyError::BadRequest),
+                    "{route} {name}"
+                );
+            }
+            // A plain name with no folder set goes on to the sidecar's own typed refusal.
+            assert_eq!(
+                check_request_file(&file_request(route, "x.xlsx"), &roots),
+                Ok(())
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_file_in_a_set_folder_is_bad_request() {
+        // The crate's own source folder exists, and holds no `nope.xlsx`.
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let roots = FileRoots::new(Some(dir.clone()), Some(dir));
+        for route in ["questionnaire_inspect", "draft_rows"] {
+            assert_eq!(
+                check_request_file(&file_request(route, "nope.xlsx"), &roots),
+                Err(ProxyError::BadRequest)
+            );
+        }
+        // A real regular file there passes (the check is about the name, not the extension).
+        assert_eq!(
+            check_request_file(&file_request("draft_rows", "Cargo.toml"), &roots),
+            Ok(())
         );
     }
 

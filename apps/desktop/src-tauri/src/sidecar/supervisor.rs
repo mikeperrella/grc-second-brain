@@ -145,12 +145,15 @@ pub enum FailureKind {
     UnexpectedThreadState,
     /// The host could not create the log directory the sidecar writes to.
     LogDirUnavailable,
+    /// The host could not choose or create the index directory the sidecar keeps its search index
+    /// in (G8: this used to be reported as `EnvRejected`).
+    IndexDirUnavailable,
     /// The host could not ask the operating system for the Windows directory.
     SystemRootUnavailable,
     /// The operating system gave no random bytes for the auth token.
     RandomUnavailable,
-    /// The child environment could not be built (a path was not absolute or not valid text), or
-    /// the index directory it names could not be created.
+    /// The child environment could not be built (a path was not absolute or not valid text, or two
+    /// folders overlapped).
     EnvRejected,
     /// The host's HTTP client could not be built.
     HttpClientFailed,
@@ -674,6 +677,7 @@ pub(crate) fn every_failure_kind() -> Vec<FailureKind> {
             | FailureKind::JobAssignFailed
             | FailureKind::UnexpectedThreadState
             | FailureKind::LogDirUnavailable
+            | FailureKind::IndexDirUnavailable
             | FailureKind::SystemRootUnavailable
             | FailureKind::RandomUnavailable
             | FailureKind::EnvRejected
@@ -701,6 +705,7 @@ pub(crate) fn every_failure_kind() -> Vec<FailureKind> {
         FailureKind::JobAssignFailed,
         FailureKind::UnexpectedThreadState,
         FailureKind::LogDirUnavailable,
+        FailureKind::IndexDirUnavailable,
         FailureKind::SystemRootUnavailable,
         FailureKind::RandomUnavailable,
         FailureKind::EnvRejected,
@@ -717,6 +722,7 @@ pub(crate) fn every_failure_kind() -> Vec<FailureKind> {
 mod tests {
     use super::*;
     use crate::child_env::{build_child_env, ALLOWED_ENV_KEYS};
+    use crate::folders::UserFolders;
     use crate::token::AuthToken;
 
     fn port(value: u16) -> NonZeroU16 {
@@ -932,7 +938,13 @@ mod tests {
             Path::new(r"C:\Windows"),
             Path::new(r"C:\Users\someone\AppData\Local\app\logs"),
             Path::new(r"C:\Users\someone\AppData\Local\app\index"),
-            Some(Path::new(r"C:\Users\someone\Documents\vault")),
+            &UserFolders {
+                vault: Some(Path::new(r"C:\Users\someone\Documents\vault")),
+                questionnaire: Some(Path::new(r"C:\Users\someone\Documents\questionnaires")),
+                export: Some(Path::new(r"C:\Users\someone\Documents\exports")),
+                import: Some(Path::new(r"C:\Users\someone\Documents\imports")),
+                ledger: Some(Path::new(r"C:\Users\someone\Documents\ledger")),
+            },
             &token,
         )
         .unwrap();
@@ -971,7 +983,7 @@ mod tests {
             Path::new(r"C:\Windows"),
             Path::new(r"C:\logs"),
             Path::new(r"C:\index"),
-            None,
+            &UserFolders::default(),
             &token,
         )
         .unwrap();
