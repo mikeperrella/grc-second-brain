@@ -238,7 +238,7 @@ The status contract, with its reasons, is ADR-013 (status and grounding). The fi
 | M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
 
-**Current milestone: M5.5.**
+**Current milestone: M6.**
 
 ---
 

@@ -1,6 +1,6 @@
 # ADR-019: Contradiction detector
 
-Status: **Accepted (M5.5 PR 4).** Chunk commits: 4a-1 `6a192ce`, 4a-2 `d1e61a4`, 4b `9effbdc`, 4c `c92ba79`, 4d the PR 4 close commit (docs only). Decisions 14, 15 (c) and 16 are **measured** (see "Live check C: results", with its limits). The "planned" tags on the other decisions are the original ones; "Chunk 4a-2: details", "Chunk 4b: details" and "Chunk 4c: details" at the end say what each chunk built. This ADR records what the plan fixed (revision 2b, deviations M55-1 to M55-7 and the owner's answers Q11, Q12 and N5 to N7) and nothing beyond it.
+Status: **Accepted (M5.5 PR 4).** Chunk commits: 4a-1 `6a192ce`, 4a-2 `d1e61a4`, 4b `9effbdc`, 4c `c92ba79`, 4d `f81e541` (the PR 4 close, docs only), then `b172ce7` (the air-gap job's skip allowance, deviation M55-18), `b03a8f3` (the PR 4 local CI and Semgrep record) and the PR 4 merge commit `43d4b5a` (PR #34). Decisions 14, 15 (c) and 16 are **measured** (see "Live check C: results", with its limits). The "planned" tags on the other decisions are the original ones; "Chunk 4a-2: details", "Chunk 4b: details" and "Chunk 4c: details" at the end say what each chunk built. This ADR records what the plan fixed (revision 2b, deviations M55-1 to M55-7 and the owner's answers Q11, Q12 and N5 to N7) and nothing beyond it.
 
 ## Context
 
@@ -433,7 +433,7 @@ Decision 16 (live check C): **measured**, owner-run. **Limit:** the terminal out
 
 ### Chunk commits
 
-4a-1 `6a192ce`, 4a-2 `d1e61a4`, 4b `9effbdc`, 4c `c92ba79`, 4d (the PR 4 close: this results section, the threat-model rows, the brief, README and CLAUDE.md edits) is the commit that adds this text.
+4a-1 `6a192ce`, 4a-2 `d1e61a4`, 4b `9effbdc`, 4c `c92ba79`, 4d `f81e541` (the PR 4 close: this results section, the threat-model rows, the brief, README and CLAUDE.md edits), `b172ce7` (the air-gap job's skip allowance, deviation M55-18), `b03a8f3` (the PR 4 local CI and Semgrep record), merged as `43d4b5a` (PR #34).
 
 ### Deviations recorded for this chunk
 
