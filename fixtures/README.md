@@ -9,3 +9,6 @@ All content here is synthetic test data. Nothing is from a real company.
   of being committed, so a reviewer can see exactly what the test does.
 - `exports/` holds a synthetic Okta-style MFA enrollment CSV for the reality check (ADR-016); its
   own README says its authenticator type strings are examples, not confirmed Okta values.
+- `vault-contradictions/` is a synthetic vault of planted policy contradictions, and
+  `eval/contradiction-set.json` labels them (dev and held-out) for the contradiction detector
+  (ADR-019). Every note says it is synthetic. The set is not frozen until chunk 4c.

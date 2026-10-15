@@ -20,6 +20,9 @@ ADVERSARIAL_M5 = REPO_ROOT / "fixtures" / "adversarial-m5"
 ADVERSARIAL_M5_VAULT = ADVERSARIAL_M5 / "vault"
 ADVERSARIAL_M5_CELLS = ADVERSARIAL_M5 / "questionnaire-cells.json"
 EVAL_SET = REPO_ROOT / "fixtures" / "eval" / "eval-set.json"
+# M5.5 PR 4: a synthetic vault of planted contradictions and its evaluation set (ADR-019).
+CONTRADICTIONS_VAULT = REPO_ROOT / "fixtures" / "vault-contradictions"
+CONTRADICTION_SET = REPO_ROOT / "fixtures" / "eval" / "contradiction-set.json"
 
 DEFAULT_FRONTMATTER = (
     "doc_id: T-001",
