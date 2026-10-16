@@ -120,6 +120,7 @@ describe("no console output", () => {
         result: { kind: "reply", route: "questionnaire_inspect", reply: { status: 200, body: {
           sheets: [{ name: MARKER, rows: 1, columns: 1 }],
           suggestion: null, macro_enabled: false, parts: {}, warnings: [MARKER],
+          sha256: "0123456789abcdef".repeat(4),
         } } },
       },
       { type: "start_requested" },

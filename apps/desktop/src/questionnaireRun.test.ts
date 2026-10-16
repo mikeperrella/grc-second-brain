@@ -28,6 +28,7 @@ const inspectBody = (over: object = {}) => ({
   macro_enabled: false,
   parts: { "xl/workbook.xml": 1 },
   warnings: [],
+  sha256: "0123456789abcdef".repeat(4),
   ...over,
 });
 

@@ -214,6 +214,9 @@ const inspectBody = z.strictObject({
   macro_enabled: z.boolean(),
   parts: z.record(z.string(), z.int()),
   warnings: z.array(z.string()),
+  // The sidecar's `InspectResponse.sha256` (SHA-256 of the workbook bytes, lowercase hex). Parsed
+  // so the strict schema accepts the real reply; the window does not show it.
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
 const startBody = z.strictObject({ run_id: z.string(), total: z.int() });

@@ -60,6 +60,7 @@ describe("the contract fixture written by the Rust test", () => {
 });
 
 const HEX = "0123456789abcdef";
+const SHA = HEX.repeat(4);
 
 const REQUESTS = {
   readiness: { route: "readiness" },
@@ -119,6 +120,7 @@ describe("the reply schemas", () => {
           macro_enabled: false,
           parts: { "xl/media/image1.png": 1 },
           warnings: [],
+          sha256: SHA,
         },
       },
       questionnaire_start: { status: 202, body: { run_id: HEX, total: 3 } },
@@ -168,6 +170,66 @@ describe("the reply schemas", () => {
     for (const route of ROUTE_NAMES) {
       expect(routeReplySchemas[route].safeParse(success[route]).success, route).toBe(true);
     }
+  });
+
+  // The exact body the first live run got from the sidecar for the synthetic demo workbook.
+  const LIVE_INSPECT_BODY = {
+    macro_enabled: false,
+    parts: {},
+    sha256: "48157fb0ddd95f90e8a2c404085bffaa48fb86e3da1a0453b2551a01927a6402",
+    sheets: [
+      { columns: 3, name: "Questions", rows: 19 },
+      { columns: 1, name: "About", rows: 1 },
+    ],
+    suggestion: { header_row: 1, id_col: 1, question_col: 2, sheet: "Questions" },
+    warnings: [],
+  };
+
+  it("parses the real inspect reply from the first live run", () => {
+    const schema = routeReplySchemas.questionnaire_inspect;
+    expect(schema.safeParse({ status: 200, body: LIVE_INSPECT_BODY }).success).toBe(true);
+  });
+
+  it("still refuses an inspect body with an unknown key, a bad sha256 or no sha256", () => {
+    const schema = routeReplySchemas.questionnaire_inspect;
+    const parse = (body: unknown) => schema.safeParse({ status: 200, body }).success;
+    expect(parse({ ...LIVE_INSPECT_BODY, extra: 1 })).toBe(false);
+    expect(parse({ ...LIVE_INSPECT_BODY, sha256: "48157FB0".padEnd(64, "A") })).toBe(false);
+    expect(parse({ ...LIVE_INSPECT_BODY, sha256: SHA.slice(1) })).toBe(false);
+    expect(parse({ ...LIVE_INSPECT_BODY, sha256: `${SHA}0` })).toBe(false);
+    const withoutSha: Record<string, unknown> = { ...LIVE_INSPECT_BODY };
+    delete withoutSha["sha256"];
+    expect(parse(withoutSha)).toBe(false);
+  });
+
+  it("parses a finished run status with its summary in the sidecar's shape", () => {
+    const body = {
+      run_id: HEX,
+      status: "complete",
+      total: 3,
+      completed: 3,
+      failure: null,
+      summary: {
+        model: "llama3.1:8b",
+        digest_before: "sha256:aa",
+        digest_after: null,
+        template_sha256: SHA,
+        input_sha256: SHA,
+        complete: true,
+        counts: { SUPPORTED: 1, NEEDS_REVIEW: 2 },
+        reason_counts: { no_evidence: 2 },
+        file_name: "x-UNREVIEWED-DRAFT-0123abcd.xlsx",
+        rows_written: 3,
+        dropped_parts: [["xl/media/image1.png", 1, 0]],
+        warnings: [],
+        seconds: 12.5,
+      },
+    };
+    const schema = routeReplySchemas.questionnaire_status;
+    expect(schema.safeParse({ status: 200, body }).success).toBe(true);
+    expect(schema.safeParse({ status: 200, body: { ...body, summary: { ...body.summary, extra: 1 } } }).success).toBe(
+      false,
+    );
   });
 
   it("carries a status the draft route does not know through as a string (F36-2)", () => {
