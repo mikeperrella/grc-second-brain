@@ -479,6 +479,24 @@ fn there_is_exactly_one_window_and_it_is_labelled_main() -> TestResult {
 }
 
 #[test]
+fn the_window_is_resizable_with_the_decided_default_and_minimum_sizes() -> TestResult {
+    // docs/DESIGN.md section 2 and M6_PLAN.md E.1 item 10: resizable, 1100 by 720, minimum 900 by 600.
+    let conf = tauri_conf()?;
+    let windows = conf
+        .pointer("/app/windows")
+        .and_then(Value::as_array)
+        .ok_or("app.windows is missing")?;
+    assert_eq!(windows.len(), 1);
+    let window = &windows[0];
+    assert_eq!(window["resizable"], true);
+    assert_eq!(window["width"], 1100);
+    assert_eq!(window["height"], 720);
+    assert_eq!(window["minWidth"], 900);
+    assert_eq!(window["minHeight"], 600);
+    Ok(())
+}
+
+#[test]
 fn the_production_csp_has_exactly_the_expected_directives() -> TestResult {
     let directives = csp_directives(&tauri_conf()?)?;
     let expected: BTreeMap<&str, Vec<&str>> = BTreeMap::from([
