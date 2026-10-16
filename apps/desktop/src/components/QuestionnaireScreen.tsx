@@ -10,7 +10,6 @@ import {
   NO_RECORD_AFTER_RUN,
   NO_WORKBOOKS,
   READING_ONLY,
-  REVIEW_QUEUE_PLACEHOLDER,
   RUN_SPEED_LINE,
   UNKNOWN_RUN,
   UNREVIEWED_DRAFT_BADGE,
@@ -56,6 +55,8 @@ export interface QuestionnaireScreenProps {
   onStart: () => void;
   onGoToIndex: () => void;
   onDismissRun: () => void;
+  /** Open the finished draft (by file name) in the review queue. */
+  onOpenInQueue: (file: string) => void;
 }
 
 /** A sidecar code word, or a fixed line for anything else. Never the raw text. */
@@ -183,7 +184,15 @@ function InspectBlock({ info }: { info: InspectInfo }) {
   );
 }
 
-function SummaryBlock({ summary }: { summary: RunSummary }) {
+function SummaryBlock({
+  summary,
+  enabled,
+  onOpenInQueue,
+}: {
+  summary: RunSummary;
+  enabled: boolean;
+  onOpenInQueue: (file: string) => void;
+}) {
   const noRecord = runRecordMissing(summary);
   const otherWarnings = summary.warnings.filter(
     (w) => w !== "run_record_not_kept" && w !== "run_record_failed",
@@ -248,12 +257,18 @@ function SummaryBlock({ summary }: { summary: RunSummary }) {
         </ul>
       ) : null}
       {noRecord ? <Statement>{NO_RECORD_AFTER_RUN}</Statement> : null}
-      <div className="grid gap-1">
-        <button type="button" className="border border-border px-3 py-1" disabled>
-          Open in review queue
-        </button>
-        <p className="text-sm">{REVIEW_QUEUE_PLACEHOLDER}</p>
-      </div>
+      {summary.fileName !== null && !noRecord ? (
+        <div>
+          <button
+            type="button"
+            className="border border-border px-3 py-1"
+            disabled={!enabled}
+            onClick={() => summary.fileName !== null && onOpenInQueue(summary.fileName)}
+          >
+            Open in review queue
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -261,13 +276,17 @@ function SummaryBlock({ summary }: { summary: RunSummary }) {
 function RunBlock({
   state,
   nowMs,
+  enabled,
   onGoToIndex,
   onDismissRun,
+  onOpenInQueue,
 }: {
   state: QuestionnaireState;
   nowMs: number;
+  enabled: boolean;
   onGoToIndex: () => void;
   onDismissRun: () => void;
+  onOpenInQueue: (file: string) => void;
 }) {
   const run = state.run;
   switch (run.phase) {
@@ -333,7 +352,11 @@ function RunBlock({
               . Answered: {run.completed} / {run.total}.
             </p>
           ) : null}
-          {run.summary !== null ? <SummaryBlock summary={run.summary} /> : <p>No summary was returned.</p>}
+          {run.summary !== null ? (
+            <SummaryBlock summary={run.summary} enabled={enabled} onOpenInQueue={onOpenInQueue} />
+          ) : (
+            <p>No summary was returned.</p>
+          )}
           <div>
             <button type="button" className="border border-border px-3 py-1" onClick={onDismissRun}>
               Clear this result
@@ -453,8 +476,10 @@ export function QuestionnaireScreen(props: QuestionnaireScreenProps) {
           <RunBlock
             state={state}
             nowMs={nowMs}
+            enabled={enabled}
             onGoToIndex={props.onGoToIndex}
             onDismissRun={props.onDismissRun}
+            onOpenInQueue={props.onOpenInQueue}
           />
         </div>
       ) : null}

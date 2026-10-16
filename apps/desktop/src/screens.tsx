@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { FoldersScreen } from "./components/FoldersScreen";
 import { IndexScreen } from "./components/IndexScreen";
 import { QuestionnaireScreen } from "./components/QuestionnaireScreen";
+import { ReviewQueueScreen } from "./components/ReviewQueueScreen";
 import type { ScreenId } from "./components/Shell";
 import { folderInUse, foldersScreenView, ledgerInUse } from "./foldersScreen";
 import { useFolderPicker } from "./hooks/useFolderPicker";
@@ -14,6 +15,7 @@ import type { FoldersHandle } from "./hooks/useFolders";
 import { useIndexJob } from "./hooks/useIndexJob";
 import { useNow } from "./hooks/useNow";
 import { useQuestionnaire } from "./hooks/useQuestionnaire";
+import { useReviewQueue } from "./hooks/useReviewQueue";
 import { runIsActive } from "./questionnaireRun";
 import type { ReadinessView } from "./readiness";
 
@@ -31,6 +33,7 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
   const questionnaire = useQuestionnaire(healthy);
   const counting = index.state.phase === "running" || runIsActive(questionnaire.state.run);
   const nowMs = useNow(counting);
+  const queue = useReviewQueue();
 
   const { refreshFiles } = questionnaire;
   useEffect(() => {
@@ -38,6 +41,18 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
       refreshFiles();
     }
   }, [healthy, screen, refreshFiles]);
+
+  const { refreshFiles: refreshQueueFiles, openFile: openQueueFile } = queue;
+  useEffect(() => {
+    if (healthy && screen === "review") {
+      refreshQueueFiles();
+    }
+  }, [healthy, screen, refreshQueueFiles]);
+
+  const openInQueue = (file: string): void => {
+    openQueueFile(file);
+    onNavigate("review");
+  };
 
   switch (screen) {
     case "folders":
@@ -74,7 +89,12 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
           onStart={questionnaire.start}
           onGoToIndex={() => onNavigate("index")}
           onDismissRun={questionnaire.dismissRun}
+          onOpenInQueue={openInQueue}
         />
+      );
+    case "review":
+      return (
+        <ReviewQueueScreen state={queue.state} enabled={healthy} onOpenFile={queue.openFile} />
       );
   }
 }

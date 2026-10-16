@@ -11,12 +11,17 @@
 import { NO_DOWNLOAD_STATEMENT } from "./readiness";
 import {
   BUSY_STATEMENT,
+  DRAFT_UNREADABLE_TEXT,
+  HEADERS_CHANGED_TEXT,
+  QUESTION_MISMATCH_TEXT,
+  RUN_RECORD_MISSING_TEXT,
   UNKNOWN_RUN,
 } from "./fixedTexts";
 import type { FolderErrorWord, FolderProblem } from "./ipc/folders";
 import type {
   ApiError,
   CallResult,
+  DRAFT_REFUSAL_CODES,
   FIXED_ERROR_WORDS,
   MAPPING_REFUSAL_CODES,
   ProxyError,
@@ -209,9 +214,45 @@ export function mappingRefusalMessage(code: MappingRefusalCode): string {
   }
 }
 
-/** Draft refusals belong to the review queue (chunk 6h), whose wording is not set yet. */
-export const DRAFT_REFUSED_TEXT =
-  "The review queue refused this draft. Its explanation is set in a later chunk.";
+type DraftRefusalCode = (typeof DRAFT_REFUSAL_CODES)[number];
+
+/**
+ * A whole-queue refusal as fixed words (ADR-021 decision 5). The three ledger words have their own
+ * text; every loader code (workbook or mapping refusal) is "could not read this file as a draft".
+ */
+export function draftRefusedMessage(code: DraftRefusalCode): string {
+  switch (code) {
+    case "question_mismatch":
+      return QUESTION_MISMATCH_TEXT;
+    case "run_record_missing":
+      return RUN_RECORD_MISSING_TEXT;
+    case "headers_changed":
+      return HEADERS_CHANGED_TEXT;
+    case "file_too_large":
+    case "uncompressed_too_large":
+    case "too_many_parts":
+    case "ratio_too_high":
+    case "not_a_zip":
+    case "legacy_or_encrypted":
+    case "unsupported_type":
+    case "no_workbook_part":
+    case "unreadable":
+    case "doctype":
+    case "entity":
+    case "utf32":
+    case "encoding_not_allowed":
+    case "duplicate_part":
+    case "no_mapping":
+    case "sheet_not_found":
+    case "bad_position":
+    case "sheet_too_large":
+    case "too_many_questions":
+    case "already_has_answer_columns":
+      return DRAFT_UNREADABLE_TEXT;
+    default:
+      return assertNever(code);
+  }
+}
 
 /** Turn one typed sidecar error body into fixed words. */
 export function describeApiError(body: ApiError): Described {
@@ -229,7 +270,7 @@ export function describeApiError(body: ApiError): Described {
     case "mapping_refused":
       return error(`mapping_refused:${body.code}`, mappingRefusalMessage(body.code));
     case "draft_refused":
-      return error(`draft_refused:${body.code}`, DRAFT_REFUSED_TEXT);
+      return error(`draft_refused:${body.code}`, draftRefusedMessage(body.code));
     case "invalid_request":
       return error(
         "invalid_request",

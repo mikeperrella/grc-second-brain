@@ -3,8 +3,7 @@
 // never built from sidecar or file text. A statement here is always rendered in body text, never in
 // a tooltip, a collapsed section or an attribute (DESIGN.md 1 rule 2).
 //
-// Words NOT written here on purpose: the review queue's refusal explanation and the approval line
-// (DESIGN.md 4.1, set in chunk 6h).
+// The review queue's statements (chunk 6h) are at the end of this file.
 //
 // The backticks around `run_record_not_kept` in DESIGN.md 4.1 are Markdown code marks; the window
 // shows the same words as one plain text node.
@@ -50,8 +49,42 @@ export const BUSY_STATEMENT = "another job is running";
 /** Empty questionnaire folder (DESIGN.md 7 "Empty"). */
 export const NO_WORKBOOKS = "no .xlsx or .xlsm files in the folder";
 
-/**
- * The review queue is chunk 6h. This is the reason shown on the disabled "Open in review queue"
- * action in 6g; 6h replaces it.
- */
-export const REVIEW_QUEUE_PLACEHOLDER = "The review queue is not built yet (chunk 6h).";
+// ----- the review queue (chunk 6h; docs/adr/021 decisions 4, 5 and 7, DESIGN.md 4.1, 4.3, 4.4) ---
+
+/** On every SUPPORTED and PARTIAL row, always visible (ADR-021 decision 7). */
+export const REVIEW_SENTENCE =
+  "The quote is real company text that was in the context. ALIBI has not checked that it answers this question.";
+
+/** A row whose Status cell was changed after drafting (ADR-021 decision 4). */
+export const EDITED_STATUS_LINE =
+  "The Status cell in the workbook was changed after drafting. The code's verdict is shown, not the cell.";
+
+/** The label beside the record's status on an edited-status row (ADR-021 decision 4). */
+export const RECORDED_BY_ALIBI = "recorded by ALIBI";
+
+/** A row whose Answer cell was changed after drafting (ADR-021 decision 4). */
+export const EDITED_ANSWER_LINE =
+  "The Answer cell was changed after drafting. The citation belongs to the original answer.";
+
+/** A row whose Evidence cell was changed: DESIGN.md 4.4 words only ("the citation is ALIBI's record, not the cell"). */
+export const EDITED_EVIDENCE_LINE =
+  "The Evidence cell in the workbook was changed after drafting. The citation shown is ALIBI's record, not the cell.";
+
+/** `draft_refused` with `question_mismatch` (ADR-021 decision 5). */
+export const QUESTION_MISMATCH_TEXT =
+  "A question in this file was changed after ALIBI drafted it, so ALIBI cannot match the rows to its record and shows none of them. Open the original draft instead, or run the questionnaire again. (Code: question_mismatch)";
+
+/** Always shown in the queue: the queue records no approval (ADR-021 decision 7). */
+export const APPROVAL_LINE =
+  'This queue is for reading. ALIBI does not record approval. To approve an answer, type "approved" in the Review column of the workbook, then import it into the ledger (the import screen comes in a later chunk).';
+
+/** `draft_refused` with `run_record_missing` (ADR-021 decision 5). */
+export const RUN_RECORD_MISSING_TEXT =
+  "ALIBI has no record of this draft, so it cannot show its answers with verified citations. This happens when the run was made without a ledger folder, or the file was renamed. Set the ledger folder, restart ALIBI and run again.";
+
+/** `draft_refused` with `headers_changed` (ADR-021 decision 5). */
+export const HEADERS_CHANGED_TEXT =
+  "The ALIBI columns in this file were moved or renamed, so ALIBI cannot match the rows to its record.";
+
+/** `draft_refused` with any other loader code (ADR-021 decision 5). */
+export const DRAFT_UNREADABLE_TEXT = "ALIBI could not read this file as a draft.";

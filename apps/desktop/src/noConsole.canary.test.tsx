@@ -20,7 +20,11 @@ import { INITIAL_INDEX_STATE, reduceIndex } from "./indexJob";
 import { getFolders, listFiles, pickFolder } from "./ipc/folders";
 import { fetchHealth } from "./ipc/health";
 import { callRoute, type CallResult, type Invoke } from "./ipc/proxy";
-import { describeApiError } from "./messages";
+import { DraftRowView } from "./components/DraftRowView";
+import { LongText } from "./components/LongText";
+import { ReviewQueueScreen } from "./components/ReviewQueueScreen";
+import { describeApiError, draftRefusedMessage } from "./messages";
+import { INITIAL_REVIEW_QUEUE_STATE, reduceReviewQueue, type ReviewQueueEvent } from "./reviewQueue";
 import { startPolling } from "./poller";
 import { visibleControls } from "./plainText";
 import { INITIAL_QUESTIONNAIRE_STATE, reduceQuestionnaire, type QuestionnaireEvent } from "./questionnaireRun";
@@ -152,6 +156,7 @@ describe("no console output", () => {
           onStart={noop}
           onGoToIndex={noop}
           onDismissRun={noop}
+          onOpenInQueue={noop}
         />,
       ),
       renderToStaticMarkup(<Refusal failure={describeApiError({ error: "models_unavailable", models_missing: [MARKER] })} />),
@@ -170,6 +175,56 @@ describe("no console output", () => {
     }
     expect(describeApiError({ error: "workbook_refused", code: "unreadable" }).code).toBe("workbook_refused:unreadable");
     expect(visibleControls(MARKER)).toBe(MARKER);
+    expectSilent();
+  });
+
+  it("is silent through the review queue: reducer, components and the client calls, with hostile text", async () => {
+    const hostileRow = {
+      row: 1,
+      question_text: MARKER,
+      status: MARKER,
+      reasons: [MARKER],
+      answer_text: MARKER,
+      citation: { source_path: MARKER, start_line: 1, end_line: 2, quote: MARKER.repeat(40) },
+      status_edited: true,
+      answer_edited: true,
+      evidence_edited: true,
+    };
+    const result = (status: number, body: unknown) =>
+      ({ kind: "reply", route: "draft_rows", reply: { status, body } }) as unknown as CallResult<"draft_rows">;
+    let state = INITIAL_REVIEW_QUEUE_STATE;
+    for (const event of [
+      { type: "files_requested" },
+      { type: "files_result", call: { kind: "ok", value: { kind: "exports", files: [MARKER], truncated: false } } },
+      { type: "file_selected", file: MARKER },
+      { type: "draft_requested" },
+      {
+        type: "draft_result",
+        file: MARKER,
+        result: result(200, { model: MARKER, file_name: MARKER, complete: false, question_count: 1, rows: [hostileRow] }),
+      },
+    ] as unknown as ReviewQueueEvent[]) {
+      state = reduceReviewQueue(state, event);
+    }
+    const refusedState = reduceReviewQueue(
+      reduceReviewQueue(
+        reduceReviewQueue(state, { type: "draft_requested" }),
+        { type: "draft_result", file: MARKER, result: result(422, { error: "draft_refused", code: "question_mismatch", counts: { rows_file: 2 } }) },
+      ),
+      { type: "files_result", call: { kind: "folder_error", error: "not_configured" } },
+    );
+    const html = [
+      renderToStaticMarkup(<ReviewQueueScreen state={state} enabled onOpenFile={() => undefined} />),
+      renderToStaticMarkup(<ReviewQueueScreen state={refusedState} enabled={false} onOpenFile={() => undefined} />),
+      renderToStaticMarkup(<DraftRowView row={hostileRow} />),
+      renderToStaticMarkup(<LongText text={MARKER.repeat(100)} />),
+    ].join("");
+    expect(html).toContain(MARKER); // shown to the user as text, never logged
+    // The client calls the queue's hook makes, through their failure paths.
+    const failing: Invoke = () => Promise.reject(MARKER);
+    await callRoute<"draft_rows">(failing, { route: "draft_rows", file: MARKER });
+    await listFiles(failing, "exports");
+    expect(draftRefusedMessage("question_mismatch").length).toBeGreaterThan(10);
     expectSilent();
   });
 
