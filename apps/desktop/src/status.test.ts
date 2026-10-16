@@ -57,7 +57,7 @@ describe("describeStatus: an unknown value is never a label (F36-2)", () => {
     "OK",
     "NEEDS-REVIEW",
     "<b>SUPPORTED</b>",
-    "SUPPORTED‮",
+    "SUPPORTED\u202e",
     "constructor",
     "__proto__",
     "toString",

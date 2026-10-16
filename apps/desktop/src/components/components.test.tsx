@@ -128,7 +128,7 @@ describe("readiness in the status bar", () => {
   it("shows a model name as escaped text, never as markup (F36-1)", () => {
     const html = bar(HEALTHY, {
       state: "degraded",
-      models: ['<img src=x onerror="alert(1)">', "<b>bold</b>", "a‮b"],
+      models: ['<img src=x onerror="alert(1)">', "<b>bold</b>", "a\u202eb"],
       ollama: "reachable",
     });
     expect(html).not.toContain("<img");
