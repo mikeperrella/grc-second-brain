@@ -1,32 +1,24 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
-import { fetchHealth, type HealthView } from "./ipc/health";
-import { startHealthPolling } from "./ipc/healthPoller";
-import { describeView, viewClass } from "./statusText";
+import "./styles.css";
+import { Shell } from "./components/Shell";
+import { StatusBar } from "./components/StatusBar";
+import { summarizeFolders } from "./foldersSummary";
+import { useFolders } from "./hooks/useFolders";
+import { useHealth } from "./hooks/useHealth";
+import { useReadiness } from "./hooks/useReadiness";
 
 function App() {
-  const [view, setView] = useState<HealthView>({ state: "starting" });
-
-  // Every result enters as `unknown` and is parsed by `fetchHealth` (Zod) before use. The
-  // cleanup stops the polling, which also covers React StrictMode mounting the effect twice in dev.
-  useEffect(
-    () =>
-      startHealthPolling(
-        () => fetchHealth(() => invoke<unknown>("sidecar_health")),
-        setView,
-      ),
-    [],
-  );
+  const health = useHealth();
+  const healthy = health.state === "healthy";
+  const readiness = useReadiness(healthy);
+  const folders = useFolders(healthy);
 
   return (
-    <main className="container">
-      <h1>ALIBI</h1>
-      <p>Every compliance answer needs an alibi.</p>
-      <p role="status" aria-live="polite" className={viewClass(view)}>
-        {describeView(view)}
-      </p>
-    </main>
+    <Shell
+      healthy={healthy}
+      statusBar={
+        <StatusBar health={health} readiness={readiness} folders={summarizeFolders(folders)} />
+      }
+    />
   );
 }
 
