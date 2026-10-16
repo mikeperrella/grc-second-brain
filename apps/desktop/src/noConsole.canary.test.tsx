@@ -5,14 +5,25 @@
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { FoldersScreen } from "./components/FoldersScreen";
 import { FoldersSummary } from "./components/FoldersSummary";
+import { IndexScreen } from "./components/IndexScreen";
+import { PlainText } from "./components/PlainText";
+import { QuestionnaireScreen } from "./components/QuestionnaireScreen";
 import { ReadinessIndicator } from "./components/ReadinessIndicator";
+import { Refusal } from "./components/Refusal";
 import { Shell } from "./components/Shell";
 import { StatusBar } from "./components/StatusBar";
 import { StatusChip } from "./components/StatusChip";
+import { foldersScreenView } from "./foldersScreen";
+import { INITIAL_INDEX_STATE, reduceIndex } from "./indexJob";
 import { getFolders, listFiles, pickFolder } from "./ipc/folders";
 import { fetchHealth } from "./ipc/health";
-import { callRoute, type Invoke } from "./ipc/proxy";
+import { callRoute, type CallResult, type Invoke } from "./ipc/proxy";
+import { describeApiError } from "./messages";
+import { startPolling } from "./poller";
+import { visibleControls } from "./plainText";
+import { INITIAL_QUESTIONNAIRE_STATE, reduceQuestionnaire, type QuestionnaireEvent } from "./questionnaireRun";
 import { readinessView } from "./readiness";
 import { summarizeFolders } from "./foldersSummary";
 
@@ -81,6 +92,84 @@ describe("no console output", () => {
     ];
     // The unknown status is shown as an error block, so the marker used as a status never appears.
     expect(html[3]).not.toContain(MARKER);
+    expectSilent();
+  });
+
+  it("is silent through the 6g screens, reducers, message tables and pollers, with hostile text", async () => {
+    const noop = (): void => undefined;
+    const hostileFolder = { kind: "vault", in_use: MARKER, saved: MARKER, problem: "overlap", start_problem: null } as const;
+    const folders = foldersScreenView({
+      kind: "ok",
+      value: { ready: true, saved_file: "ok", saved_file_at_start: "ok", folders: [hostileFolder] },
+    });
+    const fail = (error: string, status = 409, extra: object = {}) =>
+      ({ kind: "reply", route: "questionnaire_start", reply: { status, body: { error, ...extra } } }) as unknown as CallResult<"questionnaire_start">;
+
+    // Every refusal path of the three flows, with the marker where file text would be.
+    let q = INITIAL_QUESTIONNAIRE_STATE;
+    for (const event of [
+      { type: "files_result", call: { kind: "ok", value: { kind: "questionnaires", files: [MARKER], truncated: false } } },
+      { type: "file_selected", file: MARKER },
+      { type: "inspect_requested" },
+      {
+        type: "inspect_result",
+        result: { kind: "reply", route: "questionnaire_inspect", reply: { status: 200, body: {
+          sheets: [{ name: MARKER, rows: 1, columns: 1 }],
+          suggestion: null, macro_enabled: false, parts: {}, warnings: [MARKER],
+        } } },
+      },
+      { type: "start_requested" },
+      { type: "start_result", result: fail("models_unavailable", 503, { models_missing: [MARKER] }), nowMs: 1 },
+      { type: "start_requested" },
+      { type: "start_result", result: fail("run_in_progress"), nowMs: 1 },
+      { type: "start_requested" },
+      { type: "start_result", result: { kind: "proxy_error", error: "timeout" }, nowMs: 1 },
+    ] as unknown as QuestionnaireEvent[]) {
+      q = reduceQuestionnaire(q, event);
+    }
+    let i = INITIAL_INDEX_STATE;
+    i = reduceIndex(i, { type: "start_requested" });
+    i = reduceIndex(i, {
+      type: "start_result",
+      result: { kind: "reply", route: "vault_index_start", reply: { status: 503, body: { error: "models_unavailable", models_missing: [MARKER] } } } as unknown as CallResult<"vault_index_start">,
+      nowMs: 1,
+    });
+
+    const html = [
+      renderToStaticMarkup(<FoldersScreen view={folders} pick={{ phase: "saved", kind: "vault", display: MARKER }} enabled onChoose={noop} />),
+      renderToStaticMarkup(<FoldersScreen view={{ state: "loading" }} pick={{ phase: "idle" }} enabled={false} onChoose={noop} />),
+      renderToStaticMarkup(<IndexScreen state={i} nowMs={0} readiness={{ state: "degraded", models: [MARKER], ollama: "bad_response" }} vaultInUse={false} enabled onStart={noop} />),
+      renderToStaticMarkup(
+        <QuestionnaireScreen
+          state={q}
+          nowMs={0}
+          readiness={{ state: "unavailable", code: "timeout" }}
+          ledgerInUse={null}
+          enabled
+          onSelectFile={noop}
+          onInspect={noop}
+          onMappingChange={noop}
+          onStart={noop}
+          onGoToIndex={noop}
+          onDismissRun={noop}
+        />,
+      ),
+      renderToStaticMarkup(<Refusal failure={describeApiError({ error: "models_unavailable", models_missing: [MARKER] })} />),
+      renderToStaticMarkup(<PlainText text={MARKER} />),
+    ].join("");
+    expect(html).toContain(MARKER); // shown to the user as text, never logged
+
+    // The pollers run, are stopped, and say nothing.
+    vi.useFakeTimers();
+    try {
+      const stop = startPolling(() => Promise.resolve(MARKER), noop, 10);
+      await vi.advanceTimersByTimeAsync(50);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(describeApiError({ error: "workbook_refused", code: "unreadable" }).code).toBe("workbook_refused:unreadable");
+    expect(visibleControls(MARKER)).toBe(MARKER);
     expectSilent();
   });
 

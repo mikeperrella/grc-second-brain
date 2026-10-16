@@ -187,11 +187,22 @@ describe("the shell", () => {
     expect(html).toContain("<main>");
   });
 
-  it("never offers an enabled button for a screen that is not built", () => {
-    const html = renderToStaticMarkup(<Shell healthy statusBar={null} />);
-    expect(html).toContain("These screens are not built yet.");
-    const buttons = html.match(/<button[^>]*>/g) ?? [];
-    expect(buttons.length).toBeGreaterThan(0);
+  it("enables the three built screens when healthy and never the review queue", () => {
+    const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="folders" />);
+    expect(html).toContain("The review queue is not built yet (chunk 6h).");
+    const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
+    expect(buttons).toHaveLength(4);
+    for (const button of buttons) {
+      const isQueue = button.includes("Review queue");
+      expect(button.includes("disabled"), button).toBe(isQueue);
+    }
+    expect(html).toContain('aria-current="page"');
+  });
+
+  it("disables every entry, built or not, while the sidecar is not healthy", () => {
+    const html = renderToStaticMarkup(<Shell healthy={false} statusBar={null} />);
+    const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
+    expect(buttons).toHaveLength(4);
     for (const button of buttons) {
       expect(button).toContain("disabled");
     }
