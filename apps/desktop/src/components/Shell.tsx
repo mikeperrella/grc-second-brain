@@ -1,26 +1,22 @@
 // The window frame: title, navigation, status bar, content. Presentational: props only.
 //
 // Navigation is disabled while the sidecar is not healthy ("starting: navigation disabled",
-// M6_PLAN C.1). Folders, Index the vault and Questionnaire are built (6g); the Review queue is
-// chunk 6h, so its entry stays disabled with a visible reason in every state and nothing here
-// pretends it exists.
+// M6_PLAN C.1). Folders, Index the vault, Questionnaire (6g) and the Review queue (6h) are built.
 
 import type { ReactNode } from "react";
-import { REVIEW_QUEUE_PLACEHOLDER } from "../fixedTexts";
 
-export type ScreenId = "folders" | "index" | "questionnaire";
+export type ScreenId = "folders" | "index" | "questionnaire" | "review";
 
 interface NavEntry {
   label: string;
-  /** `null` means the screen is not built yet. */
-  screen: ScreenId | null;
+  screen: ScreenId;
 }
 
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { label: "Folders", screen: "folders" },
   { label: "Index the vault", screen: "index" },
   { label: "Questionnaire", screen: "questionnaire" },
-  { label: "Review queue", screen: null },
+  { label: "Review queue", screen: "review" },
 ];
 
 
@@ -44,15 +40,14 @@ export function Shell({ healthy, statusBar, current, onNavigate, children }: She
         <ul className="flex flex-wrap gap-2">
           {NAV_ENTRIES.map((entry) => {
             const screen = entry.screen;
-            const enabled = healthy && screen !== null;
             return (
               <li key={entry.label}>
                 <button
                   type="button"
-                  disabled={!enabled}
-                  aria-current={screen !== null && screen === current ? "page" : undefined}
+                  disabled={!healthy}
+                  aria-current={screen === current ? "page" : undefined}
                   className="border border-border px-3 py-1"
-                  onClick={screen !== null ? () => onNavigate?.(screen) : undefined}
+                  onClick={() => onNavigate?.(screen)}
                 >
                   {entry.label}
                 </button>
@@ -60,9 +55,7 @@ export function Shell({ healthy, statusBar, current, onNavigate, children }: She
             );
           })}
         </ul>
-        {healthy ? (
-          <p className="text-sm text-text-muted">{REVIEW_QUEUE_PLACEHOLDER}</p>
-        ) : (
+        {healthy ? null : (
           <p className="text-sm text-text-muted">Navigation is off until the sidecar is healthy.</p>
         )}
       </nav>

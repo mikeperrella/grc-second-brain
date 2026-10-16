@@ -15,8 +15,14 @@ import {
   type ApiError,
 } from "./ipc/proxy";
 import {
-  DRAFT_REFUSED_TEXT,
+  DRAFT_UNREADABLE_TEXT,
+  HEADERS_CHANGED_TEXT,
+  QUESTION_MISMATCH_TEXT,
+  RUN_RECORD_MISSING_TEXT,
+} from "./fixedTexts";
+import {
   describeApiError,
+  draftRefusedMessage,
   describeFolderFailure,
   describeNonReply,
   fixedErrorMessage,
@@ -99,8 +105,30 @@ describe("every code in the contracts maps to a fixed message", () => {
     for (const code of DRAFT_REFUSAL_CODES) {
       const d = describeApiError({ error: "draft_refused", code, counts: { rows: 3 } });
       expect(d.code).toBe(`draft_refused:${code}`);
-      // The queue's wording is not set yet (DESIGN.md 4.1): one neutral text, no per-code wording.
-      expect(d.text).toBe(DRAFT_REFUSED_TEXT);
+      expect(d.text).toBe(draftRefusedMessage(code));
+    }
+  });
+
+  it("gives each draft refusal code the exact fixed text (ADR-021 decision 5)", () => {
+    expect(draftRefusedMessage("question_mismatch")).toBe(QUESTION_MISMATCH_TEXT);
+    expect(draftRefusedMessage("run_record_missing")).toBe(RUN_RECORD_MISSING_TEXT);
+    expect(draftRefusedMessage("headers_changed")).toBe(HEADERS_CHANGED_TEXT);
+    const others = DRAFT_REFUSAL_CODES.filter(
+      (code) => code !== "question_mismatch" && code !== "run_record_missing" && code !== "headers_changed",
+    );
+    expect(others.length).toBe(WORKBOOK_REFUSAL_CODES.length + MAPPING_REFUSAL_CODES.length);
+    for (const code of others) {
+      expect(draftRefusedMessage(code), code).toBe(DRAFT_UNREADABLE_TEXT);
+    }
+    // No code is left without a message, and every message is one of the four fixed texts.
+    const allowed = new Set([
+      QUESTION_MISMATCH_TEXT,
+      RUN_RECORD_MISSING_TEXT,
+      HEADERS_CHANGED_TEXT,
+      DRAFT_UNREADABLE_TEXT,
+    ]);
+    for (const code of DRAFT_REFUSAL_CODES) {
+      expect(allowed.has(draftRefusedMessage(code)), code).toBe(true);
     }
   });
 });
@@ -133,7 +161,7 @@ describe("what a described failure may contain", () => {
       ...MAPPING_REFUSAL_CODES.map(mappingRefusalMessage),
       ...FOLDER_ERRORS.map(folderErrorMessage),
       ...FOLDER_PROBLEMS.map(folderProblemMessage),
-      DRAFT_REFUSED_TEXT,
+      ...DRAFT_REFUSAL_CODES.map(draftRefusedMessage),
     ];
     for (const text of all) {
       expect(text).not.toMatch(/https?:|stuck|\bETA\b|%/i);

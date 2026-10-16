@@ -187,16 +187,21 @@ describe("the shell", () => {
     expect(html).toContain("<main>");
   });
 
-  it("enables the three built screens when healthy and never the review queue", () => {
+  it("enables all four screens, the review queue included, when healthy", () => {
     const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="folders" />);
-    expect(html).toContain("The review queue is not built yet (chunk 6h).");
+    expect(html).not.toContain("not built yet");
     const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
     expect(buttons).toHaveLength(4);
+    expect(buttons.some((button) => button.includes("Review queue"))).toBe(true);
     for (const button of buttons) {
-      const isQueue = button.includes("Review queue");
-      expect(button.includes("disabled"), button).toBe(isQueue);
+      expect(button.includes("disabled"), button).toBe(false);
     }
     expect(html).toContain('aria-current="page"');
+  });
+
+  it("marks the review queue as the current screen", () => {
+    const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="review" />);
+    expect(html).toMatch(/<button[^>]*aria-current="page"[^>]*>Review queue<\/button>/);
   });
 
   it("disables every entry, built or not, while the sidecar is not healthy", () => {

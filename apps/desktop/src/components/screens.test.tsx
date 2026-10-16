@@ -13,7 +13,6 @@ import {
   NO_RECORD_AFTER_RUN,
   NO_WORKBOOKS,
   READING_ONLY,
-  REVIEW_QUEUE_PLACEHOLDER,
   RUN_SPEED_LINE,
   SAVED_STATEMENT,
   UNKNOWN_INDEX_JOB,
@@ -552,6 +551,7 @@ describe("Questionnaire screen", () => {
         onStart={NOOP}
         onGoToIndex={NOOP}
         onDismissRun={NOOP}
+        onOpenInQueue={NOOP}
       />,
     );
   const startButton = (html: string) => /<button[^>]*>(?:Start the run|Run anyway)<\/button>/.exec(html)?.[0] ?? "";
@@ -837,21 +837,30 @@ describe("Questionnaire screen", () => {
       expect(textOf(html)).not.toContain("No parts of the workbook were dropped.");
     });
 
-    it("run_record_not_kept: the exact after-run text and the queue action off with a reason", () => {
+    it("run_record_not_kept: the exact after-run text and no way into the queue", () => {
       for (const warning of ["run_record_not_kept", "run_record_failed"]) {
         const html = render(done({}, summaryBody({ warnings: [warning] })));
         expect(textOf(html)).toContain(NO_RECORD_AFTER_RUN);
-        expect(html).toMatch(/<button[^>]*disabled[^>]*>Open in review queue<\/button>/);
-        expect(textOf(html)).toContain(REVIEW_QUEUE_PLACEHOLDER);
+        expect(html).not.toContain("Open in review queue");
         expect(html).not.toContain("Warning:");
       }
     });
 
-    it("with a run record the after-run text is absent, the queue action stays off (6h builds it)", () => {
+    it("with a run record the after-run text is absent and the queue action is enabled", () => {
       const html = render(done());
       expect(textOf(html)).not.toContain(NO_RECORD_AFTER_RUN);
+      expect(html).toMatch(/<button[^>]*>Open in review queue<\/button>/);
+      expect(html).not.toMatch(/<button[^>]*disabled[^>]*>Open in review queue<\/button>/);
+    });
+
+    it("the queue action is off while the sidecar is not healthy", () => {
+      const html = render(done(), { enabled: false });
       expect(html).toMatch(/<button[^>]*disabled[^>]*>Open in review queue<\/button>/);
-      expect(textOf(html)).toContain(REVIEW_QUEUE_PLACEHOLDER);
+    });
+
+    it("no answers file written: no way into the queue", () => {
+      const html = render(done({}, summaryBody({ file_name: null })));
+      expect(html).not.toContain("Open in review queue");
     });
 
     it("other warnings appear only as plain code words", () => {
