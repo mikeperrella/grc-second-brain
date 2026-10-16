@@ -4,7 +4,7 @@
 
 Method: a throwaway stdlib-only script read `importlib.metadata` for every installed distribution in `sidecar/.venv` (Python 3.11.9), skipping pip, setuptools and the editable `grc-sidecar`. For each package it read the license metadata and the license files in `dist-info`, and matched known license text. Mike reviewed and approved the results on 2026-10-06.
 
-Allowed set: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, PSF-2.0. MPL-2.0 is accepted for `certifi` and `pathspec` only; revisit at M9 (public release / license decision).
+Allowed set: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, PSF-2.0. MPL-2.0 is accepted for `certifi` and `pathspec` only; revisit at M9 (public release / license decision). **This file lists the Python packages only.** The frontend tree is not listed here, and since M6 chunk 6f-A it includes `lightningcss` (MPL-2.0, a transitive build-time dependency of `@tailwindcss/vite`, reported in the PR #43 body); the Rust tree is checked by `cargo deny` (MPL-2.0 per crate in `deny.toml`). So "MPL-2.0 for `certifi` and `pathspec` only" is true of the Python set, not of the whole project; regenerating this file for all three trees is G22 (M8), and the MPL-2.0 decision for `lightningcss` waits for M9.
 
 | Package | Version | License | Required by |
 |---|---|---|---|
