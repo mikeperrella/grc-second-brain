@@ -483,6 +483,7 @@ describe("Questionnaire screen", () => {
     macro_enabled: false,
     parts: {},
     warnings: [],
+    sha256: "0123456789abcdef".repeat(4),
     ...over,
   });
   const summaryBody = (over: object = {}) => ({
