@@ -13,6 +13,7 @@
 // Which channel a value arrived on decides how it is read, never what it contains: an unparseable
 // value on the resolve channel is `invalid_response`, on the reject channel it is `rejected`.
 
+import "../zodConfig";
 import { z } from "zod";
 
 const kind = <K extends string>(name: K) =>

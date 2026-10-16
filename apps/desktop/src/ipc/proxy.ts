@@ -19,6 +19,7 @@
 // Scope: the bodies of the SEVEN M6 core routes. The refusal families of the M6.5 routes (ledger,
 // recall, blast radius, contradictions, reality) are added with those screens.
 
+import "../zodConfig";
 import { z } from "zod";
 
 // ----- the words Rust sends, which proxy-contract.json pins -----------------------------------

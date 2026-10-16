@@ -14,6 +14,7 @@
 //
 // Same rules as health.ts: strictObject everywhere, nothing throws, Zod errors are dropped.
 
+import "../zodConfig";
 import { z } from "zod";
 import type { Invoke } from "./proxy";
 
