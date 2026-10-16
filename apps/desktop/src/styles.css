@@ -1,0 +1,103 @@
+/*
+ * ALIBI window styles (docs/DESIGN.md Sections 3 and 9).
+ *
+ * Bundled CSS only: no remote font, no @import url(), no inline style attribute anywhere in the
+ * app (the shipped CSP is style-src 'self', ADR-005). System font stack only.
+ *
+ * COLOURS: the values below are NEUTRAL PLACEHOLDERS for the roles in DESIGN.md 3.1. They are set
+ * and contrast-checked by a script in a later chunk. No pair here is claimed to pass any contrast
+ * target. Do not read a value as a design decision.
+ */
+@import "tailwindcss";
+
+:root {
+  /* Roles (DESIGN.md 3.1). One scheme for now; light and dark are set in a later chunk. */
+  --alibi-surface: #f4f4f4;
+  --alibi-surface-raised: #ffffff;
+  --alibi-text: #111111;
+  --alibi-text-muted: #444444;
+  --alibi-border: #777777;
+  --alibi-focus-ring: #1a4fd0;
+  --alibi-status-supported: #1d5c2e;
+  --alibi-status-partial: #6b4a00;
+  --alibi-status-needs-review: #8a1c1c;
+  --alibi-status-error: #8a1c1c;
+  --alibi-statement-bg: #eef2ff;
+  --alibi-statement-text: #111111;
+  --alibi-badge-bg: #fff4d6;
+  --alibi-badge-text: #111111;
+  --alibi-edited-bg: #fdeceb;
+  --alibi-edited-text: #111111;
+
+  /* Type (DESIGN.md 3.3): system fonts only. */
+  --alibi-font-body: system-ui, "Segoe UI", sans-serif;
+  --alibi-font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* Expose the roles and fonts as Tailwind utilities (bg-surface, text-muted, font-mono, ...). */
+@theme inline {
+  --color-surface: var(--alibi-surface);
+  --color-surface-raised: var(--alibi-surface-raised);
+  --color-text: var(--alibi-text);
+  --color-text-muted: var(--alibi-text-muted);
+  --color-border: var(--alibi-border);
+  --color-focus-ring: var(--alibi-focus-ring);
+  --color-status-supported: var(--alibi-status-supported);
+  --color-status-partial: var(--alibi-status-partial);
+  --color-status-needs-review: var(--alibi-status-needs-review);
+  --color-status-error: var(--alibi-status-error);
+  --color-statement-bg: var(--alibi-statement-bg);
+  --color-statement-text: var(--alibi-statement-text);
+  --color-badge-bg: var(--alibi-badge-bg);
+  --color-badge-text: var(--alibi-badge-text);
+  --color-edited-bg: var(--alibi-edited-bg);
+  --color-edited-text: var(--alibi-edited-text);
+  --font-sans: var(--alibi-font-body);
+  --font-mono: var(--alibi-font-mono);
+}
+
+body {
+  margin: 0;
+  background-color: var(--alibi-surface);
+  color: var(--alibi-text);
+  font-family: var(--alibi-font-body);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* The health line (statusText.ts viewClass). The words carry the meaning; colour is the extra. */
+.status {
+  font-weight: 600;
+}
+.status-starting {
+  color: var(--alibi-status-partial);
+}
+.status-healthy {
+  color: var(--alibi-status-supported);
+}
+.status-failed {
+  color: var(--alibi-status-error);
+}
+
+/* A visible keyboard focus indicator on everything focusable (DESIGN.md 6). */
+:focus-visible {
+  outline: 2px solid var(--alibi-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Nothing essential depends on motion (DESIGN.md 6). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Meaning must survive forced-colors: borders carry block boundaries. */
+@media (forced-colors: active) {
+  .alibi-block {
+    border: 2px solid CanvasText;
+  }
+}
