@@ -2,23 +2,9 @@
 // configured is said in words and is never "0 results" (DESIGN.md 1 rule 5). The full two-column
 // screen is chunk 6g.
 
+import { folderLabel } from "../foldersScreen";
 import type { FolderKind } from "../ipc/folders";
 import type { FoldersSummary as Summary } from "../foldersSummary";
-
-export function folderLabel(kind: FolderKind): string {
-  switch (kind) {
-    case "vault":
-      return "Vault";
-    case "questionnaires":
-      return "Questionnaires";
-    case "exports":
-      return "Exports";
-    case "imports":
-      return "Imports";
-    case "ledger":
-      return "Ledger";
-  }
-}
 
 function names(kinds: readonly FolderKind[]): string {
   return kinds.map(folderLabel).join(", ");
