@@ -499,5 +499,30 @@ There is no formatter today and ESLint runs without `--fix`. CLAUDE.md 2.9 exemp
 | M6-30 | all | The mutation proofs of M6 were recorded in pull request bodies and in files in the owner's Downloads folder, not in the repository (ADR-009, 011 and 014 keep theirs in the repository). Fixed at the 6i close by the ADR tables, from the Downloads files where they exist. | recorded |
 | M6-31 | 6g, 6h, live check | The PR #46, #47 and #48 bodies still hold unfilled placeholders ("[add anything else you saw]", "[fill in]" for the local CI and the hand check, "[add local CI results]"), so the hand checks of 6g and 6h are not on record. | recorded, open |
 | M6-32 | 6e | The Rust test for a link to a file outside the folder returns success without testing when the account cannot create a symlink (`apps/desktop/src-tauri/tests/folders_files.rs:142-148`). Threat model F35-3b. | recorded, open |
+| M6-33 | 6j (PR #50, `13b7f56`, merge `dc71367`) | Chunk 6j was not in the plan. The bundled debug build's DevTools Issues tab listed a CSP violation "blocks the use of eval" at startup, from zod 4.6.5 `allowsEval` (a caught `Function("")` probe, `index-DKLdwHig.js` line 9). 6j sets zod `jitless` and imports that setting first (`apps/desktop/src/zodConfig.test.ts`, `apps/desktop/scripts/zodConfigImport.test.mjs`); the tests prove the setting and the import order, and only the owner's hand check on 2026-10-16 shows the violation is gone (Issues tab: only DevTools' own request, blocked by `connect-src`). Slips in 6j: the first restore in mutation proof (a) left a stray blank line, caught by the hash check and fixed; the stage 1 plan used Bash for a directory listing although the instruction was Grep and Read only. Found at the close check: a Semgrep run printed a Semgrepignore v2 deprecation warning for six custom rules (the include pattern `.semgrep/fixtures/grc-airgap.py` will soon be anchored), not a finding, backlog; `docs/dev-setup.md` had stale counts (Semgrep rule tests are 22, 7 and 2 for python, rust and ts, not 9, 2 and 2; Vitest is 428 after 6j, 422 at the 6i close), fixed in chunk 6k. | recorded |
+
+**M6 close check results (2026-10-16, owner hand check, one machine, Windows; observations, not tests):**
+
+- Folders screen with no folders set (0 of 5): the Index, Questionnaire and Review queue screens each showed a fixed sentence and a fixed code (`vault_root_not_configured`, `questionnaire_root_not_configured`, `export_root_not_configured`); no path or raw error text appeared.
+- Folders screen after choosing a ledger folder (`C:\alibi-live\ledger`) and an exports folder (`C:\alibi-live\exports`): "Saved for next launch" showed the path and the line "This saved folder applies the next time you start ALIBI." while "In use now" said not set; after closing and restarting, both moved to "In use now" and "Saved for next launch" said the same folder.
+- Review queue, `demo-questionnaire-UNREVIEWED-DRAFT-50fee7de.xlsx` (model `llama3.1:8b`): Row 3 (Supported, no reasons) and Row 13 (Partial, `review_overdue`) showed the fixed sentence "The quote is real company text that was in the context. ALIBI has not checked that it answers this question."; Row 11 (Needs review, `no_evidence`) showed "No draft answer was written for this row." and "No citation was recorded for this row." and no review sentence.
+- Keyboard: the owner reports that Tab moves through the controls and Enter works; no screenshot of a focus ring was taken.
+- Windows high contrast: a screenshot of the Folders screen showed readable text and visible borders on buttons and boxes; the owner reports all screens worked; the Review queue rows were not screenshotted in high contrast.
+
+**Observed at the close check, not fixed (2026-10-16, owner hand check, one machine):**
+
+- The four navigation buttons show no active state.
+- The source line reads "Lines 23 to 23" for one line.
+- The blue ledger notice still shows after the ledger folder is set.
+- The "Index the vault" button is clickable with no vault set (the message shows above it).
+- The contrast of the grey subtitle was not measured.
+
+**Not done at the close check:**
+
+- The smallest window size was not confirmed.
+- The Vault index and Questionnaire screens were not exercised with data in this check (the first live run is recorded elsewhere).
+- The edited-status, edited-answer, edited-evidence and `question_mismatch` labels were not hand-tested.
+- Contrast ratios were not measured.
+- The installer (M8) was not tested.
 
 (No standing rule was broken in this planning task. Watch item: the harness attribution reminder says to add Co-Authored-By or "Generated with" lines; standing rule 3 governs and no commit was made.)
