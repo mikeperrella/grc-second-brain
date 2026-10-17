@@ -326,3 +326,7 @@ Notes and known limits:
 - **Identifier matching uses `[A-Za-z0-9_.-]` before a form and `[A-Za-z0-9_-]` after it**, an underscore added to the character classes in the plan's description (an underscore glues two words into one identifier, like a letter does).
 - **The quote text kept in a citation is the model's quote after whitespace normalization**, not the raw chunk text, so a quote that spans two lines is stored on one line. The exact lines say where it is.
 - Nothing here talks to a model. What fraction of real model replies pass these checks is measured at live check A.
+
+## Addendum (2026-10-17): screen milestone labels
+
+One sentence in this ADR names "M6" for something that M6 did not build: "The control is human approval (M6), which does not exist yet" (in "Consequences", the bullet beginning "The deterministic checks do not make an answer correct"). The M6 review queue is read-only and records no approval (`M6_PLAN.md`, section "C.5 Review queue (6h) and F12-2c, answered honestly", the sentence beginning "The queue records no approval"; threat-model row F37-3), and a screen for approving answers belongs to M6.5 (same section, "approval is a M6.5 screen"). Until then the control is, in the words of threat-model rows F12-2c and F12-4c as they stand, "human review in the review queue" "which has no completion check and records no approval". Nothing in the M6 window records approval, so the sentence's statement that approval does not exist yet is not changed by this addendum. The original sentence above is not edited.
