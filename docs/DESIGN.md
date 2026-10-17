@@ -24,7 +24,7 @@ Not in scope: brand identity, logos, illustration, marketing pages. Nothing here
 | Minimum size | 900 by 600 |
 | Resizable | Yes (before 6f-B the window was fixed at 800 by 600) |
 | Windows | One, labelled `main` |
-| Zoom | Usable at 200% zoom at the 900 by 600 minimum (**not checked**: the owner's close checklist has not been run) |
+| Zoom | Usable at 200% zoom at the 900 by 600 minimum (**not checked**: the owner's close checklist was run once by hand on 2026-10-16 and no 200% zoom result is recorded) |
 
 The window keys are pinned by a test (`apps/desktop/src-tauri/tests/security_config.rs::the_window_is_resizable_with_the_decided_default_and_minimum_sizes`; mutation proof: `minHeight` changed to 500 failed it, PR #45 body).
 
@@ -141,7 +141,7 @@ Rows are ordered by risk: edited-status rows and `NEEDS_REVIEW` first with the c
 
 - Everything is reachable by keyboard in a logical order with a visible focus indicator and no keyboard trap.
 - `prefers-reduced-motion: reduce` removes non-essential animation. Progress is text and numbers, so nothing essential depends on motion.
-- **`forced-colors`:** to be tested at the close checklist (owner step, not run). Meaning must survive: labels and shapes carry the status, and borders carry block boundaries.
+- **`forced-colors`:** checked once by hand in Windows high contrast at the close checklist on 2026-10-16 (a screenshot of the Folders screen only; the Review queue rows were not screenshotted; an observation, not a test, in `M6_PLAN.md` "M6 close check results"). Meaning must survive: labels and shapes carry the status, and borders carry block boundaries.
 - To be checked at 200% zoom at the 900 by 600 minimum (not run).
 - A test checks the 4.5 to 1 and 3 to 1 targets in 3.1 against the tokens of the one scheme that exists; the 7 to 1 target and a dark scheme are not checked. Keyboard-only use and reduced motion were not measured in M6 core.
 
@@ -175,7 +175,7 @@ Question cells, draft answers, quotes and file names are untrusted data (CLAUDE.
 
 ## 9. Assets and the CSP
 
-No remote assets, no remote fonts, no CDN. Everything is bundled. The shipped policy (ADR-005) is `default-src 'self'` with `style-src 'self'`, so there is **no inline `style=` attribute and no `<style>` tag**; styling comes from bundled CSS files only. `pnpm tauri dev` injects no CSP, so a violation does not show there and is checked in the bundled debug build (ADR-005; hand checks in PR #42, #45 and #46 bodies; the full close checklist is an owner step, not run).
+No remote assets, no remote fonts, no CDN. Everything is bundled. The shipped policy (ADR-005) is `default-src 'self'` with `style-src 'self'`, so there is **no inline `style=` attribute and no `<style>` tag**; styling comes from bundled CSS files only. `pnpm tauri dev` injects no CSP, so a violation does not show there and is checked in the bundled debug build (ADR-005; hand checks in PR #42, #45 and #46 bodies; the close checklist was run once by hand on 2026-10-16: observations, not tests, in `M6_PLAN.md` "M6 close check results" and threat model F5-1b and G12).
 
 ## 10. What is not decided here
 

@@ -66,7 +66,7 @@ Today the window can ask the host one question, `sidecar_health` ([ADR-005](005-
 
 - Caps and timeouts are starting values, not measurements.
 - `tauri-plugin-dialog`: version, license, `plugins` entry and command name are answered in decision 8; its telemetry is still not verified.
-- Whether release builds ship DevTools: not checked; the owner's close checklist in the bundled debug build is a separate step and had not been run when this ADR was marked built (threat model F5-1b, G12).
+- Whether release builds ship DevTools: not checked; the owner's close checklist in the bundled debug build is a separate step and had not been run when this ADR was marked built (threat model F5-1b, G12). The checklist was run once by hand on 2026-10-16 (owner hand check, one machine; an observation, not a test): DevTools did not open in a release build made without an installer (threat model G12).
 - Whether a Rust test can create a Windows junction without privilege: not needed, Rust junction tests are omitted and the Python test of 6c covers the scanner.
 - The threat-model rows that name the tests for this ADR are F34 to F36 (written in 6a2, labelled at the 6i close).
 
