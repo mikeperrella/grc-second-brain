@@ -86,4 +86,15 @@ Sources are named. The 6b and 6h proofs exist only in pull request bodies, so wh
 
 **No proof exists** (so none is claimed) for: the Reason cell never being returned (the plan promised one), the hostile-cell workbook test (G30), the exact-value progress test, the index routes' controls, or the lock in the index job's counters (the PR #40 body says that test is structural and has no lock-removal proof). The 6g proofs (a message-table entry and the run-speed statement removed) are in ADR-020.
 
+**Local checks and hand checks stated in the bodies of PR #40 (6b) and PR #47 (6h).** Source: the bodies as read with `gh pr view` on 2026-10-17 and pasted by the owner; the wording below is the bodies' and was not re-checked. Neither body names a test for its mutation proofs, so none is given here, and the "not itemized" entries above stand.
+
+- Stated in the body of PR #40: "Four mutation proofs (status from the workbook, Evidence cell parsed, each hash comparison dropped, lookup by 8-hex prefix), each failing named tests, files restored byte for byte."
+- Stated in the body of PR #40: "Full local CI substitute: ruff, mypy --strict, pytest 3237 passed on Windows, pip-audit, Semgrep (267 rules, 0 findings), Bandit, gitleaks full history, and the air-gap container rebuilt with --network none (3224 passed, 13 skipped, all reasons on the allow-list; collected count matches Windows)."
+- Stated in the body of PR #40: "The thread-safety test is structural and has no mutation proof of removing the lock." and "Two IPv6 tests fail only in the cloud container (no IPv6) and also on untouched main there; they pass 27 of 27 on Windows."
+- Stated in the body of PR #40: "A real index build needs Ollama and is the owner's live check, not run here." The body states no hand check.
+- Stated in the body of PR #47: "pnpm test 419 passed (336 before); lint, typecheck, build, audit pass; 0 bidi characters."
+- Stated in the body of PR #47: "Three mutation proofs (sentence removed, status from the edited cell, edit-sort priority dropped) each failed named tests; files restored byte for byte."
+- Stated in the body of PR #47: "Local CI: pre-commit, Semgrep, gitleaks. [fill in]" and "Hand check in the bundled debug window: [fill in]". Both hold the unfilled placeholder "[fill in]", so no local CI result and no hand check is stated for 6h.
+- Stated in the body of PR #47: "The queue has not yet shown a real draft. That needs a real questionnaire run with Ollama and a ledger folder (the owner's live check)."
+
 Revisit if: a draft needs to be opened after a rename (add a `run_id` field); the ledger repository has no way to look up by file name and the smallest lookup is not enough; or approval moves into the app (that needs its own ADR against ADR-014 decision 10).
