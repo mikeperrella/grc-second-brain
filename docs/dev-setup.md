@@ -176,7 +176,7 @@ docker run --rm @hardened grc-airgap python ci/airgap_canary.py
 docker run --rm @hardened @mounts grc-airgap python -m pytest -rs -p no:cacheprovider
 ```
 
-Observed 2026-10-17 on `main` (6331dc9), on Windows with PowerShell and Docker, with the CI-style command and no network (an observation, not a test; the counts change whenever tests are added): 3,255 tests collected, 15 deselected by the `ollama` marker, 3,240 selected; the pytest run took 117.55 s on the owner's Windows machine with Docker (an owner observation); 3,224 passed, 16 skipped; the skips were only the three allowed reasons; the canary printed `ISOLATED`.
+Observed 2026-10-17 on `main` (6331dc9), on Windows with PowerShell and Docker, with the CI-style command and no network (an observation, not a test; the counts change whenever tests are added): 3,255 tests collected, 15 deselected by the `ollama` marker, 3,240 selected; 3,224 passed, 16 skipped; the skips were only the three allowed reasons; the canary printed `ISOLATED`.
 
 To see the canary fail, run it without `--network none` (keep the other flags). It must print `FAIL` for outbound and DNS, `RESULT: NOT ISOLATED`, and exit 1.
 
