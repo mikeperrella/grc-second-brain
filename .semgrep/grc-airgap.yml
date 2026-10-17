@@ -138,7 +138,7 @@ rules:
     paths:
       include:
         - "**/questionnaire/**"
-        - ".semgrep/fixtures/grc-airgap.py"
+        - "/.semgrep/fixtures/grc-airgap.py"
       exclude:
         - "**/questionnaire/writer.py"
     pattern-regex: '\.save\('
@@ -150,7 +150,7 @@ rules:
     paths:
       include:
         - "**/questionnaire/**"
-        - ".semgrep/fixtures/grc-airgap.py"
+        - "/.semgrep/fixtures/grc-airgap.py"
     pattern-regex: '\.(?:write_bytes|write_text)\(|\bos\.(?:replace|rename)\(|\bshutil\.(?:copy\w*|move)\('
 
   - id: grc-py-questionnaire-open-mode
@@ -160,7 +160,7 @@ rules:
     paths:
       include:
         - "**/questionnaire/**"
-        - ".semgrep/fixtures/grc-airgap.py"
+        - "/.semgrep/fixtures/grc-airgap.py"
     pattern-regex: '\bopen\((?:[^()\n]|\([^()\n]*\))*?,\s*(?:mode\s*=\s*)?["'']((?!rb["''])(?!xb["''])[^"'']*)["'']|\.open\(\s*["''](?!rb["''])(?!xb["''])'
 
   - id: grc-py-questionnaire-delete-outside-writer
@@ -170,7 +170,7 @@ rules:
     paths:
       include:
         - "**/questionnaire/**"
-        - ".semgrep/fixtures/grc-airgap.py"
+        - "/.semgrep/fixtures/grc-airgap.py"
       exclude:
         - "**/questionnaire/writer.py"
     pattern-regex: '\bos\.(?:remove|unlink)\(|\.unlink\('
@@ -250,7 +250,7 @@ rules:
     paths:
       include:
         - "**/contradictions/**"
-        - ".semgrep/fixtures/grc-airgap.py"
+        - "/.semgrep/fixtures/grc-airgap.py"
     pattern-either:
       - patterns:
           - pattern-either:
@@ -269,7 +269,7 @@ rules:
     paths:
       include:
         - "**/contradictions/**"
-        - ".semgrep/fixtures/grc-airgap.py"
+        - "/.semgrep/fixtures/grc-airgap.py"
       exclude:
         - "**/contradictions/verdict.py"
     pattern-either:

@@ -142,7 +142,7 @@ What a failure usually means:
 
 ```powershell
 $semgrep = "semgrep/semgrep:1.179.0@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b"
-# Rule tests: success prints "All tests passed" three times (22 rule tests for py, 7 for rs, 2 for tsx, as reported in the 6j local Semgrep run; earlier text said 9, 2 and 2). A Semgrepignore v2 deprecation warning may print for six custom rules (the include pattern `.semgrep/fixtures/grc-airgap.py` will soon be anchored); it is not a finding and is on the backlog.
+# Rule tests: success prints "All tests passed" three times (22 rule tests for py, 7 for rs, 2 for tsx, as reported in the 6j local Semgrep run; earlier text said 9, 2 and 2). Observed with Semgrep 1.179.0: the fixture include of six custom rules in `.semgrep/grc-airgap.yml` is anchored with a leading `/`, and the Semgrepignore v2 deprecation warning no longer printed in the scan; the `--test` counts were unchanged (22, 7, 2). `semgrep --test` did not fail when that include was broken, so the `--test` runs do not exercise the include; a scan of a copy of the fixture at the root path and at another path did (after the change it matched only the root path).
 foreach ($ext in "py","rs","tsx") { docker run --rm -v "${PWD}:/src:ro" -w /src $semgrep semgrep --test --config .semgrep/grc-airgap.yml ".semgrep/fixtures/grc-airgap.$ext" --metrics=off --disable-version-check }
 # Main scan: success ends with "Findings: 0 (0 blocking)".
 docker run --rm -v "${PWD}:/src:ro" -w /src $semgrep semgrep scan --config .semgrep/ --config p/python --config p/typescript --config p/rust --exclude .semgrep/fixtures --error --metrics=off --disable-version-check
