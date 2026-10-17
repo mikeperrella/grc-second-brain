@@ -35,7 +35,7 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Exact pins (M2 plan section 11). Both are already in the Windows dependency graph through tauri.
-getrandom = "=0.3.4"
+getrandom = "=0.4.3"
 thiserror = "=2.0.21"
 # M2b (M2 plan section 11): logging facade only, no sink. Already in the graph through tauri.
 log = "=0.4.34"
