@@ -107,13 +107,21 @@ grc-second-brain/
       reality/                 Reality check: offline IT-export import checked against a policy claim (ADR-016)
       ledger/                  Promise ledger, run record, recall, blast radius (ADR-017, ADR-018)
       contradictions/          Contradiction detector: code finds the pairs, the model can only keep or lower (ADR-019)
+      packs/                   Framework packs: metadata, integrity check and loading into their own database (ADR-008)
       remediation/             Policy-to-code engine (planned, M7; not built)
     tests/
   vault-sample/                Synthetic Obsidian vault (fictional company); pinned by the M4 golden tests
   vault-demo/                  Second synthetic vault for the M5 evaluation set and demo (M5b)
   fixtures/                    Synthetic questionnaires and test files (eval/ holds the labeled eval sets; vault-contradictions/ holds the contradiction detector's synthetic notes)
+  packs/                       Framework packs, one folder each with Markdown and pack.json (ADR-008); bundling is M8
+  tools/                       Development-only scripts: framework pack generators (ADR-008) and the demo questionnaire generator (M5l)
   docs/
     adr/                       Architecture Decision Records
+    plans/                     m5-carryover.md: M5 and M5.5 carryover index (not canonical)
+    DESIGN.md                  Design rules for the M6 core window
+    dependency-licenses.md     Licenses of the sidecar's Python dependencies (dated snapshot)
+    dev-setup.md               Developer setup (Windows): development-machine steps, CI and local checks
+    product-brief.md           Problem, audience, promise, features and non-goals (Section 1)
     threat-model.md
 ```
 
@@ -211,7 +219,7 @@ pnpm test
 - Bounded retries: one shared budget of at most 2 attempts per question, covering schema and grounding failures together. On attempt 2, rebuild the user message with the exact error text (pydantic's documentation URL removed) inside its data block. After 2 failures, return `NEEDS_REVIEW`. Never loop indefinitely. Error text never reaches a log above DEBUG.
 
 ### 8.4 Questionnaire engine
-The status contract, with its reasons, is ADR-013 (status and grounding). The file and run rules get their own ADR-014 when they are built (M5i).
+The status contract, with its reasons, is ADR-013 (status and grounding). The file and run rules are ADR-014 (questionnaire files and runs), built in M5i to M5l.
 
 - Read the input file once, hash those bytes and parse the same bytes. Load with `openpyxl.load_workbook(..., read_only=False, data_only=False)` (add `keep_vba=True` for a macro-enabled package, decided from its declared content type). Re-hash the file on disk before writing and fail if it changed.
 - Never modify original question cells and never insert a row. Write to new appended columns titled `GRC Answer [UNREVIEWED DRAFT]`, `Confidence (model self-rating) [UNREVIEWED DRAFT]`, `Status [UNREVIEWED DRAFT]`, `Reason` and `Evidence` (vault-relative path, exact lines, quote), plus `Review`. Save to a new file whose name carries `UNREVIEWED-DRAFT`, with exclusive create: never overwrite any existing file, not only the input.
