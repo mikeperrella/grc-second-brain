@@ -214,3 +214,10 @@ Limits: 2e-i also fails the import count test because the unchanged-quote line m
 ## Amended (built, ADR-020), written 2026-10-15, marked built 2026-10-16
 
 Built in M6 chunk 6e (PR #42, `caeaa31`). Decision 7 says "The host's five-key child environment is unchanged until M6." In M6 core the environment became nine keys, including `GRC_LEDGER_DIR` when a ledger folder is saved and valid ([ADR-020](020-host-proxy-folders-polling.md) decision 6). Decision 7's rule that the ledger folder may not equal, sit inside or contain the vault, the index, the questionnaire folder, the export folder or the import folder is applied by the host as well as the sidecar (ADR-020 decision 7; the host's rule matches the sidecar's, so the questionnaire and export folders may overlap). The ledger folder must be set before a run that the user wants to review: a run with no ledger keeps no run record (decision 15 (d)), and [ADR-021](021-read-only-routes-and-review-queue.md) refuses to open such a draft in the review queue.
+
+## Addendum (2026-10-17): screen milestone labels
+
+Two sentences in this ADR name "M6" for work that `M6_PLAN.md` gives to M6.5. This section corrects the labels only; no decision of this ADR changes, and the original text above is not edited.
+
+1. "the M6 approval screen" (in "Consequences", the bullet beginning "Not in this ADR"). A screen for approving answers belongs to M6.5 (`M6_PLAN.md`, section "C.5 Review queue (6h) and F12-2c, answered honestly", "approval is a M6.5 screen"). The M6 review queue is read-only and records no approval (same section, the sentence beginning "The queue records no approval"; threat-model row F37-3). Approval itself, as decision 1 of this ADR describes it, is unchanged.
+2. "fix when the M6 screen is built" (in "Chunk 2e: details the build settled", detail 10, on an `acknowledged` event not recording the recall state the owner saw). This is backlog G35, with F30-7, and M6.5 owns it: threat-model row G35 ("Fix when the M6.5 ledger screen is built (moved from M6 when M6 was split, ADR-020)") and `M6_PLAN.md`, section "A.1 What M6 core and M6.5 own" (the row beginning "G35").
