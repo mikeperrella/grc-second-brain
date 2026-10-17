@@ -122,16 +122,43 @@ describe("Folders screen", () => {
     expect(text.match(/needed for the review queue/g)).toHaveLength(1);
   });
 
-  it("always shows the ledger warning verbatim, once, in body text", () => {
-    const html = renderFolders(foldersScreenView(allSet));
-    expect(textOf(html)).toContain(LEDGER_FOLDER_WARNING);
-    expect(textOf(html).split(LEDGER_FOLDER_WARNING)).toHaveLength(2);
-    expect(html).not.toMatch(/title=|aria-describedby|<details|hidden/i);
-    // Also with nothing set and with only a saved ledger folder.
-    expect(textOf(renderFolders(foldersScreenView(foldersCall([]))))).toContain(LEDGER_FOLDER_WARNING);
+  it("shows the ledger warning verbatim, once, in body text, unless the ledger folder is in use now", () => {
+    // Nothing set: shown once, in body text.
+    const none = renderFolders(foldersScreenView(foldersCall([])));
+    expect(textOf(none)).toContain(LEDGER_FOLDER_WARNING);
+    expect(textOf(none).split(LEDGER_FOLDER_WARNING)).toHaveLength(2);
+    expect(none).not.toMatch(/title=|aria-describedby|<details|hidden/i);
+    // Only saved for the next launch: still shown, because a run now keeps no record.
     const saved = renderFolders(foldersScreenView(foldersCall([folderView("ledger", { saved: "/l" })])));
     expect(textOf(saved)).toContain(LEDGER_FOLDER_WARNING);
+    expect(textOf(saved).split(LEDGER_FOLDER_WARNING)).toHaveLength(2);
     expect(textOf(saved)).toContain("applies the next time you start ALIBI");
+    // In use now: the host has said so, and the warning is gone.
+    const inUse = renderFolders(foldersScreenView(allSet));
+    expect(textOf(inUse)).not.toContain(LEDGER_FOLDER_WARNING);
+    expect(textOf(inUse)).toContain("Ledger (needed for the review queue)");
+  });
+
+  it("shows the ledger warning while the folders are loading, not ready, or could not be read", () => {
+    const states: Array<[string, FolderCall<FoldersReply> | undefined]> = [
+      ["loading", undefined],
+      ["not ready", foldersCall([folderView("ledger", { in_use: "/l" })], { ready: false })],
+      ["rejected", { kind: "rejected" }],
+      ["invalid response", { kind: "invalid_response" }],
+      ["folder error", { kind: "folder_error", error: "unavailable" }],
+    ];
+    for (const [name, call] of states) {
+      const text = textOf(renderFolders(foldersScreenView(call)));
+      expect(text, name).toContain(LEDGER_FOLDER_WARNING);
+      expect(text.split(LEDGER_FOLDER_WARNING), name).toHaveLength(2);
+    }
+  });
+
+  it("brings the ledger warning back when the ledger folder is no longer in use", () => {
+    const inUse = foldersCall([folderView("ledger", { in_use: "/l", saved: "/l" })]);
+    const cleared = foldersCall([folderView("ledger")]);
+    expect(textOf(renderFolders(foldersScreenView(inUse)))).not.toContain(LEDGER_FOLDER_WARNING);
+    expect(textOf(renderFolders(foldersScreenView(cleared)))).toContain(LEDGER_FOLDER_WARNING);
   });
 
   it("shows 'In use now' and 'Saved for next launch' for every row, with the values apart when they differ", () => {
@@ -305,7 +332,9 @@ describe("Index screen", () => {
         onStart={NOOP}
       />,
     );
-  const startButton = (html: string) => /<button[^>]*>Index the vault<\/button>/.exec(html)?.[0] ?? "";
+  // The class attribute is dropped so a `disabled:` class cannot stand in for the real attribute.
+  const startButton = (html: string) =>
+    (/<button[^>]*>Index the vault<\/button>/.exec(html)?.[0] ?? "").replace(/class="[^"]*"/, "");
 
   it("idle: the button is on and nothing else claims a result", () => {
     const html = render(INITIAL_INDEX_STATE);
@@ -318,12 +347,30 @@ describe("Index screen", () => {
     expect(textOf(html)).toContain("No vault folder is in use.");
     expect(html).toContain("vault_root_not_configured");
     expect(startButton(html)).toContain("disabled");
+    // The button names the reason on screen, so a screen reader reads why it is off.
+    expect(startButton(html)).toContain('aria-describedby="index-vault-reason"');
+    expect(html).toMatch(/<p id="index-vault-reason" role="alert"/);
   });
 
-  it("vault not read yet: says so, never 'no vault'", () => {
+  it("vault not read yet: says so, never 'no vault'; the button is off and described by that line", () => {
     const html = render(INITIAL_INDEX_STATE, { vault: null });
     expect(textOf(html)).toContain("The vault folder has not been read yet.");
     expect(textOf(html)).not.toContain("No vault folder is in use");
+    expect(startButton(html)).toContain("disabled");
+    expect(startButton(html)).toContain('aria-describedby="index-vault-unread"');
+    expect(html).toContain('<p id="index-vault-unread">The vault folder has not been read yet.</p>');
+  });
+
+  it("models missing: aria-describedby names the models block id", () => {
+    const html = render(INITIAL_INDEX_STATE, { readiness: DEGRADED });
+    expect(startButton(html)).toContain('aria-describedby="index-models-reason"');
+    expect(html).toContain('<div id="index-models-reason" role="alert"');
+  });
+
+  it("an enabled button has no aria-describedby", () => {
+    const html = render(INITIAL_INDEX_STATE);
+    expect(startButton(html)).not.toContain("disabled");
+    expect(startButton(html)).not.toContain("aria-describedby");
   });
 
   it("models missing: exact names, the no-download sentence, the button off with that reason", () => {
@@ -662,6 +709,11 @@ describe("Questionnaire screen", () => {
 
     it("ledger state unknown: the warning is shown (it cannot be confirmed)", () => {
       expect(textOf(render(ready, { ledger: null }))).toContain(NO_LEDGER_BEFORE_START);
+    });
+
+    it("the ledger warning follows ledgerInUse: gone when it is in use, back when it is not", () => {
+      expect(textOf(render(ready, { ledger: true }))).not.toContain(NO_LEDGER_BEFORE_START);
+      expect(textOf(render(ready, { ledger: false }))).toContain(NO_LEDGER_BEFORE_START);
     });
 
     it("models missing: names, the no-download sentence and Start off", () => {

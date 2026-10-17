@@ -10,6 +10,7 @@ import {
 import { routeReplySchemas } from "./ipc/proxy";
 import {
   INITIAL_REVIEW_QUEUE_STATE,
+  lineRangeText,
   orderRows,
   reasonCode,
   reduceReviewQueue,
@@ -47,6 +48,14 @@ const body = (rows: DraftRow[]) => ({
 function play(events: ReviewQueueEvent[], from: ReviewQueueState = INITIAL_REVIEW_QUEUE_STATE) {
   return events.reduce(reduceReviewQueue, from);
 }
+
+describe("lineRangeText", () => {
+  it("says Line 23 for a one-line range and Lines 4 to 6 otherwise", () => {
+    expect(lineRangeText(23, 23)).toBe("Line 23");
+    expect(lineRangeText(4, 6)).toBe("Lines 4 to 6");
+    expect(lineRangeText(23, 23)).not.toContain("to");
+  });
+});
 
 const listing = (files: string[], truncated = false): ReviewQueueEvent => ({
   type: "files_result",

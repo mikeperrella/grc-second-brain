@@ -11,12 +11,13 @@ export function modelsBlocked(view: ReadinessView): boolean {
   return view.state === "degraded";
 }
 
-export function ModelsBlock({ view }: { view: ReadinessView }) {
+/** `id` lets a button name this block as the reason it is off (aria-describedby). */
+export function ModelsBlock({ view, id }: { view: ReadinessView; id?: string }) {
   if (view.state !== "degraded") {
     return null;
   }
   return (
-    <div role="alert" className="alibi-block grid gap-1 border-2 border-status-error p-2">
+    <div id={id} role="alert" className="alibi-block grid gap-1 border-2 border-status-error p-2">
       <p className="font-semibold text-status-error">
         This needs the models, and they are not ready, so the button below is off.
       </p>

@@ -1,8 +1,8 @@
 # ALIBI design rules (M6 core)
 
-Status: **Built in M6 core except where a line says otherwise** (marked at the 6i close, 2026-10-16). It was written in chunk 6a2 from `docs/product-brief.md` and `M6_PLAN.md` (sections C, D and E), not from any design skill or template, and chunks 6f to 6h built the screens from it. **Not built or not decided:** colour values are neutral placeholders with no contrast measured, there is no light and dark pair, and the label wording is interim until the owner approves it (Section 10). If this file disagrees with an ADR, the threat model or CLAUDE.md, they win. Everything here applies to a **debug build only until M8**: there is no installer, and release builds cannot start the sidecar until then.
+Status: **Built in M6 core except where a line says otherwise** (marked at the 6i close, 2026-10-16). It was written in chunk 6a2 from `docs/product-brief.md` and `M6_PLAN.md` (sections C, D and E), not from any design skill or template, and chunks 6f to 6h built the screens from it. **Not built or not decided:** colour values are neutral placeholders (a test enforces only the 4.5 to 1 and 3 to 1 minimums for the listed pairs; the 7 to 1 target is not enforced or measured), there is no light and dark pair, and the label wording is interim until the owner approves it (Section 10). If this file disagrees with an ADR, the threat model or CLAUDE.md, they win. Everything here applies to a **debug build only until M8**: there is no installer, and release builds cannot start the sidecar until then.
 
-Today the window is a shell with a status bar and four screens (folders, index the vault, questionnaire, review queue), styled by one bundled stylesheet, `apps/desktop/src/styles.css`, in a 1100 by 720 window with a 900 by 600 minimum. Tailwind 4.3.3 is installed, with `@tailwindcss/vite` 4.3.3 (exact pins, MIT, build-time dev dependencies; PR #43 body); the tokens below are CSS custom properties exposed as Tailwind utilities. The colour values in the file are placeholders for the roles in 3.1.
+Today the window is a shell with a status bar and four screens (folders, index the vault, questionnaire, review queue), styled by one bundled stylesheet, `apps/desktop/src/styles.css`, in a 1100 by 720 window with a 900 by 600 minimum. Tailwind 4.3.3 is installed, with `@tailwindcss/vite` 4.3.3 (exact pins, MIT, build-time dev dependencies; PR #43 body); the tokens below are CSS custom properties exposed as Tailwind utilities. The colour values in the file are placeholders for the roles in 3.1; one test enforces only 4.5 to 1 for text and 3 to 1 for large text, borders and the focus ring on the listed pairs (3.1).
 
 ## 1. Purpose and principles
 
@@ -32,7 +32,7 @@ The window keys are pinned by a test (`apps/desktop/src-tauri/tests/security_con
 
 ### 3.1 Colour: roles, not values
 
-**No colour value is given here as passing.** Chunk 6f set neutral placeholder values for these roles in `apps/desktop/src/styles.css` (one scheme, no light and dark pair); a value is called passing only if a throwaway script, kept outside the repository, computed its contrast and its output is recorded, and **no such script has been run**. This section lists roles and targets only.
+**No colour value is given here as passing.** Chunk 6f set neutral placeholder values for these roles in `apps/desktop/src/styles.css` (one scheme, no light and dark pair); `apps/desktop/scripts/contrastTokens.test.mjs` reads `apps/desktop/src/styles.css` and fails if a listed text pair is below 4.5 to 1 or a listed large-text, border or focus-ring pair is below 3 to 1. It covers one scheme and enforces nothing else. The 7 to 1 target below is **not** enforced and **not** measured. This section lists roles and targets only.
 
 | Role | Used for |
 |---|---|
@@ -45,7 +45,7 @@ The window keys are pinned by a test (`apps/desktop/src-tauri/tests/security_con
 | `badge-bg`, `badge-text` | The unreviewed-draft badge (4.2) |
 | `edited-bg`, `edited-text` | The edited-cell lines (4.3, 4.4) |
 
-**Contrast targets (planned):** WCAG 2.2 AA at minimum, meaning 4.5 to 1 for text, 3 to 1 for large text and for interface components and the focus indicator; and **7 to 1 for status words and for the fixed statements**, because they are honesty controls. Both a light and a dark scheme are planned, each checked against these targets by a script. Until that is done, **nothing in this document claims a pair passes**.
+**Contrast targets:** WCAG 2.2 AA at minimum, meaning 4.5 to 1 for text, 3 to 1 for large text and for interface components and the focus indicator; and **7 to 1 for status words and for the fixed statements**, because they are honesty controls. Both a light and a dark scheme are planned. Today one scheme exists, and `contrastTokens.test.mjs` enforces only the 4.5 to 1 and 3 to 1 minimums on the listed pairs; the 7 to 1 target is **not** enforced or measured, so **nothing in this document claims a pair meets 7 to 1**.
 
 No transparency and no blur anywhere, so a "reduce transparency" preference has nothing to change. (Whether the WebView2 runtime supports that preference is **not verified**, and nothing relies on it.)
 
@@ -143,7 +143,7 @@ Rows are ordered by risk: edited-status rows and `NEEDS_REVIEW` first with the c
 - `prefers-reduced-motion: reduce` removes non-essential animation. Progress is text and numbers, so nothing essential depends on motion.
 - **`forced-colors`:** to be tested at the close checklist (owner step, not run). Meaning must survive: labels and shapes carry the status, and borders carry block boundaries.
 - To be checked at 200% zoom at the 900 by 600 minimum (not run).
-- Targets in 3.1 are to be checked by script against the tokens, in light and dark, once real values exist. They are targets, not results; keyboard-only use, reduced motion and contrast were not measured in M6 core.
+- A test checks the 4.5 to 1 and 3 to 1 targets in 3.1 against the tokens of the one scheme that exists; the 7 to 1 target and a dark scheme are not checked. Keyboard-only use and reduced motion were not measured in M6 core.
 
 ## 7. States: empty, loading, stale, error
 
@@ -179,7 +179,7 @@ No remote assets, no remote fonts, no CDN. Everything is bundled. The shipped po
 
 ## 10. What is not decided here
 
-- Colour values and their measured contrast (placeholders today; the light and dark pair and the contrast script are not done).
+- Colour values (placeholders today; the light and dark pair is not done, and the 7 to 1 target is not enforced; a test enforces the 4.5 to 1 and 3 to 1 minimums for one scheme).
 - The owner's approval of the status labels and of the wording first written in chunk 6h (4.1).
 - Whether release builds ship DevTools (not checked, not verified).
 - Anything about skills: nothing is installed in M6 core, and the decision is made at the start of M6.5 after the owner and the reviewer have read the repositories themselves.

@@ -199,6 +199,38 @@ describe("the shell", () => {
     expect(html).toContain('aria-current="page"');
   });
 
+  it("marks exactly one entry as current, with a visible non-colour marker", () => {
+    const labels = {
+      folders: "Folders",
+      index: "Index the vault",
+      questionnaire: "Questionnaire",
+      review: "Review queue",
+    } as const;
+    for (const [screen, label] of Object.entries(labels)) {
+      const html = renderToStaticMarkup(
+        <Shell healthy statusBar={null} current={screen as keyof typeof labels} />,
+      );
+      expect(html.match(/aria-current/g), screen).toHaveLength(1);
+      const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
+      expect(buttons).toHaveLength(4);
+      for (const button of buttons) {
+        // The same box on every entry, so marking one cannot shift the others.
+        expect(button).toMatch(/class="[^"]*\bborder\b[^"]*\bborder-border\b[^"]*\bborder-b-4\b/);
+        if (button.endsWith(`>${label}</button>`)) {
+          expect(button).toContain('aria-current="page"');
+          expect(button).toContain("underline");
+          expect(button).toContain("border-b-border");
+          expect(button).not.toContain("border-b-transparent");
+        } else {
+          expect(button).not.toContain("aria-current");
+          expect(button).not.toContain("underline");
+          expect(button).toContain("border-b-transparent");
+        }
+      }
+    }
+    expect(renderToStaticMarkup(<Shell healthy statusBar={null} />)).not.toContain("aria-current");
+  });
+
   it("marks the review queue as the current screen", () => {
     const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="review" />);
     expect(html).toMatch(/<button[^>]*aria-current="page"[^>]*>Review queue<\/button>/);

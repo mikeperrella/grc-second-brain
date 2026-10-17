@@ -12,6 +12,12 @@ interface NavEntry {
   screen: ScreenId;
 }
 
+// Every entry has the same box (a 4px bottom border), so marking one never moves the others. The
+// current entry fills that border and underlines its label: shape and line, not colour alone.
+const NAV_BOX = "border border-border border-b-4 px-3 py-1";
+const NAV_CURRENT = "border-b-border underline underline-offset-4";
+const NAV_OTHER = "border-b-transparent";
+
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { label: "Folders", screen: "folders" },
   { label: "Index the vault", screen: "index" },
@@ -40,13 +46,14 @@ export function Shell({ healthy, statusBar, current, onNavigate, children }: She
         <ul className="flex flex-wrap gap-2">
           {NAV_ENTRIES.map((entry) => {
             const screen = entry.screen;
+            const isCurrent = screen === current;
             return (
               <li key={entry.label}>
                 <button
                   type="button"
                   disabled={!healthy}
-                  aria-current={screen === current ? "page" : undefined}
-                  className="border border-border px-3 py-1"
+                  aria-current={isCurrent ? "page" : undefined}
+                  className={`${NAV_BOX} ${isCurrent ? NAV_CURRENT : NAV_OTHER}`}
                   onClick={() => onNavigate?.(screen)}
                 >
                   {entry.label}

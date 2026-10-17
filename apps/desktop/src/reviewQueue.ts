@@ -113,6 +113,11 @@ export function reasonCode(value: string): string | null {
   return safeCode(value);
 }
 
+/** A cited line range as words: "Line 23" for one line, "Lines 4 to 6" for more. */
+export function lineRangeText(start: number, end: number): string {
+  return start === end ? `Line ${start}` : `Lines ${start} to ${end}`;
+}
+
 // ----- the reducer ----------------------------------------------------------------------------
 
 function exportsNotConfigured(): Described {

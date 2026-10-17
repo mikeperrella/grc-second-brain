@@ -23,6 +23,10 @@ export interface IndexScreenProps {
   onStart: () => void;
 }
 
+const VAULT_REASON_ID = "index-vault-reason";
+const VAULT_UNREAD_ID = "index-vault-unread";
+const MODELS_REASON_ID = "index-models-reason";
+
 function Counts({ progress }: { progress: IndexProgress }) {
   return (
     <ul className="list-disc pl-6">
@@ -38,7 +42,14 @@ function Counts({ progress }: { progress: IndexProgress }) {
 export function IndexScreen({ state, nowMs, readiness, vaultInUse, enabled, onStart }: IndexScreenProps) {
   const working = state.phase === "starting" || state.phase === "running";
   const noVault = vaultInUse === false;
-  const blocked = !enabled || working || noVault || modelsBlocked(readiness);
+  const vaultUnread = vaultInUse === null;
+  const blocked = !enabled || working || vaultInUse !== true || modelsBlocked(readiness);
+  // The button names the reasons that are on screen, so a screen reader reads why it is off.
+  const reasonIds = [
+    noVault ? VAULT_REASON_ID : null,
+    vaultUnread ? VAULT_UNREAD_ID : null,
+    modelsBlocked(readiness) ? MODELS_REASON_ID : null,
+  ].filter((id): id is string => id !== null);
   return (
     <section aria-labelledby="index-title" className="grid gap-3">
       <h2 id="index-title" className="text-xl font-semibold">
@@ -49,15 +60,21 @@ export function IndexScreen({ state, nowMs, readiness, vaultInUse, enabled, onSt
         not changed.
       </p>
       {noVault ? (
-        <p role="alert" className="text-status-error">
+        <p id={VAULT_REASON_ID} role="alert" className="text-status-error">
           {fixedErrorMessage("vault_root_not_configured")} (
           <code className="font-mono">vault_root_not_configured</code>)
         </p>
       ) : null}
-      {vaultInUse === null ? <p>The vault folder has not been read yet.</p> : null}
-      <ModelsBlock view={readiness} />
+      {vaultUnread ? <p id={VAULT_UNREAD_ID}>The vault folder has not been read yet.</p> : null}
+      <ModelsBlock view={readiness} id={MODELS_REASON_ID} />
       <div>
-        <button type="button" className="border border-border px-3 py-1" disabled={blocked} onClick={onStart}>
+        <button
+          type="button"
+          className="border border-border px-3 py-1 disabled:border-dashed"
+          disabled={blocked}
+          aria-describedby={blocked && reasonIds.length > 0 ? reasonIds.join(" ") : undefined}
+          onClick={onStart}
+        >
           Index the vault
         </button>
       </div>
