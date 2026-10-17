@@ -71,9 +71,9 @@ Nine GitHub Actions workflows live in `.github/workflows/`. Eight run on every p
 | `policy.yml` | `policy-drift` | The Cursor rule mirrors CLAUDE.md Sections 3, 7 and 11. | Linux | about 10 s | Yes |
 | `python.yml` | `quality` | `pip check`, ruff lint and format, `mypy --strict`, pytest (only the Windows-only skips are allowed on Linux), `pip-audit`. | Linux | about 40 s | Yes |
 | `windows.yml` | `windows-tests` | `mypy --strict` including the Windows-only code, and the full sidecar suite with zero skips. | Windows | about 1 to 2 min | Yes |
-| `sast.yml` | `semgrep` | Our air-gap rules and their own tests, plus registry rulesets for Python, TypeScript and Rust. | Linux | about 40 s | Yes |
+| `sast.yml` | `semgrep` | Our air-gap rules and their own tests, plus registry rulesets for Python, TypeScript and Rust. | Linux | about 40 s (recorded 2026-10-06, M1.5; no later timing on record) | Yes |
 | `sast.yml` | `bandit` | Python security lint (medium and above). | Linux | about 10 s | Yes |
-| `airgap.yml` | `airgap` | The sidecar test suite passes in a hardened container with no network, and the canary proves the container really is isolated. | Linux | about 45 s | Yes |
+| `airgap.yml` | `airgap` | The sidecar test suite passes in a hardened container with no network, and the canary proves the container really is isolated. | Linux | about 45 s (recorded 2026-10-06, M1.5; no later timing on record) | Yes |
 | `rust.yml` | `rust` | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, then the real-sidecar test (`cargo test -- --ignored`) against a venv the job builds. | Windows (`windows-2025`) | 8 to 10 min (nothing is cached). Two measured runs after the reqwest and real-sidecar steps were added (M2c, 2026-10-08): the pull request run took 10 min 7 s and the run on `main` after the merge took 8 min 16 s. The first run before M2c took about 7 min. | Yes |
 | `rust.yml` | `deny` | `cargo deny`: advisories, licenses, bans, sources (Windows dependency graph). | Linux | about 45 s | Yes |
 | `frontend.yml` | `frontend` | ESLint (`no-explicit-any` is an error, Node globals only in `scripts/`), `tsc`, vitest, a guard that fails if no test ran, `pnpm audit`. | Linux | about 25 s before M2d; not re-measured with the guards | Yes |

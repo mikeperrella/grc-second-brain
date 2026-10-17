@@ -128,8 +128,9 @@ rules:
     pattern-regex: '(?m)^[ \t]*(?:import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*csv\b|from[ \t]+csv\b)'
 
   # ---------- Python: the questionnaire engine writes one way only (ADR-014) ----------
-  # These four rules are scoped to the questionnaire package (and to the rule fixtures, so that
-  # `semgrep --test` can see them). The writer is the only module that may save a workbook or
+  # These four rules are scoped to the questionnaire package and to the rule fixture. The fixture
+  # include is anchored with a leading "/"; `semgrep --test` does not exercise `paths.include`
+  # (docs/dev-setup.md, "Rule tests"). The writer is the only module that may save a workbook or
   # remove a file, and nothing in the package may write a file except by exclusive create.
   - id: grc-py-workbook-save-outside-writer
     languages: [python]
@@ -241,8 +242,9 @@ rules:
   # Two rules, because a rule's `paths` apply to the whole rule. The package may import no network
   # or process module in ANY file, not even the model module; it may import the llm package only in
   # verdict.py. The AST test test_contradiction_hygiene.py is the second layer and also sees
-  # __import__ and importlib. Scoped to the package and to the rule fixtures, so `semgrep --test`
-  # can see them (the fixture's own top-level imports are annotated for this rule).
+  # __import__ and importlib. Scoped to the package and to the rule fixture (the fixture's own
+  # top-level imports are annotated for this rule). The fixture include is anchored with a leading
+  # "/"; `semgrep --test` does not exercise `paths.include` (docs/dev-setup.md, "Rule tests").
   - id: grc-py-contradictions-network-process-import
     languages: [python]
     severity: ERROR
