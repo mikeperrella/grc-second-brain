@@ -113,4 +113,16 @@ Not provable by a test failure (same source): adding an eighth `Route` variant i
 
 **6g, screens (PR #46), PR body only, not itemized.** "Removing a message-table entry and removing the run-speed statement each failed named tests; files restored byte for byte."
 
+**Local checks and hand checks stated in the bodies of PR #42 (6e) and PR #46 (6g).** Source: the bodies as read with `gh pr view` on 2026-10-17 and pasted by the owner; the wording below is the bodies' and was not re-checked. The body of PR #42 names no mutation or test, and the body of PR #46 names two mutations but gives no test names, so no test is named here, and the "not itemized" entries above stand.
+
+- Stated in the body of PR #42: "Rust 257 passed, 1 ignored (195 before). Six mutation proofs with files byte-identical after restore."
+- Stated in the body of PR #42: "Local CI substitute: fmt, clippy -D warnings, cargo test, cargo deny, Semgrep (267 rules, 0 findings after fixing one test string), pnpm lint, typecheck, test, audit, gitleaks."
+- Stated in the body of PR #42: a hand probe in the bundled debug build: "the window is refused plugin:dialog|open ("dialog.open not allowed"); a fetch to loopback is blocked by connect-src; sidecar_health returns healthy; folder_pick opened the native dialog and saved a folder; folders_get shows it as a display value."
+- Stated in the body of PR #42: "The folder picker was not tested for a non-modal freeze beyond the probe above."
+- Stated in the body of PR #46: "pnpm test: 336 passed (157 before). lint, typecheck, build and audit pass; 0 bidi or invisible characters under src."
+- Stated in the body of PR #46: "Mutation proofs: removing a message-table entry and removing the run-speed statement each failed named tests; files restored byte for byte."
+- Stated in the body of PR #46: "Local CI substitute: pre-commit, Semgrep (tests 22/22, 7/7, 2/2; scan 267 rules, 0 findings), gitleaks self-test and full history (111 commits)."
+- Stated in the body of PR #46: a hand check in the bundled debug window (tauri.localhost): "Folders, Index and Questionnaire screens render styled; the only console error is DevTools' own .well-known request blocked by connect-src." The body then holds the unfilled placeholder "[add anything else you saw]".
+- Stated in the body of PR #46: "Real sidecar bodies were not exercised in tests; the hand check covers only the not-configured states unless noted above." and "Hooks and click handlers are checked by type and lint only (no jsdom)."
+
 Revisit if: a screen needs instant updates (then add a host event with its own permission); the host gains a restart path (then folders can apply at once, and the "next launch" text and tests change); a second window or plugin is added; or M8 lets a release build start the sidecar.
