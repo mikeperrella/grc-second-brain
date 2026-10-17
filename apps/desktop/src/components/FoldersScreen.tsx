@@ -70,7 +70,8 @@ function Row({
       ) : null}
       {row.neededForQueue ? (
         <>
-          <Statement>{LEDGER_FOLDER_WARNING}</Statement>
+          {/* Hidden only when the host has said the folder is in use now; saved is not enough. */}
+          {row.inUse === null ? <Statement>{LEDGER_FOLDER_WARNING}</Statement> : null}
           <p className="text-sm">
             Back up the ledger folder, and do not put it in a synced folder.
           </p>
@@ -129,6 +130,8 @@ export function FoldersScreen({ view, pick, enabled, onChoose }: FoldersScreenPr
         </p>
       ) : null}
       {view.state === "unavailable" ? <Refusal failure={view.failure} /> : null}
+      {/* No ledger row exists until the folders are loaded, and an unknown state is not "in use". */}
+      {view.state !== "loaded" ? <Statement>{LEDGER_FOLDER_WARNING}</Statement> : null}
       {view.state === "loaded" ? (
         <>
           {view.savedFileInvalid ? (

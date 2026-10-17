@@ -4,9 +4,11 @@
  * Bundled CSS only: no remote font, no @import url(), no inline style attribute anywhere in the
  * app (the shipped CSP is style-src 'self', ADR-005). System font stack only.
  *
- * COLOURS: the values below are NEUTRAL PLACEHOLDERS for the roles in DESIGN.md 3.1. They are set
- * and contrast-checked by a script in a later chunk. No pair here is claimed to pass any contrast
- * target. Do not read a value as a design decision.
+ * COLOURS: the values below are still NEUTRAL PLACEHOLDERS for the roles in DESIGN.md 3.1 (one
+ * scheme, no dark pair). Do not read a value as a design decision. scripts/contrastTokens.test.mjs
+ * reads this file and fails if a listed pair is below 4.5:1 (text) or 3:1 (large text, UI borders,
+ * focus ring). That is all it enforces. The 7:1 target in DESIGN.md 3.1 is neither enforced nor
+ * measured.
  */
 @import "tailwindcss";
 

@@ -14,7 +14,7 @@ import {
   REVIEW_SENTENCE,
   UNREVIEWED_DRAFT_BADGE,
 } from "../fixedTexts";
-import { reasonCode, showsReviewSentence, type DraftRow } from "../reviewQueue";
+import { lineRangeText, reasonCode, showsReviewSentence, type DraftRow } from "../reviewQueue";
 import { LongText } from "./LongText";
 import { PlainText } from "./PlainText";
 import { Statement } from "./Statement";
@@ -83,9 +83,7 @@ export function DraftRowView({ row }: { row: DraftRow }) {
             <p>
               <PlainText text={citation.source_path} />
             </p>
-            <p>
-              Lines {citation.start_line} to {citation.end_line}
-            </p>
+            <p>{lineRangeText(citation.start_line, citation.end_line)}</p>
           </div>
           <div>
             <p className="font-semibold">Quote:</p>

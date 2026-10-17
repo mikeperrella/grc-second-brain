@@ -385,6 +385,15 @@ describe("a row (F37-1)", () => {
     expect(text).toContain("Quote: Data at rest is encrypted with AES-256.");
   });
 
+  it("shows 'Line 23' for a one-line citation and never 'Lines 23 to 23'", () => {
+    const text = textOf(
+      renderRow(row({ citation: { source_path: "p.md", start_line: 23, end_line: 23, quote: "q" } })),
+    );
+    expect(text).toContain("Line 23");
+    expect(text).not.toContain("Lines 23");
+    expect(text).not.toContain("23 to 23");
+  });
+
   it("says plainly when there is no answer or no citation", () => {
     const text = textOf(renderRow(row({ status: "NEEDS_REVIEW", answer_text: null, citation: null })));
     expect(text).toContain("No draft answer was written for this row.");
