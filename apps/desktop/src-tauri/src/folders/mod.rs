@@ -431,17 +431,21 @@ impl FolderSettings {
         })
     }
 
-    /// The workbook names in the folder that is IN USE for this run (the one the sidecar can reach).
+    /// The file names in the folder that is IN USE for this run (the one the sidecar can reach):
+    /// workbooks (`.xlsx`, `.xlsm`) for the questionnaire and export folders, `.csv` for the import
+    /// folder. The vault and ledger folders have no list.
     pub fn list_files(&self, kind: FolderKind) -> Result<FileList, FolderError> {
-        if !matches!(kind, FolderKind::Questionnaires | FolderKind::Exports) {
-            return Err(FolderError::NotListable);
-        }
+        let list: fn(&Path) -> Option<files::Listing> = match kind {
+            FolderKind::Questionnaires | FolderKind::Exports => files::list_workbooks,
+            FolderKind::Imports => files::list_csv,
+            FolderKind::Vault | FolderKind::Ledger => return Err(FolderError::NotListable),
+        };
         let root = self
             .startup
             .get()
             .and_then(|start| start.resolved.get(kind))
             .ok_or(FolderError::NotConfigured)?;
-        let listing = files::list_workbooks(root).ok_or(FolderError::Unavailable)?;
+        let listing = list(root).ok_or(FolderError::Unavailable)?;
         Ok(FileList {
             kind,
             files: listing.files,

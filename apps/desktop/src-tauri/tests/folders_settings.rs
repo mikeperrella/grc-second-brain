@@ -677,19 +677,31 @@ fn without_a_config_folder_nothing_can_be_saved() -> TestResult {
 // ---- the file list -------------------------------------------------------------------------
 
 #[test]
-fn files_are_listed_from_the_folder_in_use_and_only_for_workbook_folders() -> TestResult {
+fn files_are_listed_from_the_folder_in_use_workbooks_for_two_kinds_csv_for_imports() -> TestResult {
+    // Renamed and changed in chunk 65d: the Imports folder now has a list (`.csv` only); the vault
+    // and ledger folders still have none. Was `..._and_only_for_workbook_folders`.
     let app = app("list")?;
     let questionnaires = app.folder("questionnaires")?;
     fs::write(questionnaires.join("a.xlsx"), b"synthetic")?;
     fs::write(questionnaires.join("notes.txt"), b"synthetic")?;
+    fs::write(questionnaires.join("users.csv"), b"synthetic")?;
+    let imports = app.folder("imports")?;
+    fs::write(imports.join("Users.CSV"), b"synthetic")?;
+    fs::write(imports.join("a.xlsx"), b"synthetic")?;
+    fs::write(imports.join("notes.txt"), b"synthetic")?;
     let later = app.folder("later")?;
     fs::write(later.join("b.xlsx"), b"synthetic")?;
     write_saved(
         &app.config_file,
-        &SavedFolders::default().with(
-            FolderKind::Questionnaires,
-            Some(questionnaires.to_string_lossy().into_owned()),
-        ),
+        &SavedFolders::default()
+            .with(
+                FolderKind::Questionnaires,
+                Some(questionnaires.to_string_lossy().into_owned()),
+            )
+            .with(
+                FolderKind::Imports,
+                Some(imports.to_string_lossy().into_owned()),
+            ),
     )?;
     let settings = app.settings();
 
@@ -698,10 +710,19 @@ fn files_are_listed_from_the_folder_in_use_and_only_for_workbook_folders() -> Te
         settings.list_files(FolderKind::Questionnaires),
         Err(FolderError::NotConfigured)
     );
+    assert_eq!(
+        settings.list_files(FolderKind::Imports),
+        Err(FolderError::NotConfigured)
+    );
     settings.startup(None);
     let listed = settings.list_files(FolderKind::Questionnaires)?;
     assert_eq!(listed.files, ["a.xlsx"]);
     assert!(!listed.truncated);
+    // The import folder offers its `.csv` files and nothing else, as the kind it was asked for.
+    let imported = settings.list_files(FolderKind::Imports)?;
+    assert_eq!(imported.kind, FolderKind::Imports);
+    assert_eq!(imported.files, ["Users.CSV"]);
+    assert!(!imported.truncated);
 
     // Changing the saved folder does not change what this run lists.
     settings.save_picked(FolderKind::Questionnaires, later)?;
@@ -715,7 +736,7 @@ fn files_are_listed_from_the_folder_in_use_and_only_for_workbook_folders() -> Te
         settings.list_files(FolderKind::Exports),
         Err(FolderError::NotConfigured)
     );
-    for kind in [FolderKind::Vault, FolderKind::Imports, FolderKind::Ledger] {
+    for kind in [FolderKind::Vault, FolderKind::Ledger] {
         assert_eq!(
             settings.list_files(kind),
             Err(FolderError::NotListable),

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use common::{Scratch, TestResult};
 use desktop_lib::folders::files::{
-    is_one_component, list_workbooks, resolve_file, NameError, MAX_LISTED_FILES,
+    is_one_component, list_csv, list_workbooks, resolve_file, NameError, MAX_LISTED_FILES,
 };
 
 /// A scratch directory with a `root` folder (the questionnaire folder) and a file OUTSIDE it.
@@ -204,6 +204,59 @@ fn the_listing_offers_only_workbooks_sorted_without_regard_to_case() -> TestResu
 
     assert_eq!(listing.files, ["a.xlsx", "B.XLSM", "e.XLSX"]);
     assert!(!listing.truncated);
+    Ok(())
+}
+
+#[test]
+fn the_csv_listing_offers_only_csv_files_sorted_without_regard_to_case() -> TestResult {
+    let fixture = fixture("files_list_csv")?;
+    for name in [
+        "users.csv",
+        "B.CSV",
+        "c.Csv",
+        "a.xlsx",
+        "b.xlsm",
+        "d.txt",
+        "e.csv.txt",
+        "~$f.csv",
+        "noextension",
+        ".csv",
+    ] {
+        fs::write(fixture.root.join(name), b"synthetic")?;
+    }
+    fs::create_dir(fixture.root.join("folder.csv"))?;
+
+    let listing = list_csv(&fixture.root).ok_or("the folder could not be listed")?;
+
+    assert_eq!(listing.files, ["B.CSV", "c.Csv", "users.csv"]);
+    assert!(!listing.truncated);
+    // And the workbook listing of the same folder offers none of them.
+    let workbooks = list_workbooks(&fixture.root).ok_or("the folder could not be listed")?;
+    assert_eq!(workbooks.files, ["a.xlsx", "b.xlsm"]);
+    Ok(())
+}
+
+#[test]
+fn the_csv_listing_is_capped_and_links_are_not_followed() -> TestResult {
+    let fixture = fixture("files_cap_csv")?;
+    for number in 0..MAX_LISTED_FILES + 5 {
+        fs::write(fixture.root.join(format!("f{number:03}.csv")), b"")?;
+    }
+    let listing = list_csv(&fixture.root).ok_or("the folder could not be listed")?;
+    assert_eq!(listing.files.len(), MAX_LISTED_FILES);
+    assert!(listing.truncated);
+    assert_eq!(listing.files.last().map(String::as_str), Some("f499.csv"));
+
+    // A link is not offered, whatever it points at (skipped where a symlink cannot be made).
+    let linked = self::fixture("files_link_csv")?;
+    let link = linked.root.join("link.csv");
+    if std::os::windows::fs::symlink_file(&linked.outside_file, &link).is_ok() {
+        let listing = list_csv(&linked.root).ok_or("the folder could not be listed")?;
+        assert!(listing.files.is_empty(), "{listing:?}");
+    } else {
+        eprintln!("SKIPPED the symlink part: this account cannot create a symbolic link");
+    }
+    assert!(list_csv(&linked.scratch.file("no-such-folder")).is_none());
     Ok(())
 }
 

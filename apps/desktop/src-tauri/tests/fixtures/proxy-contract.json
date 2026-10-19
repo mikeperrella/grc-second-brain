@@ -41,6 +41,20 @@
     "questionnaire_status",
     "vault_index_start",
     "vault_index_status",
-    "draft_rows"
+    "draft_rows",
+    "ledger_customers",
+    "ledger_promises",
+    "ledger_cited_paths",
+    "ledger_import",
+    "ledger_recall",
+    "ledger_void",
+    "ledger_acknowledge",
+    "ledger_blast_radius",
+    "reality_inspect",
+    "reality_claims",
+    "reality_check",
+    "contradictions_start",
+    "contradictions_status",
+    "vault_graph"
   ]
 }

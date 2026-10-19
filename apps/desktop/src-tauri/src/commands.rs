@@ -11,7 +11,8 @@
 //! * `folder_pick`: ask the user for a folder of a NAMED KIND (an enum) in the native dialog, check
 //!   it, save it for the next launch. The window never supplies a path, and gets back a display
 //!   string.
-//! * `folder_list_files`: the workbook names in an in-use folder of a named kind.
+//! * `folder_list_files`: the file names in an in-use folder of a named kind (workbooks; `.csv` for
+//!   the import folder).
 
 use serde_json::Value;
 use tauri::{AppHandle, State};
@@ -78,7 +79,8 @@ pub(crate) async fn folder_pick(
     folders.save_picked(kind, path)
 }
 
-/// The `.xlsx` and `.xlsm` names in the in-use questionnaire or export folder.
+/// The file names in the in-use questionnaire, export or import folder (workbooks, or `.csv` for
+/// the import folder).
 #[tauri::command]
 pub(crate) async fn folder_list_files(
     folders: State<'_, FolderSettings>,

@@ -1,6 +1,6 @@
 //! File names from the window (CLAUDE.md 3.6, ADR-020 decision 7, backlog G9).
 //!
-//! The window never sends a path, only a file NAME for the questionnaire or export folder. Before a
+//! The window never sends a path, only a file NAME for the questionnaire, export or import folder. Before a
 //! request that carries one is forwarded to the sidecar, the host checks it in two steps:
 //!
 //! 1. [`is_one_component`]: the name is one path component. No separator, no `..`, no drive or
@@ -14,7 +14,8 @@
 //! is covered by a test only where the machine allows creating one; a hard link inside the folder
 //! is a real file in it and cannot be told apart.
 //!
-//! [`list_workbooks`] lists the `.xlsx` and `.xlsm` names the window may offer, bounded in count.
+//! [`list_workbooks`] lists the `.xlsx` and `.xlsm` names the window may offer, and [`list_csv`] the
+//! `.csv` names of the Imports folder, both bounded in count.
 
 use std::ffi::OsStr;
 use std::fs;
@@ -118,10 +119,30 @@ fn is_workbook_name(name: &str) -> bool {
     workbook && !name.starts_with("~$") && is_one_component(name)
 }
 
+/// An export the reality check can read: `name.csv` in any case. Not a lock or temporary file of
+/// a spreadsheet program (`~$`), and one plain component.
+fn is_csv_name(name: &str) -> bool {
+    let csv = Path::new(name)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("csv"));
+    csv && !name.starts_with("~$") && is_one_component(name)
+}
+
 /// The `.xlsx` and `.xlsm` files directly in `root`, sorted without regard to case. Directories and
 /// links are not listed (a link is not followed here; [`resolve_file`] decides at use time). `None`
 /// if the folder cannot be read.
 pub fn list_workbooks(root: &Path) -> Option<Listing> {
+    list_matching(root, is_workbook_name)
+}
+
+/// The `.csv` files directly in `root` (the Imports folder), with the same rules, caps and order as
+/// [`list_workbooks`].
+pub fn list_csv(root: &Path) -> Option<Listing> {
+    list_matching(root, is_csv_name)
+}
+
+fn list_matching(root: &Path, wanted: fn(&str) -> bool) -> Option<Listing> {
     let mut files = Vec::new();
     let mut truncated = false;
     for (scanned, entry) in fs::read_dir(root).ok()?.enumerate() {
@@ -133,7 +154,7 @@ pub fn list_workbooks(root: &Path) -> Option<Listing> {
         let is_regular = entry.file_type().is_ok_and(|kind| kind.is_file());
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        if is_regular && is_workbook_name(name) {
+        if is_regular && wanted(name) {
             files.push(name.to_owned());
         }
     }
