@@ -20,6 +20,16 @@ import {
 } from "./fixedTexts";
 import {
   ACKNOWLEDGE_STALE_NEXT_STEP,
+  CUSTOMER_EXISTS_TEXT,
+  CUSTOMER_NAME_INVALID_TEXT,
+  CUSTOMER_UNKNOWN_TEXT,
+  IMPORT_CUSTOMER_CHOICE_INVALID_TEXT,
+  IMPORT_NOT_CONFIRMED_TEXT,
+  IMPORT_QUESTION_MISMATCH_TEXT,
+  IMPORT_RUN_RECORD_MISSING_TEXT,
+  IMPORT_SENT_BEFORE_DRAFTED_TEXT,
+  IMPORT_SENT_ON_IN_FUTURE_TEXT,
+  IMPORT_SENT_ON_INVALID_TEXT,
   LEDGER_REFUSED_OTHER_TEXT,
   OTHER_REFUSAL_TEXT,
   PROMISE_UNKNOWN_TEXT,
@@ -33,6 +43,7 @@ import type {
   ApiError,
   CallResult,
   DRAFT_REFUSAL_CODES,
+  IMPORT_REFUSAL_CODES,
   LEDGER_REFUSAL_CODES,
   MAPPING_REFUSAL_CODES,
   ProxyError,
@@ -323,13 +334,42 @@ export function ledgerRefusalMessage(code: LedgerRefusalCode): string {
     case "promise_unknown":
       return PROMISE_UNKNOWN_TEXT;
     case "customer_name_invalid":
+      return CUSTOMER_NAME_INVALID_TEXT;
     case "customer_exists":
+      return CUSTOMER_EXISTS_TEXT;
     case "customer_unknown":
+      return CUSTOMER_UNKNOWN_TEXT;
     case "run_exists":
     case "run_unknown":
     case "promise_exists":
     case "event_invalid":
       return LEDGER_REFUSED_OTHER_TEXT;
+    default:
+      return assertNever(code);
+  }
+}
+
+type ImportRefusalCode = (typeof IMPORT_REFUSAL_CODES)[number];
+
+/** Each `import_refused` code has its own words (chunk 65g). No wildcard. */
+export function importRefusalMessage(code: ImportRefusalCode): string {
+  switch (code) {
+    case "run_record_missing":
+      return IMPORT_RUN_RECORD_MISSING_TEXT;
+    case "headers_changed":
+      return HEADERS_CHANGED_TEXT;
+    case "question_mismatch":
+      return IMPORT_QUESTION_MISMATCH_TEXT;
+    case "customer_choice_invalid":
+      return IMPORT_CUSTOMER_CHOICE_INVALID_TEXT;
+    case "new_customer_not_confirmed":
+      return IMPORT_NOT_CONFIRMED_TEXT;
+    case "sent_on_invalid":
+      return IMPORT_SENT_ON_INVALID_TEXT;
+    case "sent_on_in_future":
+      return IMPORT_SENT_ON_IN_FUTURE_TEXT;
+    case "sent_before_drafted":
+      return IMPORT_SENT_BEFORE_DRAFTED_TEXT;
     default:
       return assertNever(code);
   }
@@ -369,9 +409,10 @@ export function describeLedgerError(body: LedgerErrorBody): Described {
       return error(`ledger_refused:${body.code}`, ledgerRefusalMessage(body.code));
     case "recall_refused":
       return error(`recall_refused:${body.code}`, recallRefusalMessage(body.code));
+    case "import_refused":
+      return error(`import_refused:${body.code}`, importRefusalMessage(body.code));
     case "export_refused":
     case "check_refused":
-    case "import_refused":
     case "blast_radius_refused":
     case "graph_refused":
       return error(`${body.error}:${body.code}`, OTHER_REFUSAL_TEXT);

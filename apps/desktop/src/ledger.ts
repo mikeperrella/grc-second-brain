@@ -145,7 +145,9 @@ export function customerNameOf(customers: readonly Customer[], customerId: strin
  * What a call that did not give a success body shows, as fixed words. `null` means the call gave
  * the 200 success body.
  */
-export function failureOf<R extends "ledger_customers" | "ledger_promises" | "ledger_void" | "ledger_acknowledge" | "ledger_recall">(
+export function failureOf<
+  R extends "ledger_customers" | "ledger_promises" | "ledger_void" | "ledger_acknowledge" | "ledger_recall" | "ledger_import",
+>(
   result: CallResult<R>,
 ): Described | null {
   if (result.kind !== "reply") {

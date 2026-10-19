@@ -9,6 +9,7 @@ import { STATE_CHANGED, STATE_INTACT, STATE_MISSING, STATE_MOVED } from "./ledge
 import { recallItem, recallReport } from "./ledgerTestSupport";
 import {
   INITIAL_RECALL_STATE,
+  createRecallStore,
   describeKnownRecallFlag,
   describeKnownRecallState,
   describeRecallFlag,
@@ -124,6 +125,50 @@ describe("the recall run", () => {
     });
     const busy = running();
     expect(reduceRecall(busy, { type: "customer_chosen", customerId: CUSTOMER_ID })).toBe(busy);
+  });
+});
+
+describe("the recall store the hook holds (65f tidy-up c)", () => {
+  const OTHER_ID = "00000002000000000000000000000000";
+
+  it("a customer chosen during a run does not change the stored customer or the next request", () => {
+    const store = createRecallStore();
+    store.dispatch({ type: "customer_chosen", customerId: CUSTOMER_ID });
+    expect(store.request()).toEqual({ route: "ledger_recall", customer_id: CUSTOMER_ID });
+    store.dispatch({ type: "run_requested" });
+    // The reducer ignores this choice, so the store's customer, and what a run sends, stay the same.
+    const after = store.dispatch({ type: "customer_chosen", customerId: OTHER_ID });
+    expect(after.customerId).toBe(CUSTOMER_ID);
+    expect(store.state().customerId).toBe(CUSTOMER_ID);
+    expect(store.request()).toEqual({ route: "ledger_recall", customer_id: CUSTOMER_ID });
+    // Clearing the customer during the run is ignored the same way: no request for all customers.
+    store.dispatch({ type: "customer_chosen", customerId: null });
+    expect(store.request()).toEqual({ route: "ledger_recall", customer_id: CUSTOMER_ID });
+  });
+
+  it("after the run ends, a new choice is kept and the next request uses it", () => {
+    const store = createRecallStore();
+    store.dispatch({ type: "run_requested" });
+    store.dispatch({ type: "customer_chosen", customerId: OTHER_ID });
+    expect(store.request()).toEqual({ route: "ledger_recall" });
+    store.dispatch({ type: "run_result", result: replyOf("ledger_recall", 200, recallReport([])) });
+    store.dispatch({ type: "customer_chosen", customerId: OTHER_ID });
+    expect(store.state().customerId).toBe(OTHER_ID);
+    expect(store.request()).toEqual({ route: "ledger_recall", customer_id: OTHER_ID });
+  });
+
+  it("the store's state is exactly the reducer's for every event", () => {
+    const store = createRecallStore();
+    let expected = INITIAL_RECALL_STATE;
+    for (const event of [
+      { type: "customer_chosen", customerId: CUSTOMER_ID },
+      { type: "run_requested" },
+      { type: "customer_chosen", customerId: OTHER_ID },
+      { type: "run_result", result: replyOf("ledger_recall", 200, recallReport([recallItem()])) },
+    ] as const) {
+      expected = reduceRecall(expected, event);
+      expect(store.dispatch(event)).toEqual(expected);
+    }
   });
 });
 

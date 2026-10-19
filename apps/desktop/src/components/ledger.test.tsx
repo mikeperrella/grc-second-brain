@@ -243,6 +243,30 @@ describe("the void controls", () => {
     expect(html).not.toContain("<a ");
   });
 
+  it("while the void confirm is open, that promise's reason dropdown is locked (65f tidy-up b)", () => {
+    const OTHER_ID = "00000000-0000-4000-8000-000000000002";
+    const state = reduceLedger(
+      reduceLedger(withPromises([promiseRow(), promiseRow({ promise_id: OTHER_ID })], 2), {
+        type: "reason_chosen",
+        promiseId: PROMISE_ID,
+        reason: "wrong_customer",
+      }),
+      { type: "reason_chosen", promiseId: OTHER_ID, reason: "other" },
+    );
+    const select = (html: string, id: string) => new RegExp(`<select[^>]*id="void-reason-${id}"[^>]*>`).exec(html)?.[0] ?? "";
+    // Closed: both pickers can be changed.
+    const closed = render(state);
+    expect(select(closed, PROMISE_ID)).not.toContain('disabled=""');
+    expect(select(closed, OTHER_ID)).not.toContain('disabled=""');
+    // Open for the first promise: its picker is locked, the other promise's is not.
+    const open = render(state, openConfirm({ reason: "wrong_customer" }));
+    expect(select(open, PROMISE_ID)).toContain('disabled=""');
+    expect(select(open, OTHER_ID)).not.toContain('disabled=""');
+    // The reason the locked picker shows is the reason the confirm area names.
+    expect(open).toMatch(/<option value="wrong_customer" selected="">Wrong customer<\/option>/);
+    expect(textOf(open)).toContain("Reason for voiding: Wrong customer");
+  });
+
   it("the confirm area shows only under the promise it is for", () => {
     const other = openConfirm({ promiseId: "00000000-0000-4000-8000-000000000002" });
     expect(render(withPromises(), other)).not.toContain("Confirm void");

@@ -4,17 +4,19 @@
 //
 // Hooks and click handlers are rendered in no test (threat model F6-1c); the logic is in recall.ts,
 // confirm.ts and ledgerActions.ts, which are tested without a DOM.
+//
+// The state lives in one store (recall.ts createRecallStore). A run's customer is read from that
+// state, so a customer choice the reducer ignores (a run is in progress) changes nothing.
 
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ConfirmState } from "../confirm";
 import { callRoute } from "../ipc/proxy";
 import { acknowledgePromise, type AcknowledgeTarget } from "../ledgerActions";
 import {
-  INITIAL_RECALL_STATE,
   acknowledgeTarget,
-  recallRequest,
-  reduceRecall,
+  createRecallStore,
+  type RecallEvent,
   type RecallItem,
   type RecallState,
 } from "../recall";
@@ -33,22 +35,30 @@ export interface RecallHandle {
 }
 
 export function useRecall(): RecallHandle {
-  const [state, dispatch] = useReducer(reduceRecall, INITIAL_RECALL_STATE);
-  const customerRef = useRef<string | null>(null);
+  const [store] = useState(createRecallStore);
+  const [state, setState] = useState<RecallState>(() => store.state());
   const confirm = useConfirm<AcknowledgeTarget>();
   const confirmDispatch = confirm.dispatch;
 
-  const chooseCustomer = useCallback((customerId: string | null) => {
-    customerRef.current = customerId;
-    dispatch({ type: "customer_chosen", customerId });
-  }, []);
+  const dispatch = useCallback(
+    (event: RecallEvent) => {
+      setState(store.dispatch(event));
+    },
+    [store],
+  );
+
+  const chooseCustomer = useCallback(
+    (customerId: string | null) => {
+      dispatch({ type: "customer_chosen", customerId });
+    },
+    [dispatch],
+  );
 
   const run = useCallback(() => {
+    const request = store.request();
     dispatch({ type: "run_requested" });
-    void callRoute<"ledger_recall">(invoke, recallRequest(customerRef.current)).then((result) =>
-      dispatch({ type: "run_result", result }),
-    );
-  }, []);
+    void callRoute<"ledger_recall">(invoke, request).then((result) => dispatch({ type: "run_result", result }));
+  }, [store, dispatch]);
 
   const openAcknowledge = useCallback(
     (item: RecallItem) => {
@@ -75,7 +85,7 @@ export function useRecall(): RecallHandle {
       dispatch({ type: "ack_result", result });
       confirmDispatch({ type: "done" });
     });
-  }, [confirmDispatch]);
+  }, [confirmDispatch, dispatch]);
 
   return {
     state,

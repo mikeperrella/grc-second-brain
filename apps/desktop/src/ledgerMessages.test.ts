@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACKNOWLEDGE_STALE_STATEMENT,
+  HEADERS_CHANGED_TEXT,
   PROMISES_PAGE_TOO_LARGE,
 } from "./fixedTexts";
 import {
@@ -20,6 +21,10 @@ import {
 } from "./ipc/proxy";
 import {
   ACKNOWLEDGE_STALE_NEXT_STEP,
+  CUSTOMER_EXISTS_TEXT,
+  CUSTOMER_NAME_INVALID_TEXT,
+  CUSTOMER_UNKNOWN_TEXT,
+  LEDGER_REFUSED_OTHER_TEXT,
   OTHER_REFUSAL_TEXT,
   PROMISE_UNKNOWN_TEXT,
   PROMISE_VOIDED_TEXT,
@@ -27,6 +32,7 @@ import {
 } from "./ledgerText";
 import {
   describeLedgerError,
+  importRefusalMessage,
   ledgerRefusalMessage,
   proxyErrorMessage,
   recallRefusalMessage,
@@ -80,17 +86,41 @@ describe("describeLedgerError", () => {
     );
   });
 
-  it("a family no 65f screen shows still gets a typed case, with one shared draft sentence", () => {
+  it("a family no 65f or 65g screen shows still gets a typed case, with one shared draft sentence", () => {
     const cases: LedgerErrorBody[] = [
       body({ error: "export_refused", code: EXPORT_REFUSAL_CODES[0] }),
       body({ error: "check_refused", code: CHECK_REFUSAL_CODES[0] }),
-      body({ error: "import_refused", code: IMPORT_REFUSAL_CODES[0] }),
       body({ error: "blast_radius_refused", code: BLAST_RADIUS_REFUSAL_CODES[0] }),
       body({ error: "graph_refused", code: GRAPH_REFUSAL_CODES[0] }),
     ];
     for (const value of cases) {
       expect(describeLedgerError(value).text).toBe(OTHER_REFUSAL_TEXT);
     }
+  });
+
+  it("each import_refused code has its own words, none of them the shared sentence (65g)", () => {
+    const texts = IMPORT_REFUSAL_CODES.map(importRefusalMessage);
+    expect(new Set(texts).size).toBe(IMPORT_REFUSAL_CODES.length);
+    for (const code of IMPORT_REFUSAL_CODES) {
+      const described = describeLedgerError(body({ error: "import_refused", code }));
+      expect(described.text, code).toBe(importRefusalMessage(code));
+      expect(described.text, code).not.toBe(OTHER_REFUSAL_TEXT);
+      expect(described.code).toBe(`import_refused:${code}`);
+    }
+    expect(importRefusalMessage("headers_changed")).toBe(HEADERS_CHANGED_TEXT);
+  });
+
+  it("the three customer refusals an import can meet each have their own words (65g)", () => {
+    const codes = ["customer_exists", "customer_unknown", "customer_name_invalid"] as const;
+    const texts = codes.map(ledgerRefusalMessage);
+    expect(new Set(texts).size).toBe(codes.length);
+    for (const text of texts) {
+      expect(text).not.toBe(LEDGER_REFUSED_OTHER_TEXT);
+      expect(text).not.toBe(PROMISE_UNKNOWN_TEXT);
+    }
+    expect(ledgerRefusalMessage("customer_exists")).toBe(CUSTOMER_EXISTS_TEXT);
+    expect(ledgerRefusalMessage("customer_unknown")).toBe(CUSTOMER_UNKNOWN_TEXT);
+    expect(ledgerRefusalMessage("customer_name_invalid")).toBe(CUSTOMER_NAME_INVALID_TEXT);
   });
 
   it("covers every error word an M6.5 route can carry", () => {

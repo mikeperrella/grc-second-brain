@@ -1,19 +1,22 @@
-// Wires the built screens (the Ledger and Recall screens included) to their thin hooks. The state of the index job and of the
+// Wires the built screens (the Ledger, Recall and Import screens included) to their thin hooks. The state of the index job and of the
 // questionnaire run lives here (not inside a screen), so leaving a screen does not forget a job
 // that is still running; the hooks' polling stops when health leaves `healthy` or this component
 // unmounts.
 
 import { useEffect } from "react";
 import { FoldersScreen } from "./components/FoldersScreen";
+import { ImportScreen } from "./components/ImportScreen";
 import { IndexScreen } from "./components/IndexScreen";
 import { LedgerScreen } from "./components/LedgerScreen";
 import { QuestionnaireScreen } from "./components/QuestionnaireScreen";
 import { RecallScreen } from "./components/RecallScreen";
 import { ReviewQueueScreen } from "./components/ReviewQueueScreen";
 import type { ScreenId } from "./components/Shell";
+import { confirmEventOnScreen } from "./confirm";
 import { folderInUse, foldersScreenView, ledgerInUse } from "./foldersScreen";
 import { useFolderPicker } from "./hooks/useFolderPicker";
 import type { FoldersHandle } from "./hooks/useFolders";
+import { useImport } from "./hooks/useImport";
 import { useIndexJob } from "./hooks/useIndexJob";
 import { useLedger } from "./hooks/useLedger";
 import { useNow } from "./hooks/useNow";
@@ -40,18 +43,41 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
   const queue = useReviewQueue();
   const ledger = useLedger();
   const recall = useRecall();
+  const imports = useImport();
 
   // Entering the Ledger reads the customers and a page of promises; entering Recall reads the
-  // customers only (its select). Both are read calls; nothing is written by entering a screen.
+  // customers only (its select); entering Import reads the customers and the exports folder's file
+  // names. All are read calls; nothing is written by entering a screen.
   const { refreshCustomers, refreshPromises } = ledger;
+  const { refreshFiles: refreshImportFiles } = imports;
   useEffect(() => {
     if (healthy && screen === "ledger") {
       refreshCustomers();
       refreshPromises();
     } else if (healthy && screen === "recall") {
       refreshCustomers();
+    } else if (healthy && screen === "import") {
+      refreshCustomers();
+      refreshImportFiles();
     }
-  }, [healthy, screen, refreshCustomers, refreshPromises]);
+  }, [healthy, screen, refreshCustomers, refreshPromises, refreshImportFiles]);
+
+  // Leaving a screen (or entering another) cancels its open confirm area: nothing is sent and the
+  // area is gone when the person returns (confirm.ts confirmEventOnScreen).
+  const { cancelVoid } = ledger;
+  const { cancelAcknowledge } = recall;
+  const { cancelImport } = imports;
+  useEffect(() => {
+    if (confirmEventOnScreen<ScreenId>("ledger", screen) !== null) {
+      cancelVoid();
+    }
+    if (confirmEventOnScreen<ScreenId>("recall", screen) !== null) {
+      cancelAcknowledge();
+    }
+    if (confirmEventOnScreen<ScreenId>("import", screen) !== null) {
+      cancelImport();
+    }
+  }, [screen, cancelVoid, cancelAcknowledge, cancelImport]);
 
   const { refreshFiles } = questionnaire;
   useEffect(() => {
@@ -139,6 +165,21 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
           onOpenAcknowledge={recall.openAcknowledge}
           onConfirmAcknowledge={recall.confirmAcknowledge}
           onCancelAcknowledge={recall.cancelAcknowledge}
+        />
+      );
+    case "import":
+      return (
+        <ImportScreen
+          state={imports.state}
+          confirm={imports.confirm}
+          customers={ledger.state.customers}
+          enabled={healthy}
+          onChooseFile={imports.chooseFile}
+          onInputChange={imports.changeInput}
+          onPreview={imports.preview}
+          onOpenImport={imports.openImport}
+          onConfirmImport={() => imports.confirmImport(refreshCustomers)}
+          onCancelImport={imports.cancelImport}
         />
       );
   }

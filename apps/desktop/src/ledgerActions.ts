@@ -1,13 +1,17 @@
-// The only two ledger writes the window can make: void a promise and acknowledge a recall state
-// (ADR-022 decision 1; docs/DESIGN.md 11.2). Pure: they take `invoke` as an argument.
+// The only three ledger writes the window can make: void a promise, acknowledge a recall state and
+// import a reviewed draft (ADR-022 decisions 1 and 4; docs/DESIGN.md 11.2). Pure: they take
+// `invoke` as an argument.
 //
 // Each function needs a `Confirmed` value, which only the confirm reducer (confirm.ts) produces,
 // and it takes every field of the request from that value, so the request that is sent is always
 // the target the person confirmed. These are the only places the route names `ledger_void` and
-// `ledger_acknowledge` appear in the window (scripts/ledgerSources.test.mjs scans for it).
+// `ledger_acknowledge`, and `ledger_import` with `preview: false`, appear in the window
+// (scripts/ledgerSources.test.mjs scans for it). The import preview (`preview: true`, which writes
+// nothing) is built in ledgerImport.ts.
 
 import type { Confirmed } from "./confirm";
 import { callRoute, type CallResult, type Invoke, type VOID_REASONS } from "./ipc/proxy";
+import type { ImportTarget } from "./ledgerImport";
 
 export type VoidReason = (typeof VOID_REASONS)[number];
 
@@ -47,4 +51,15 @@ export function acknowledgePromise(
     promise_id: promiseId,
     seen_recall_event_id: seenRecallEventId,
   });
+}
+
+/**
+ * The real import: exactly the fields the successful preview sent (ImportTarget.fields), with
+ * `preview: false`. It can create promises and a customer, and neither can be removed.
+ */
+export function importPromises(
+  invoke: Invoke,
+  confirmed: Confirmed<ImportTarget>,
+): Promise<CallResult<"ledger_import">> {
+  return callRoute<"ledger_import">(invoke, { route: "ledger_import", ...confirmed.target.fields, preview: false });
 }
