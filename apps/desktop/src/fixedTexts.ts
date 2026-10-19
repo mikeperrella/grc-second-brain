@@ -132,3 +132,33 @@ export const CONTRADICTIONS_NUMERIC_ONLY_STATEMENT =
 /** Vault graph `says`: vault_graph.json. */
 export const GRAPH_SAYS =
   "Lines are the explicit links written in the files. A missing line does not mean two documents are unrelated.";
+
+// ----- the ledger and recall screens (chunk 65f; docs/DESIGN.md 11.1, approved by the owner on --
+// ----- 2026-10-19). Each sentence is copied from the section 11.1 table. -----------------------
+
+/** Ledger, always visible (DESIGN.md 11.1; ADR-017 decisions 1, 11). */
+export const LEDGER_PROMISE_DEFINITION =
+  "A promise is an answer you told ALIBI you sent to a customer. ALIBI never sends anything.";
+
+/** Ledger, always visible (DESIGN.md 11.1; ADR-017 decision 9). */
+export const LEDGER_IMMUTABLE_NOTE =
+  "Immutable here means ALIBI has no way to change or delete a ledger row. It is not tamper-evident: another program running as you could edit the file.";
+
+/** Void, second step (DESIGN.md 11.1; ADR-017 decision 13). */
+export const VOID_STEP_STATEMENT =
+  "Voiding cannot be undone. The promise stays in the ledger, marked void, and is left out of recall.";
+
+/** Acknowledge, second step (DESIGN.md 11.1; ADR-017 addendum, G35). */
+export const ACKNOWLEDGE_STATEMENT =
+  "Acknowledging records that you saw this state on this date. It does not change the promise.";
+
+/** `recall_refused` with `acknowledge_stale` (DESIGN.md 11.1; ADR-017 addendum, G35). */
+export const ACKNOWLEDGE_STALE_STATEMENT = "This promise's state changed after you acknowledged it.";
+
+/** Ledger, a promises page over the host's response cap (DESIGN.md 11.1; M6_5_PLAN N6). */
+export const PROMISES_PAGE_TOO_LARGE =
+  "This page of promises is too large to show. Choose a smaller page size.";
+
+/** Recall, shown before the run action (DESIGN.md 11.1; ADR-017 decision 20). */
+export const RECALL_BEFORE_RUN =
+  "Checking records a change of state in the ledger when one is found. It never edits a promise.";

@@ -10,6 +10,7 @@
 
 import { NO_DOWNLOAD_STATEMENT } from "./readiness";
 import {
+  ACKNOWLEDGE_STALE_STATEMENT,
   BUSY_STATEMENT,
   DRAFT_UNREADABLE_TEXT,
   HEADERS_CHANGED_TEXT,
@@ -17,15 +18,27 @@ import {
   RUN_RECORD_MISSING_TEXT,
   UNKNOWN_RUN,
 } from "./fixedTexts";
+import {
+  ACKNOWLEDGE_STALE_NEXT_STEP,
+  LEDGER_REFUSED_OTHER_TEXT,
+  OTHER_REFUSAL_TEXT,
+  PROMISE_UNKNOWN_TEXT,
+  PROMISE_VOIDED_TEXT,
+  RECALL_TOO_MANY_PATHS_TEXT,
+  RECALL_TOO_MANY_TEXT,
+} from "./ledgerText";
 import type { FolderErrorWord, FolderProblem } from "./ipc/folders";
+import { FIXED_ERROR_WORDS } from "./ipc/proxy";
 import type {
   ApiError,
   CallResult,
   DRAFT_REFUSAL_CODES,
-  FIXED_ERROR_WORDS,
+  LEDGER_REFUSAL_CODES,
   MAPPING_REFUSAL_CODES,
   ProxyError,
+  RECALL_REFUSAL_CODES,
   RouteName,
+  RouteReply,
   WORKBOOK_REFUSAL_CODES,
 } from "./ipc/proxy";
 
@@ -287,6 +300,83 @@ export function describeApiError(body: ApiError): Described {
     default:
       // The remaining members are the closed FIXED_ERROR_WORDS.
       return error(body.error, fixedErrorMessage(body.error));
+  }
+}
+
+// ----- the M6.5 refusal families the ledger and recall screens can meet (chunk 65f) ------------
+
+type LedgerRefusalCode = (typeof LEDGER_REFUSAL_CODES)[number];
+type RecallRefusalCode = (typeof RECALL_REFUSAL_CODES)[number];
+
+/**
+ * Every typed error body an M6.5 route can carry. `M65ApiError` is not exported from ipc/proxy.ts,
+ * so it is read from a route's reply type: the reply union minus its 200 member.
+ */
+export type LedgerErrorBody = Exclude<RouteReply<"ledger_void">, { status: 200 }>["body"];
+
+function isFixedBody(body: LedgerErrorBody): body is Extract<LedgerErrorBody, { error: FixedErrorWord }> {
+  return (FIXED_ERROR_WORDS as readonly string[]).includes(body.error);
+}
+
+export function ledgerRefusalMessage(code: LedgerRefusalCode): string {
+  switch (code) {
+    case "promise_unknown":
+      return PROMISE_UNKNOWN_TEXT;
+    case "customer_name_invalid":
+    case "customer_exists":
+    case "customer_unknown":
+    case "run_exists":
+    case "run_unknown":
+    case "promise_exists":
+    case "event_invalid":
+      return LEDGER_REFUSED_OTHER_TEXT;
+    default:
+      return assertNever(code);
+  }
+}
+
+export function recallRefusalMessage(code: RecallRefusalCode): string {
+  switch (code) {
+    case "too_many_promises":
+      return RECALL_TOO_MANY_TEXT;
+    case "promise_voided":
+      return PROMISE_VOIDED_TEXT;
+    case "acknowledge_stale":
+      return `${ACKNOWLEDGE_STALE_STATEMENT} ${ACKNOWLEDGE_STALE_NEXT_STEP}`;
+    case "too_many_paths":
+      return RECALL_TOO_MANY_PATHS_TEXT;
+    default:
+      return assertNever(code);
+  }
+}
+
+/**
+ * Turn one typed error body of a ledger route into fixed words. The M6 core families are handled
+ * by describeApiError; the M6.5 families each have a typed case, with no catch-all label.
+ */
+export function describeLedgerError(body: LedgerErrorBody): Described {
+  if (isFixedBody(body)) {
+    return describeApiError(body);
+  }
+  switch (body.error) {
+    case "models_unavailable":
+    case "workbook_refused":
+    case "mapping_refused":
+    case "draft_refused":
+    case "invalid_request":
+      return describeApiError(body);
+    case "ledger_refused":
+      return error(`ledger_refused:${body.code}`, ledgerRefusalMessage(body.code));
+    case "recall_refused":
+      return error(`recall_refused:${body.code}`, recallRefusalMessage(body.code));
+    case "export_refused":
+    case "check_refused":
+    case "import_refused":
+    case "blast_radius_refused":
+    case "graph_refused":
+      return error(`${body.error}:${body.code}`, OTHER_REFUSAL_TEXT);
+    default:
+      return assertNever(body);
   }
 }
 
