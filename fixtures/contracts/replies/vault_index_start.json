@@ -1,0 +1,36 @@
+{
+  "route": "vault_index_start",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "vault_root_not_configured"
+      }
+    },
+    {
+      "case": "accepted",
+      "status": 202,
+      "body": {
+        "job_id": "00000001000000000000000000000000"
+      }
+    },
+    {
+      "case": "run_in_progress",
+      "status": 409,
+      "body": {
+        "error": "run_in_progress"
+      }
+    },
+    {
+      "case": "models_unavailable",
+      "status": 503,
+      "body": {
+        "error": "models_unavailable",
+        "models_missing": [
+          "nomic-embed-text"
+        ]
+      }
+    }
+  ]
+}

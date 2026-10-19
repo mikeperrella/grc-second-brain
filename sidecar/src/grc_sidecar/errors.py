@@ -353,6 +353,24 @@ class RecallRefusedError(GrcError):
         self.counts: dict[str, int] = {} if counts is None else dict(counts)
 
 
+GraphRefusal = Literal["graph_too_large"]
+
+
+class GraphRefusedError(GrcError):
+    """The vault graph was refused as a whole (ADR-023 decision 3). No partial graph is returned.
+
+    `code` is a fixed word and `counts` holds only integers (how many nodes and edges there are
+    and the two caps), never a path or any text from the vault.
+    """
+
+    default_message = "The vault graph was refused"
+
+    def __init__(self, code: GraphRefusal, counts: dict[str, int] | None = None) -> None:
+        super().__init__(f"{self.default_message}: {code}")
+        self.code: GraphRefusal = code
+        self.counts: dict[str, int] = {} if counts is None else dict(counts)
+
+
 BlastRadiusRefusal = Literal[
     "too_many_promises",
     "proposed_text_too_large",

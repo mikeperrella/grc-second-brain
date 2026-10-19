@@ -314,6 +314,56 @@ def test_a_preview_counts_exactly_what_the_real_import_then_does(tmp_path: Path)
         assert again["customer_id"] == real["customer_id"]
 
 
+def import_for(d: Draft, customer_id: str, *, preview: bool) -> dict[str, object]:
+    body = import_body(
+        d, new_customer_name=None, confirm_new=False, existing_customer_id=customer_id,
+        preview=preview,
+    )  # fmt: skip
+    response = call(d.service, "POST", "/ledger/import", headers=AUTH, json=body)
+    assert response.status_code == 200, response.text
+    return dict(response.json())
+
+
+def test_a_preview_counts_rows_a_real_import_would_skip_as_already_imported(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    # Over-count found at the 65b review: a row already imported for this customer must be a
+    # skipped `already_imported` in the preview, never a would-create, and the preview must say
+    # exactly what the real second import then does.
+    with draft_for(tmp_path, supported_outcomes(4)) as d:
+        approve(d, 2, 3)
+        first = call(d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d)).json()
+        assert first["created"] == 2
+        customer_id = first["customer_id"]
+        before = ledger_bytes(tmp_path)
+
+        same = import_for(d, customer_id, preview=True)  # the very same import, again
+        assert same["created"] == 0 and same["customer_created"] is False
+        assert same["skipped"]["already_imported"] == first["created"]
+        assert ledger_bytes(tmp_path) == before  # a preview wrote nothing
+        second = import_for(d, customer_id, preview=False)  # what a real second import does
+        assert second["created"] == 0 and second["skipped"]["already_imported"] == 2
+        for key in ("created", "created_edited", "skipped", "review", "other_values"):
+            assert same[key] == second[key], key
+
+        approve(d, 2, 3, 4, 5)  # two more rows approved: a mix of old and new rows
+        mixed = import_for(d, customer_id, preview=True)
+        assert mixed["created"] == 2 and mixed["skipped"]["already_imported"] == 2
+        real = import_for(d, customer_id, preview=False)
+        assert real["created"] == 2 and real["skipped"]["already_imported"] == 2
+        for key in ("created", "created_edited", "skipped", "review", "other_values"):
+            assert mixed[key] == real[key], key
+
+
+def test_a_preview_with_a_new_customer_name_has_nothing_to_find(tmp_path: Path) -> None:
+    with draft_for(tmp_path, supported_outcomes(2)) as d:
+        approve(d, 2, 3)
+        previewed = call(
+            d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d, preview=True)
+        ).json()
+        assert previewed["created"] == 2 and previewed["skipped"]["already_imported"] == 0
+
+
 def test_a_preview_refuses_everything_a_real_import_refuses_and_writes_nothing(  # [NEG]
     tmp_path: Path,
 ) -> None:

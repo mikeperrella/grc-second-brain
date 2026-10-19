@@ -1,0 +1,45 @@
+{
+  "route": "readiness",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "models_unavailable",
+        "models_missing": []
+      }
+    },
+    {
+      "case": "ready",
+      "status": 200,
+      "body": {
+        "state": "ready",
+        "models_missing": [],
+        "ollama": "reachable"
+      }
+    },
+    {
+      "case": "model_missing",
+      "status": 200,
+      "body": {
+        "state": "degraded",
+        "models_missing": [
+          "llama3.1:8b"
+        ],
+        "ollama": "reachable"
+      }
+    },
+    {
+      "case": "ollama_unreachable",
+      "status": 200,
+      "body": {
+        "state": "degraded",
+        "models_missing": [
+          "nomic-embed-text",
+          "llama3.1:8b"
+        ],
+        "ollama": "unreachable"
+      }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "route": "ledger_customers",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "empty",
+      "status": 200,
+      "body": []
+    },
+    {
+      "case": "one_customer",
+      "status": 200,
+      "body": [
+        {
+          "customer_id": "00000001000000000000000000000000",
+          "display_name": "Acme Test Co"
+        }
+      ]
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

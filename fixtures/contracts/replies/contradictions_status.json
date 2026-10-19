@@ -1,0 +1,164 @@
+{
+  "route": "contradictions_status",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "vault_root_not_configured"
+      }
+    },
+    {
+      "case": "complete",
+      "status": 200,
+      "body": {
+        "run_id": "00000001000000000000000000000000",
+        "status": "complete",
+        "pairs_total": 3,
+        "pairs_done": 3,
+        "failure": null,
+        "report": {
+          "findings": [
+            {
+              "finding_id": "0b3a8e89a227326d",
+              "status": "VALUE_CONFLICT",
+              "quote_a": "Monitoring alerts are acknowledged within 2 hours during business hours.",
+              "source_a": "housekeeping-notes-a.md:13",
+              "quote_b": "Monitoring alerts are acknowledged within 12 hours outside business hours.",
+              "source_b": "housekeeping-notes-b.md:13",
+              "subject": "Monitoring alerts",
+              "numbers": [
+                "2 hours",
+                "12 hours"
+              ],
+              "flags": [],
+              "reasons": [],
+              "verdict": {
+                "conflict": true,
+                "relation": "same_subject_value_mismatch",
+                "explanation": "The two statements set different values.",
+                "model_confidence": 0.9
+              }
+            },
+            {
+              "finding_id": "5a9b9076beba2145",
+              "status": "VALUE_CONFLICT",
+              "quote_a": "Operating system updates are installed within 7 days on internet-facing servers.",
+              "source_a": "housekeeping-notes-a.md:17",
+              "quote_b": "Operating system updates are installed within 30 days on internal servers.",
+              "source_b": "housekeeping-notes-b.md:17",
+              "subject": "Operating system updates",
+              "numbers": [
+                "7 days",
+                "30 days"
+              ],
+              "flags": [],
+              "reasons": [],
+              "verdict": {
+                "conflict": true,
+                "relation": "same_subject_value_mismatch",
+                "explanation": "The two statements set different values.",
+                "model_confidence": 0.9
+              }
+            },
+            {
+              "finding_id": "89eaffb9e66186f3",
+              "status": "VALUE_CONFLICT",
+              "quote_a": "Expense reports are due within 14 days of the purchase date.",
+              "source_a": "housekeeping-notes-a.md:21",
+              "quote_b": "Expense reports must be filed within 30 days of the purchase date.",
+              "source_b": "housekeeping-notes-b.md:21",
+              "subject": "Expense reports",
+              "numbers": [
+                "14 days",
+                "30 days"
+              ],
+              "flags": [],
+              "reasons": [],
+              "verdict": {
+                "conflict": true,
+                "relation": "same_subject_value_mismatch",
+                "explanation": "The two statements set different values.",
+                "model_confidence": 0.9
+              }
+            }
+          ],
+          "model": "llama3.1:8b",
+          "model_status": "available",
+          "template_sha256": "70898002f9b13eeffb3ba0f904466aba6f2662e3d5c5e80b6c5aaed10ce1e1e3",
+          "says": "This check compares numbers only (durations, percentages, counts, frequencies). A conflict without numbers is not found, and no finding does not mean the policies agree.",
+          "over_cap": 52,
+          "dropped": {
+            "over_cap": 52
+          },
+          "verdict_counts": {
+            "same_subject_value_mismatch": {
+              "conflict_true": 3,
+              "conflict_false": 0
+            }
+          },
+          "no_verdict": 0,
+          "model_calls": 3,
+          "chunks_read": 78,
+          "excluded_chunks": 4,
+          "claims_found": 64,
+          "pairs_generated": 55,
+          "withheld_stale": 0
+        }
+      }
+    },
+    {
+      "case": "run_not_found",
+      "status": 404,
+      "body": {
+        "error": "run_not_found"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "path.run_id"
+        ]
+      }
+    },
+    {
+      "case": "running",
+      "status": 200,
+      "body": {
+        "run_id": "00000002000000000000000000000000",
+        "status": "running",
+        "pairs_total": 2,
+        "pairs_done": 0,
+        "failure": null,
+        "report": null
+      }
+    },
+    {
+      "case": "cancelled",
+      "status": 200,
+      "body": {
+        "run_id": "00000002000000000000000000000000",
+        "status": "cancelled",
+        "pairs_total": 2,
+        "pairs_done": 0,
+        "failure": null,
+        "report": null
+      }
+    },
+    {
+      "case": "failed",
+      "status": 200,
+      "body": {
+        "run_id": "00000003000000000000000000000000",
+        "status": "failed",
+        "pairs_total": 0,
+        "pairs_done": 0,
+        "failure": "internal_error",
+        "report": null
+      }
+    }
+  ]
+}

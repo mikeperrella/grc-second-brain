@@ -57,4 +57,5 @@ def build_contradiction_runtime(
     runs = ContradictionRuns(
         ContradictionDetector(repo, asker), slot, model_name=settings.generation_model
     )
-    return ContradictionRuntime(runs=runs, closers=[repo.close, generator.aclose])
+    # The runs close first: a started run is stopped before the index and the client go away.
+    return ContradictionRuntime(runs=runs, closers=[runs.aclose, repo.close, generator.aclose])

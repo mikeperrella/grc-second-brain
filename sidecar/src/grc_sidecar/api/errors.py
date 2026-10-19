@@ -17,6 +17,7 @@ from grc_sidecar.errors import (
     DraftRefusedError,
     ExportRefusedError,
     ExportRootNotConfiguredError,
+    GraphRefusedError,
     ImportRefusedError,
     ImportRootNotConfiguredError,
     IndexNotBuiltError,
@@ -153,6 +154,16 @@ async def _blast_radius_refused(_request: Request, exc: Exception) -> JSONRespon
     return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
 
 
+async def _graph_refused(_request: Request, exc: Exception) -> JSONResponse:
+    """`code` is a fixed word and `counts` holds integers only, never a path or vault text."""
+    body: dict[str, object] = {"error": "graph_refused", "code": "unknown"}
+    if isinstance(exc, GraphRefusedError):
+        body["code"] = exc.code
+        if exc.counts:
+            body["counts"] = exc.counts
+    return JSONResponse(body, status_code=HTTP_UNPROCESSABLE)
+
+
 async def _mapping_refused(_request: Request, exc: Exception) -> JSONResponse:
     code = exc.code if isinstance(exc, QuestionMappingError) else "unknown"
     return JSONResponse({"error": "mapping_refused", "code": code}, status_code=HTTP_UNPROCESSABLE)
@@ -180,5 +191,6 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(DraftRefusedError, _draft_refused)
     app.add_exception_handler(RecallRefusedError, _recall_refused)
     app.add_exception_handler(BlastRadiusRefusedError, _blast_radius_refused)
+    app.add_exception_handler(GraphRefusedError, _graph_refused)
     app.add_exception_handler(QuestionMappingError, _mapping_refused)
     app.add_exception_handler(RequestValidationError, _invalid_request)

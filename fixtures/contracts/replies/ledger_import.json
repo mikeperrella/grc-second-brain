@@ -1,0 +1,207 @@
+{
+  "route": "ledger_import",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "export_root_not_configured",
+      "status": 503,
+      "body": {
+        "error": "export_root_not_configured"
+      }
+    },
+    {
+      "case": "preview",
+      "status": 200,
+      "body": {
+        "created": 3,
+        "created_edited": 0,
+        "customer_id": null,
+        "customer_created": false,
+        "skipped": {
+          "not_approved": 1,
+          "no_answer": 0,
+          "status_edited": 0,
+          "evidence_edited": 0,
+          "baseline_unavailable": 0,
+          "already_imported": 0
+        },
+        "review": {
+          "approved": 3,
+          "rejected": 1,
+          "unreviewed": 0,
+          "other": 0
+        },
+        "other_values": [],
+        "promise_ids": [],
+        "already_changed_since_draft": null,
+        "preview": true
+      }
+    },
+    {
+      "case": "created",
+      "status": 200,
+      "body": {
+        "created": 3,
+        "created_edited": 0,
+        "customer_id": "00000001000000000000000000000000",
+        "customer_created": true,
+        "skipped": {
+          "not_approved": 1,
+          "no_answer": 0,
+          "status_edited": 0,
+          "evidence_edited": 0,
+          "baseline_unavailable": 0,
+          "already_imported": 0
+        },
+        "review": {
+          "approved": 3,
+          "rejected": 1,
+          "unreviewed": 0,
+          "other": 0
+        },
+        "other_values": [],
+        "promise_ids": [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "already_changed_since_draft": null,
+        "preview": false
+      }
+    },
+    {
+      "case": "preview_again",
+      "status": 200,
+      "body": {
+        "created": 0,
+        "created_edited": 0,
+        "customer_id": "00000001000000000000000000000000",
+        "customer_created": false,
+        "skipped": {
+          "not_approved": 1,
+          "no_answer": 0,
+          "status_edited": 0,
+          "evidence_edited": 0,
+          "baseline_unavailable": 0,
+          "already_imported": 3
+        },
+        "review": {
+          "approved": 3,
+          "rejected": 1,
+          "unreviewed": 0,
+          "other": 0
+        },
+        "other_values": [],
+        "promise_ids": [],
+        "already_changed_since_draft": null,
+        "preview": true
+      }
+    },
+    {
+      "case": "customer_choice_invalid",
+      "status": 422,
+      "body": {
+        "error": "import_refused",
+        "code": "customer_choice_invalid"
+      }
+    },
+    {
+      "case": "run_record_missing",
+      "status": 422,
+      "body": {
+        "error": "import_refused",
+        "code": "run_record_missing"
+      }
+    },
+    {
+      "case": "question_mismatch",
+      "status": 422,
+      "body": {
+        "error": "import_refused",
+        "code": "question_mismatch",
+        "counts": {
+          "mismatched_rows": 1,
+          "workbook_rows": 4,
+          "recorded_rows": 4
+        }
+      }
+    },
+    {
+      "case": "new_customer_not_confirmed",
+      "status": 422,
+      "body": {
+        "error": "import_refused",
+        "code": "new_customer_not_confirmed"
+      }
+    },
+    {
+      "case": "customer_exists",
+      "status": 422,
+      "body": {
+        "error": "ledger_refused",
+        "code": "customer_exists",
+        "customer_id": "00000001000000000000000000000000"
+      }
+    },
+    {
+      "case": "customer_unknown",
+      "status": 422,
+      "body": {
+        "error": "ledger_refused",
+        "code": "customer_unknown"
+      }
+    },
+    {
+      "case": "workbook_refused",
+      "status": 422,
+      "body": {
+        "error": "workbook_refused",
+        "code": "doctype"
+      }
+    },
+    {
+      "case": "file_not_found",
+      "status": 404,
+      "body": {
+        "error": "file_not_found"
+      }
+    },
+    {
+      "case": "path_not_allowed",
+      "status": 400,
+      "body": {
+        "error": "path_not_allowed"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.sent_on"
+        ]
+      }
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

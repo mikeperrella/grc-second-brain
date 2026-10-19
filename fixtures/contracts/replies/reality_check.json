@@ -1,0 +1,196 @@
+{
+  "route": "reality_check",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "import_root_not_configured"
+      }
+    },
+    {
+      "case": "file_not_found",
+      "status": 404,
+      "body": {
+        "error": "file_not_found"
+      }
+    },
+    {
+      "case": "path_not_allowed",
+      "status": 400,
+      "body": {
+        "error": "path_not_allowed"
+      }
+    },
+    {
+      "case": "export_refused",
+      "status": 422,
+      "body": {
+        "error": "export_refused",
+        "code": "missing_column",
+        "column": "user.login"
+      }
+    },
+    {
+      "case": "ok",
+      "status": 200,
+      "body": {
+        "claim": {
+          "path": "access-control-policy.md",
+          "doc_id": "MQ-POL-001",
+          "start_line": 23,
+          "end_line": 23,
+          "quote": "Multi-factor authentication (MFA) is required for all staff accounts on every system that stores customer data, and for all remote access.",
+          "qualifier_words": [
+            "staff",
+            "remote",
+            "customer"
+          ],
+          "mapped_to_authentication_control": true,
+          "matched_control_ids": [
+            "NIST-800-53:IA-2",
+            "SOC2:CC6.1"
+          ],
+          "control_note": "This document maps to an authentication control."
+        },
+        "sha256": "2f70196855ceca5b28031de475f25605521b52c41028eee426e93552ba466507",
+        "exported_at": "2026-10-01",
+        "finding": "exceptions_found",
+        "statement": "this export, this claim, this date; not evidence the control works",
+        "staleness_note": "The date is the one the owner supplied. How old the export is, and whether it is the right export, is the owner's responsibility.",
+        "duplicate_note": "Every row is counted on its own. A login that appears on more than one row can be an exception on one row and not on another.",
+        "in_scope": 32,
+        "with_mfa": 19,
+        "without_mfa": 13,
+        "admins_without_mfa": 3,
+        "admin_unknown": 1,
+        "phone_only": 3,
+        "phone_types_named": true,
+        "skipped": [
+          {
+            "value": "Deprovisioned",
+            "count": 3,
+            "truncated": false
+          },
+          {
+            "value": "Staged",
+            "count": 2,
+            "truncated": false
+          },
+          {
+            "value": "Suspended",
+            "count": 2,
+            "truncated": false
+          },
+          {
+            "value": "Pending user action",
+            "count": 1,
+            "truncated": false
+          }
+        ],
+        "skipped_not_listed": 0,
+        "malformed_rows": 0,
+        "duplicate_logins": 1,
+        "mfa_types_not_present": [],
+        "exceptions": [
+          {
+            "login": "u06@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u07@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u08@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u09@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u10@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u11@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u12@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u13@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u14@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u15@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u18@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u20@example.test",
+            "truncated": false
+          },
+          {
+            "login": "u01@example.test",
+            "truncated": false
+          }
+        ],
+        "exceptions_not_listed": 0
+      }
+    },
+    {
+      "case": "claim_not_verbatim",
+      "status": 422,
+      "body": {
+        "error": "check_refused",
+        "code": "claim_not_verbatim"
+      }
+    },
+    {
+      "case": "exported_at_in_future",
+      "status": 422,
+      "body": {
+        "error": "check_refused",
+        "code": "exported_at_in_future"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.claim",
+          "body.exported_at",
+          "body.file",
+          "body.mfa_types"
+        ]
+      }
+    },
+    {
+      "case": "control_map_too_large",
+      "status": 422,
+      "body": {
+        "error": "control_map_too_large"
+      }
+    },
+    {
+      "case": "auth_controls_invalid",
+      "status": 503,
+      "body": {
+        "error": "auth_controls_invalid"
+      }
+    }
+  ]
+}

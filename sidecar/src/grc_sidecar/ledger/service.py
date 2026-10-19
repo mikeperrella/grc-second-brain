@@ -683,15 +683,24 @@ class LedgerService:
 
         Paths are exactly as stored, sorted, not case-folded. Above `MAX_CITED_PATHS` distinct
         paths the whole call is refused (`too_many_paths`, integer counts): a partial list that
-        looked complete would hide promises. Nothing is written or recorded.
+        looked complete would hide promises. Nothing is written or recorded, and a read never
+        creates the ledger file: with no ledger yet the list is empty.
         """
-        await self._repo.open_or_create()
-        counts = Counter(promise.source_path for promise, _ in await self._live_promises(None))
+        counts = await self.live_promise_counts()
         if len(counts) > MAX_CITED_PATHS:
             raise RecallRefusedError(
                 "too_many_paths", {"paths": len(counts), "cap": MAX_CITED_PATHS}
             )
         return tuple(CitedPath(path, count) for path, count in sorted(counts.items()))
+
+    async def live_promise_counts(self) -> Counter[str]:
+        """Live (not voided) promises per stored `source_path`, exactly as stored. Read-only.
+
+        Uses the no-create open the draft route uses: with no ledger file yet there are no
+        promises, and the file is not created. The vault graph calls this too (ADR-023)."""
+        if not await self._repo.open_existing():
+            return Counter()
+        return Counter(promise.source_path for promise, _ in await self._live_promises(None))
 
     # ----- blast radius (a preview; reads, never writes) ------------------------------------------
 

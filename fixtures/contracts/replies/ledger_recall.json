@@ -1,0 +1,161 @@
+{
+  "route": "ledger_recall",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "intact",
+      "status": 200,
+      "body": {
+        "checked": 2,
+        "events_recorded": 2,
+        "counts": {
+          "intact": 2,
+          "moved": 0,
+          "changed": 0,
+          "missing": 0
+        },
+        "items": [
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000001",
+            "customer_id": "00000001000000000000000000000000",
+            "source_path": "policies/encryption-policy.md",
+            "start_line": 8,
+            "end_line": 8,
+            "state": "intact",
+            "detail": null,
+            "locations": [],
+            "locations_not_listed": 0,
+            "flags": [],
+            "previous_state": null,
+            "event_recorded": true,
+            "recall_event_id": 3,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false,
+            "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+            "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change."
+          },
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000002",
+            "customer_id": "00000001000000000000000000000000",
+            "source_path": "policies/backup-policy.md",
+            "start_line": 8,
+            "end_line": 8,
+            "state": "intact",
+            "detail": null,
+            "locations": [],
+            "locations_not_listed": 0,
+            "flags": [],
+            "previous_state": null,
+            "event_recorded": true,
+            "recall_event_id": 4,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false,
+            "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+            "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change."
+          }
+        ],
+        "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+        "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change."
+      }
+    },
+    {
+      "case": "changed",
+      "status": 200,
+      "body": {
+        "checked": 2,
+        "events_recorded": 1,
+        "counts": {
+          "intact": 1,
+          "moved": 0,
+          "changed": 1,
+          "missing": 0
+        },
+        "items": [
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000001",
+            "customer_id": "00000001000000000000000000000000",
+            "source_path": "policies/encryption-policy.md",
+            "start_line": 8,
+            "end_line": 8,
+            "state": "changed",
+            "detail": "quote_not_found",
+            "locations": [],
+            "locations_not_listed": 0,
+            "flags": [],
+            "previous_state": "intact",
+            "event_recorded": true,
+            "recall_event_id": 5,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false,
+            "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+            "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change."
+          },
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000002",
+            "customer_id": "00000001000000000000000000000000",
+            "source_path": "policies/backup-policy.md",
+            "start_line": 8,
+            "end_line": 8,
+            "state": "intact",
+            "detail": null,
+            "locations": [],
+            "locations_not_listed": 0,
+            "flags": [],
+            "previous_state": "intact",
+            "event_recorded": false,
+            "recall_event_id": 4,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false,
+            "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+            "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change."
+          }
+        ],
+        "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+        "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change."
+      }
+    },
+    {
+      "case": "too_many_promises",
+      "status": 422,
+      "body": {
+        "error": "recall_refused",
+        "code": "too_many_promises",
+        "counts": {
+          "promises": 2,
+          "cap": 1
+        }
+      }
+    },
+    {
+      "case": "vault_root_not_configured",
+      "status": 503,
+      "body": {
+        "error": "vault_root_not_configured"
+      }
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

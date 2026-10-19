@@ -1,0 +1,73 @@
+{
+  "route": "ledger_cited_paths",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "empty",
+      "status": 200,
+      "body": {
+        "paths": []
+      }
+    },
+    {
+      "case": "one_path",
+      "status": 200,
+      "body": {
+        "paths": [
+          {
+            "source_path": "policies/encryption-policy.md",
+            "promise_count": 3
+          }
+        ]
+      }
+    },
+    {
+      "case": "two_paths",
+      "status": 200,
+      "body": {
+        "paths": [
+          {
+            "source_path": "policies/backup-policy.md",
+            "promise_count": 1
+          },
+          {
+            "source_path": "policies/encryption-policy.md",
+            "promise_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "case": "too_many_paths",
+      "status": 422,
+      "body": {
+        "error": "recall_refused",
+        "code": "too_many_paths",
+        "counts": {
+          "paths": 2,
+          "cap": 1
+        }
+      }
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

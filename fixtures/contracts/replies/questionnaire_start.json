@@ -1,0 +1,92 @@
+{
+  "route": "questionnaire_start",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "questionnaire_root_not_configured"
+      }
+    },
+    {
+      "case": "file_not_found",
+      "status": 404,
+      "body": {
+        "error": "file_not_found"
+      }
+    },
+    {
+      "case": "path_not_allowed",
+      "status": 400,
+      "body": {
+        "error": "path_not_allowed"
+      }
+    },
+    {
+      "case": "workbook_refused",
+      "status": 422,
+      "body": {
+        "error": "workbook_refused",
+        "code": "doctype"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.file",
+          "body.mapping"
+        ]
+      }
+    },
+    {
+      "case": "mapping_refused",
+      "status": 422,
+      "body": {
+        "error": "mapping_refused",
+        "code": "sheet_not_found"
+      }
+    },
+    {
+      "case": "accepted",
+      "status": 202,
+      "body": {
+        "run_id": "00000001000000000000000000000000",
+        "total": 3
+      }
+    },
+    {
+      "case": "run_in_progress",
+      "status": 409,
+      "body": {
+        "error": "run_in_progress"
+      }
+    },
+    {
+      "case": "models_unavailable",
+      "status": 503,
+      "body": {
+        "error": "models_unavailable",
+        "models_missing": [
+          "llama3.1:8b"
+        ]
+      }
+    },
+    {
+      "case": "vault_changed_reindex",
+      "status": 409,
+      "body": {
+        "error": "vault_changed_reindex"
+      }
+    },
+    {
+      "case": "index_not_built",
+      "status": 409,
+      "body": {
+        "error": "index_not_built"
+      }
+    }
+  ]
+}

@@ -14,7 +14,7 @@ so a file that changed after indexing is never compared; the report counts those
 """
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from grc_sidecar.contradictions.claims import extract_claims
 from grc_sidecar.contradictions.models import (
@@ -46,6 +46,10 @@ from grc_sidecar.retrieval.service import source_kind_of
 from grc_sidecar.retrieval.withdrawn import is_withdrawn_section
 
 _log = logging.getLogger(__name__)
+
+# Called with (pairs_done, pairs_total): integers only, never a quote or any text (ADR-019).
+# `pairs_total` is the number of kept pairs, known once reading and verification are done.
+ProgressCallback = Callable[[int, int], None]
 
 # A model that cannot be used at all: once one pair hits this, no further pair is asked.
 _SYSTEMIC: tuple[Failure, ...] = ("unavailable", "model_missing", "non_local_refused")
@@ -119,9 +123,12 @@ def build_report(
     cap: int,
     withheld_stale: int = 0,
     excluded_chunks: int = 0,
+    on_progress: ProgressCallback | None = None,
 ) -> DetectionReport:
     """The code half only. Pure: no index and no model, so every finding is a `CANDIDATE`."""
     made, kept, dropped, left_out = _prepare(texts, claims, neighbours, cap)
+    if on_progress is not None:
+        on_progress(len(kept), len(kept))  # no model question to wait for: done at once
     findings = []
     for pair, check in kept:
         status, reasons, flags = decide(pair, keeps_conflict=None)
@@ -166,6 +173,7 @@ async def build_report_with_model(
     asker: PairAsker,
     withheld_stale: int = 0,
     excluded_chunks: int = 0,
+    on_progress: ProgressCallback | None = None,
 ) -> DetectionReport:
     """The code half, then one question per kept pair, strongest first (the cap's order).
 
@@ -177,7 +185,9 @@ async def build_report_with_model(
     counts: dict[str, dict[str, int]] = {}
     answered = no_verdict = replies = 0
     failure: Failure | None = None
-    for pair, check in kept:
+    for position, (pair, check) in enumerate(kept):
+        if on_progress is not None:
+            on_progress(position, len(kept))  # the pairs finished so far, including the first call
         if failure in _SYSTEMIC:
             outcome = VerdictOutcome(None, False, (), failure, 0)  # not asked
         else:
@@ -212,6 +222,8 @@ async def build_report_with_model(
             )
         )
         findings.append(_finding(pair, check, status, reasons, flags, view))
+    if on_progress is not None:
+        on_progress(len(kept), len(kept))
     model_status = _model_use(failure, len(kept), answered)
     _log.info(
         "contradictions: pairs=%d kept=%d answered=%d no_verdict=%d over_cap=%d model=%s",
@@ -263,16 +275,30 @@ class ContradictionDetector:
         self._repo = repo
         self._asker = asker
 
+    async def ensure_index(self) -> None:
+        """Open the index for reading, or raise IndexNotBuiltError if there is none.
+
+        `detect` does this itself; the start-then-poll route calls it first so that the 409 is
+        answered at the start, before any task exists."""
+        if self._repo.mode == "closed" and not await self._repo.open_for_deletions():
+            raise IndexNotBuiltError
+
     async def detect(
-        self, *, scope: str | None = None, cap: int = DEFAULT_PAIR_CAP
+        self,
+        *,
+        scope: str | None = None,
+        cap: int = DEFAULT_PAIR_CAP,
+        on_progress: ProgressCallback | None = None,
     ) -> DetectionReport:
         """Compare the numbers in the vault's company-policy text. `scope` is an optional
         vault-relative path prefix (a string match on index paths; no file is opened).
-        Raises IndexNotBuiltError if there is no index. Reading needs no embedding model."""
+        Raises IndexNotBuiltError if there is no index. Reading needs no embedding model.
+
+        `on_progress(done, total)` is called with integers only: once `total` (the kept pairs) is
+        known, and after each pair."""
         if cap < 1:
             raise ValueError("cap must be at least 1")
-        if self._repo.mode == "closed" and not await self._repo.open_for_deletions():
-            raise IndexNotBuiltError
+        await self.ensure_index()
         states = await self._repo.document_states()
         stale = sum(1 for state in states.values() if state.stale)
         paths = sorted(p for p, s in states.items() if not s.stale and _in_scope(p, scope))
@@ -311,6 +337,7 @@ class ContradictionDetector:
                 cap=cap,
                 withheld_stale=stale,
                 excluded_chunks=excluded,
+                on_progress=on_progress,
             )
         return await build_report_with_model(
             texts,
@@ -320,4 +347,5 @@ class ContradictionDetector:
             asker=self._asker,
             withheld_stale=stale,
             excluded_chunks=excluded,
+            on_progress=on_progress,
         )

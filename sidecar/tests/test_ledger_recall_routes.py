@@ -3,6 +3,7 @@ refusals with fixed words, no free text anywhere, and the vault folder named whe
 
 import hashlib
 from contextlib import AbstractContextManager
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,8 @@ import pytest
 from grc_sidecar.ledger import service as service_module
 from grc_sidecar.ledger.recall import SCOPE, STATEMENT
 from grc_sidecar.ledger.service import LedgerService
+from grc_sidecar.repositories.sqlite_ledger_repo import SqliteLedgerRepository
+from grc_sidecar.vault.clock import FixedClock
 
 from .ledgerkit import answered, approve, draft_for, real_citation, run, supported_outcomes
 from .test_ledger_recall import (
@@ -482,6 +485,21 @@ def test_cited_paths_writes_nothing_and_takes_no_query_or_body(tmp_path: Path) -
         call(s.d.service, "GET", CITED, headers=AUTH, params={"path": CANARY})
         assert hashlib.sha256(ledger_file.read_bytes()).hexdigest() == before
         assert call(s.d.service, "POST", CITED, headers=AUTH).status_code == 405
+
+
+def test_cited_paths_does_not_create_the_ledger_file_or_its_folder(tmp_path: Path) -> None:  # [NEG]
+    clock = FixedClock(date(2026, 10, 10))
+    folder = tmp_path / "ledger"
+    folder.mkdir()
+    for ledger_folder in (folder, tmp_path / "not-made-yet"):
+        repo = SqliteLedgerRepository(ledger_folder / "ledger.sqlite3", clock)
+        service = LedgerService(repo, None, clock)
+        for _ in range(2):  # asking again changes nothing either
+            response = call(service, "GET", CITED, headers=AUTH)
+            assert response.status_code == 200 and response.json() == {"paths": []}
+        run(repo.close())
+    assert list(folder.iterdir()) == []  # no ledger file, no journal
+    assert not (tmp_path / "not-made-yet").exists()  # not even the folder
 
 
 # ----- the import's information count -------------------------------------------------------------

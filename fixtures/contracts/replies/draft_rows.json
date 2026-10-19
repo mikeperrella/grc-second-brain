@@ -1,0 +1,142 @@
+{
+  "route": "draft_rows",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "ok",
+      "status": 200,
+      "body": {
+        "run_id": "00000001000000000000000000000000",
+        "model": "llama3.1:8b",
+        "file_name": "Vendor Questionnaire-UNREVIEWED-DRAFT-00000001.xlsx",
+        "complete": true,
+        "question_count": 4,
+        "rows": [
+          {
+            "row": 2,
+            "question_text": "Do you encrypt data at rest, question 1?",
+            "status": "SUPPORTED",
+            "reasons": [],
+            "answer_text": "Yes, answer 1.",
+            "citation": {
+              "source_path": "policies/encryption-policy.md",
+              "start_line": 12,
+              "end_line": 13,
+              "quote": "Data at rest is encrypted with AES-256."
+            },
+            "status_edited": false,
+            "answer_edited": false,
+            "evidence_edited": false
+          },
+          {
+            "row": 3,
+            "question_text": "Do you encrypt data at rest, question 2?",
+            "status": "SUPPORTED",
+            "reasons": [],
+            "answer_text": "Yes, answer 2.",
+            "citation": {
+              "source_path": "policies/encryption-policy.md",
+              "start_line": 12,
+              "end_line": 13,
+              "quote": "Data at rest is encrypted with AES-256."
+            },
+            "status_edited": false,
+            "answer_edited": false,
+            "evidence_edited": false
+          },
+          {
+            "row": 4,
+            "question_text": "Do you encrypt data at rest, question 3?",
+            "status": "SUPPORTED",
+            "reasons": [],
+            "answer_text": "Yes, answer 3.",
+            "citation": {
+              "source_path": "policies/encryption-policy.md",
+              "start_line": 12,
+              "end_line": 13,
+              "quote": "Data at rest is encrypted with AES-256."
+            },
+            "status_edited": false,
+            "answer_edited": false,
+            "evidence_edited": false
+          },
+          {
+            "row": 5,
+            "question_text": "Do you encrypt data at rest, question 4?",
+            "status": "SUPPORTED",
+            "reasons": [],
+            "answer_text": "Yes, answer 4.",
+            "citation": {
+              "source_path": "policies/encryption-policy.md",
+              "start_line": 12,
+              "end_line": 13,
+              "quote": "Data at rest is encrypted with AES-256."
+            },
+            "status_edited": false,
+            "answer_edited": false,
+            "evidence_edited": false
+          }
+        ]
+      }
+    },
+    {
+      "case": "file_not_found",
+      "status": 404,
+      "body": {
+        "error": "file_not_found"
+      }
+    },
+    {
+      "case": "path_not_allowed",
+      "status": 400,
+      "body": {
+        "error": "path_not_allowed"
+      }
+    },
+    {
+      "case": "draft_refused",
+      "status": 422,
+      "body": {
+        "error": "draft_refused",
+        "code": "run_record_missing"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.file"
+        ]
+      }
+    },
+    {
+      "case": "export_root_not_configured",
+      "status": 503,
+      "body": {
+        "error": "export_root_not_configured"
+      }
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

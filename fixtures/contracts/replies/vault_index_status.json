@@ -1,0 +1,61 @@
+{
+  "route": "vault_index_status",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "vault_root_not_configured"
+      }
+    },
+    {
+      "case": "running",
+      "status": 200,
+      "body": {
+        "job_id": "00000001000000000000000000000000",
+        "status": "running",
+        "files_done": 0,
+        "files_total": 3,
+        "files_indexed": 0,
+        "files_unchanged": 0,
+        "files_removed": 0,
+        "files_failed": 0,
+        "chunks_embedded": 0,
+        "failure": null
+      }
+    },
+    {
+      "case": "complete",
+      "status": 200,
+      "body": {
+        "job_id": "00000001000000000000000000000000",
+        "status": "complete",
+        "files_done": 3,
+        "files_total": 3,
+        "files_indexed": 3,
+        "files_unchanged": 0,
+        "files_removed": 0,
+        "files_failed": 0,
+        "chunks_embedded": 3,
+        "failure": null
+      }
+    },
+    {
+      "case": "run_not_found",
+      "status": 404,
+      "body": {
+        "error": "run_not_found"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "path.job_id"
+        ]
+      }
+    }
+  ]
+}
