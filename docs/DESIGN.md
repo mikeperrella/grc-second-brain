@@ -184,3 +184,61 @@ No remote assets, no remote fonts, no CDN. Everything is bundled. The shipped po
 - Whether release builds ship DevTools (not checked, not verified).
 - Anything about skills: nothing is installed in M6 core, and the decision is made at the start of M6.5 after the owner and the reviewer have read the repositories themselves.
 - The M6.5 screens (ledger, recall, blast radius, contradictions, reality, graph view).
+
+## 11. M6.5 screens (planned, not built; for the owner's approval)
+
+Written 2026-10-18 in chunk 65a from `M6_5_PLAN.md` and `docs/adr/022-m6-5-screens-writes-and-approval.md`. **Nothing in this section is built, and every word of it is for the owner's approval.** It applies to a **debug build only until M8**. The rules of sections 1 to 9 apply to every M6.5 screen. No new colour token is planned; if one is added it needs a pair in `apps/desktop/scripts/contrastTokens.test.mjs`, which fails on an uncovered token.
+
+### 11.1 Fixed statements (drafts)
+
+Each is defined once as a window constant (as in section 4.1), shown in body text and never collapsed. Where the sidecar also sends the sentence, the reply schema pins it with a Zod literal on the same constant, so a drifted sentence makes the reply invalid instead of showing different words.
+
+| Where | Draft text | Source |
+|---|---|---|
+| Recall, above results and in each item | The sidecar's `STATEMENT`: "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true." and its `SCOPE` | `docs/adr/017-promise-ledger-run-record-and-recall.md` decision 17; threat-model F31-4b |
+| Recall, before running | Checking records a change of state in the ledger when one is found. It never edits a promise. | ADR-017 decision 20 |
+| Ledger | A promise is an answer you told ALIBI you sent to a customer. ALIBI never sends anything. | ADR-017 decisions 1, 11 |
+| Ledger | Immutable here means ALIBI has no way to change or delete a ledger row. It is not tamper-evident: another program running as you could edit the file. | ADR-017 decision 9 |
+| Void, second step | Voiding cannot be undone. The promise stays in the ledger, marked void, and is left out of recall. | ADR-017 decision 13 |
+| Acknowledge | Acknowledging records that you saw this state on this date. It does not change the promise. | ADR-017 addendum (G35) |
+| Acknowledge, stale | This promise's state changed after you acknowledged it. | ADR-017 addendum (G35) |
+| Ledger, promises page too large | This page of promises is too large to show. Choose a smaller page size. | `M6_5_PLAN.md` N6 |
+| Blast radius | The sidecar's `PREVIEW_LINE`, `NO_MATCH_LINE`, `STATEMENT` and `SCOPE`, and: Blast radius checks promises only. It does not check controls or the documents that link to this file. | ADR-018; threat-model F32-4, G36 |
+| Blast radius | New: this flag is not on the file as it is now. | ADR-018 addendum (`flags_now`) |
+| Blast radius | The text you paste stays in this window for this preview only. ALIBI does not save it. | ADR-018 decision 7 |
+| Contradictions | The sidecar's numbers-only statement, always visible when results show | ADR-019; threat-model F33-9 |
+| Contradictions | The model's answer for the same pair can differ between identical runs. | threat-model F33-11, G42 |
+| Contradictions | Findings are not kept. Closing ALIBI or starting another run drops them. | ADR-019 decision 1 |
+| Contradictions | Both quotes are shown so you can decide. ALIBI does not decide which statement is right. | threat-model F33-10 |
+| Contradictions, `VALUE_CONFLICT` label | Numbers differ (the model kept this pair in this run). Never "detected" or "confirmed". | ADR-019, "What the results say, and what they do not" |
+| Contradictions, `CANDIDATE` label | Numbers differ (not kept), with the reason shown. | ADR-019 |
+| Reality check, result | This export shows users in scope without MFA, by the MFA types you confirmed. / This export shows no users in scope without MFA, by the MFA types you confirmed. Never "compliant". | ADR-016 decision 11 |
+| Reality check | The sidecar's `STATEMENT`, `STALENESS_NOTE` and `DUPLICATE_NOTE` | ADR-016 |
+| Reality check, phone | Counting phone (text message or voice) as MFA is a policy choice: phone codes can be phished or intercepted. | ADR-016 decision 6 |
+| Reality check, logins | The logins below are personal data. ALIBI does not save or log them. (Not "gone when you leave this screen": the App-level hooks are rendered in no test, F6-1c, so that would need a tested pure reset first.) | threat-model F26-7 |
+| Import | Approval happens in the workbook: type "approved" in the Review column, save the file with Save (not Save As), then import it here. | ADR-017 decisions 1, 2 |
+| Import | ALIBI only reads the workbook. It never saves it. | ADR-014 decision 10; ADR-021 decision 7 |
+| Import | Importing creates promises that cannot be deleted, only voided. A new customer cannot be removed. | ADR-017 decisions 8, 10, 13 |
+| Import | The date is your statement of when you sent these answers. ALIBI cannot check it. | ADR-017 decision 11 |
+| Review queue approval line | The existing line in section 4.1, without its clause "(the import screen comes in a later chunk)" once the import screen exists. | ADR-021 addendum |
+| Graph | Lines are the explicit links written in the files. A missing line does not mean two documents are unrelated. | CLAUDE.md 8.2 |
+| Graph | This map is not evidence that a control works or that a promise is true. | ADR-023 |
+| Graph, no ledger folder | Promises: not available (no ledger folder in use). Never "0". | ADR-023 decision 5 |
+
+### 11.2 The two-step confirm component
+
+For an irreversible write (a void, an import, and by extension an acknowledgement): the first click opens an in-page area that restates, in fixed words from 11.1, what will happen and what cannot be undone, and shows the target (the customer name or the promise as plain text). A second, separate button carries out the write. Cancel closes the area and calls nothing. It is a bordered block in the section 4.1 style; it never uses `confirm()` (the dialog plugin overrides it, deviation M6-22), a tooltip or colour alone. The write is made by a pure action module that calls the route only when it is handed a `confirmed` value that only the confirm reducer produces; it is tested with a recording fake `invoke`.
+
+### 11.3 The "new flag" marker
+
+On a blast-radius item, a proposed flag that is not among the item's current flags (`flags_now`) is shown with the text "New" in front of its word, in a bordered inline box. The marker is text and shape, never colour alone, and the fixed line "New: this flag is not on the file as it is now." is always visible on the screen. "New" is worked out in a pure tested function (proposed flags minus current flags), not from the response's words.
+
+### 11.4 Navigation groups
+
+Proposed groups for the shell (names are drafts): **Questionnaires** (Folders, Index the vault, Questionnaire, Review queue), **Promises** (Ledger, Recall, Blast radius, Import), **Checks** (Contradictions, Reality check), **Map** (Graph). The current screen keeps the section 4.5 marker (`aria-current`, underline and thick border). The grouped navigation **must be hand-checked at the 900 by 600 minimum window** in the bundled debug build; no test covers the real layout (threat-model F44-4, planned).
+
+### 11.5 What is not decided here
+
+- Every word in 11.1 to 11.4.
+- Whether React Flow is adopted for the graph view (`docs/adr/023-graph-view.md`); the list view comes first.
+- Colour values and the dark scheme (section 10 still applies).

@@ -267,7 +267,7 @@ The status contract, with its reasons, is ADR-013 (status and grounding). The fi
 | M8 | Packaging and docs | PyInstaller sidecar bundled as Tauri external binary, README, generate and bundle a third-party license notices file with the installer, hash-locked Python dependencies (uv or pip-tools), deferred from M1.5, verify the installer contains only the app binary (and the sidecar externalBin), never `fake_sidecar` |
 | M9 | Public release | Branch protection with required checks, CodeRabbit enabled, SECURITY.md, history scanned for secrets, decide the license (permissive, none, AGPL, or a private commercial version), review the Semgrep Rules License of the registry rulesets (fine for internal CI, restrictive for redistribution and the BizAI commercial version) |
 
-**Current milestone: M6 core, chunks 6a1 to 6l merged (6i closed M6 core; 6j, 6k and 6l followed); debug build only until M8. The owner's checklist in the real window (G12, F5-1b) was run once by hand on 2026-10-16 (one machine; observations, not tests; see `M6_PLAN.md`, "M6 close check results").**
+**Current milestone: M6.5 started (plan in `M6_5_PLAN.md`, chunk 65a documents only, no screens built yet); debug build only until M8. M6 core is closed (chunks 6a1 to 6l merged); the owner's checklist in the real window (G12, F5-1b) was run once by hand on 2026-10-16 (one machine; observations, not tests; see `M6_PLAN.md`, "M6 close check results").**
 
 ---
 
