@@ -304,7 +304,7 @@ New: **ADR-022** (screens, writes and approval scope) and **ADR-023** (graph vie
 
 ## 16. Tooling and skills
 
-No tool or skill is evaluated, installed or recommended here (owner decision at M6.5 start). A tool that writes files would meet CLAUDE.md 2.9 (edit tool only) and M6_PLAN section I at: any scaffolder or skill in 65e to 65k; `pnpm add` in 65l (it writes `package.json` and the lockfile, as Tailwind's install did in PR #43, so the diff must be shown); the `GRC_WRITE_*` fixture writers in 65c and 65d (existing ADR-006 practice, to be stated in the PR); any formatter other than `ruff format` and `cargo fmt`.
+No tool or skill is evaluated, installed or recommended here (owner decision at M6.5 start). 2026-10-19 (owner decision): design tooling was evaluated. Emil Kowalski's animation skills and Vercel's web-interface-guidelines are adopted as read-only text under docs/design-guidance/ with the overrides in its README. Nothing is installed. Impeccable, shadcn/ui, 21st.dev and Chrome DevTools MCP are not adopted. A tool that writes files would meet CLAUDE.md 2.9 (edit tool only) and M6_PLAN section I at: any scaffolder or skill in 65e to 65k; `pnpm add` in 65l (it writes `package.json` and the lockfile, as Tailwind's install did in PR #43, so the diff must be shown); the `GRC_WRITE_*` fixture writers in 65c and 65d (existing ADR-006 practice, to be stated in the PR); any formatter other than `ruff format` and `cargo fmt`.
 
 ---
 
