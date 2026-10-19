@@ -74,7 +74,7 @@ export const RECALL_TOO_MANY_TEXT = "There are too many promises to check at onc
 export const RECALL_TOO_MANY_PATHS_TEXT = "There are too many cited paths to list.";
 /** After the approved stale sentence (fixedTexts.ts ACKNOWLEDGE_STALE_STATEMENT). */
 export const ACKNOWLEDGE_STALE_NEXT_STEP = "Run the check again, then acknowledge the new state.";
-/** `export_refused`, `check_refused`, `import_refused`, `blast_radius_refused`, `graph_refused`. */
+/** `export_refused`, `check_refused` and `graph_refused` (no screen yet). */
 export const OTHER_REFUSAL_TEXT = "The sidecar refused the request.";
 
 // ----- the recall screen (DRAFT) -----------------------------------------------------------------
@@ -205,3 +205,59 @@ export const CUSTOMER_UNKNOWN_TEXT = "That customer is not in the ledger.";
 export const CUSTOMER_NAME_INVALID_TEXT = "The ledger does not accept this customer name.";
 
 // ===== end of 65g DRAFT =========================================================================
+
+// ===== 65h DRAFT ================================================================================
+// Every constant from here to the end of the file was added in chunk 65h (the Blast radius
+// screen). They are DRAFTS until the owner approves them. Plain functional labels, and one short
+// sentence per refusal or input problem that names what the code means. The screen's statements
+// are the DESIGN.md 11.1 "Blast radius" rows and the sidecar's sentences in fixedTexts.ts, not here.
+
+export const NAV_LABEL_BLAST = "Blast radius";
+
+export const BLAST_TITLE = "Blast radius";
+export const BLAST_PATH_LABEL = "Cited file";
+export const BLAST_PATH_PLACEHOLDER = "Choose a file";
+export const BLAST_PATH_PROMISES = "promises";
+export const BLAST_READING_PATHS = "Reading the cited files.";
+export const BLAST_NO_CITED_PATHS = "No live promise cites any file yet, so there is nothing to preview.";
+
+export const BLAST_CHANGE_LEGEND = "What would change";
+export const BLAST_MODE_TEXT = "Preview new text for this file";
+export const BLAST_MODE_DELETE = "Preview deleting this file";
+export const BLAST_TEXT_LABEL = "Proposed new text of the file";
+export const BLAST_BYTES_LABEL = "Size in UTF-8 bytes";
+export const BLAST_BYTES_LIMIT = "limit";
+
+export const BLAST_PREVIEW_BUTTON = "Preview";
+export const BLAST_PREVIEWING = "Previewing.";
+export const BLAST_RESULT_HEADING = "Preview result";
+export const BLAST_PREVIEWED_FILE = "File previewed";
+export const BLAST_PREVIEWED_CHANGE = "Change previewed";
+export const BLAST_CHANGE_TEXT = "new text";
+export const BLAST_CHANGE_DELETE = "file deleted";
+export const BLAST_CHECKED = "Checked";
+export const BLAST_WOULD_CHANGE_COUNT = "Would change state";
+export const BLAST_BY_PROPOSED_STATE = "Promises by proposed state";
+
+export const BLAST_ITEM_STATE_NOW = "State now";
+export const BLAST_ITEM_STATE_PROPOSED = "Proposed state";
+export const BLAST_ITEM_WOULD_CHANGE = "State would change";
+export const BLAST_ITEM_PROPOSED_DETAIL = "Proposed detail";
+export const BLAST_ITEM_FOUND_AT = "In the proposed text, found at";
+export const BLAST_ITEM_FLAGS_NOW = "Flags now";
+export const BLAST_ITEM_FLAGS_PROPOSED = "Flags if this change were saved";
+export const BLAST_YES = "yes";
+export const BLAST_NO = "no";
+
+/** Input problems, found before any call. */
+export const BLAST_PROBLEM_NO_PATH = "Choose a cited file first.";
+export const BLAST_PROBLEM_NO_MODE = "Choose new text or deleting the file.";
+export const BLAST_PROBLEM_TOO_LARGE = "The proposed text is over the limit. Nothing was sent.";
+
+/** `blast_radius_refused` codes (the sidecar's refusals). */
+export const BLAST_TOO_MANY_PROMISES_TEXT = "There are too many promises on this file to preview at once.";
+export const BLAST_TEXT_TOO_LARGE_TEXT = "The proposed text is larger than ALIBI accepts for one file.";
+export const BLAST_TEXT_HAS_NUL_TEXT = "The proposed text contains a NUL character, which ALIBI refuses.";
+export const BLAST_TEXT_NOT_UTF8_TEXT = "The proposed text cannot be encoded as UTF-8.";
+
+// ===== end of 65h DRAFT =========================================================================

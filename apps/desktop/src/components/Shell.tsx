@@ -2,14 +2,16 @@
 //
 // Navigation is disabled while the sidecar is not healthy ("starting: navigation disabled",
 // M6_PLAN C.1). Folders, Index the vault, Questionnaire (6g) and the Review queue (6h) are built,
-// chunk 65f adds the Ledger and Recall screens, and chunk 65g the Import screen (in the Promises
-// group, DESIGN.md 11.4). The entries are in two groups, and the group names and labels are drafts
-// for the owner's approval (ledgerText.ts).
+// chunk 65f adds the Ledger and Recall screens, chunk 65g the Import screen and chunk 65h the Blast
+// radius screen (in the Promises group, between Recall and Import, DESIGN.md 11.4). The entries
+// are in two groups, and the group names and labels are drafts for the owner's approval
+// (ledgerText.ts).
 
 import type { ReactNode } from "react";
 import {
   NAV_GROUP_PROMISES,
   NAV_GROUP_QUESTIONNAIRES,
+  NAV_LABEL_BLAST,
   NAV_LABEL_FOLDERS,
   NAV_LABEL_IMPORT,
   NAV_LABEL_INDEX,
@@ -19,7 +21,7 @@ import {
   NAV_LABEL_REVIEW,
 } from "../ledgerText";
 
-export type ScreenId = "folders" | "index" | "questionnaire" | "review" | "ledger" | "recall" | "import";
+export type ScreenId = "folders" | "index" | "questionnaire" | "review" | "ledger" | "recall" | "blast" | "import";
 
 interface NavEntry {
   label: string;
@@ -53,6 +55,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     entries: [
       { label: NAV_LABEL_LEDGER, screen: "ledger" },
       { label: NAV_LABEL_RECALL, screen: "recall" },
+      { label: NAV_LABEL_BLAST, screen: "blast" },
       { label: NAV_LABEL_IMPORT, screen: "import" },
     ],
   },

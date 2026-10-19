@@ -31,6 +31,7 @@ import {
   RECALL_TOO_MANY_TEXT,
 } from "./ledgerText";
 import {
+  blastRadiusRefusalMessage,
   describeLedgerError,
   importRefusalMessage,
   ledgerRefusalMessage,
@@ -86,16 +87,33 @@ describe("describeLedgerError", () => {
     );
   });
 
-  it("a family no 65f or 65g screen shows still gets a typed case, with one shared draft sentence", () => {
+  it("a family no 65f, 65g or 65h screen shows still gets a typed case, with one shared draft sentence", () => {
     const cases: LedgerErrorBody[] = [
       body({ error: "export_refused", code: EXPORT_REFUSAL_CODES[0] }),
       body({ error: "check_refused", code: CHECK_REFUSAL_CODES[0] }),
-      body({ error: "blast_radius_refused", code: BLAST_RADIUS_REFUSAL_CODES[0] }),
       body({ error: "graph_refused", code: GRAPH_REFUSAL_CODES[0] }),
     ];
     for (const value of cases) {
       expect(describeLedgerError(value).text).toBe(OTHER_REFUSAL_TEXT);
     }
+  });
+
+  it("each blast_radius_refused code has its own words, none of them the shared sentence (65h)", () => {
+    const texts = BLAST_RADIUS_REFUSAL_CODES.map(blastRadiusRefusalMessage);
+    expect(new Set(texts).size).toBe(BLAST_RADIUS_REFUSAL_CODES.length);
+    for (const code of BLAST_RADIUS_REFUSAL_CODES) {
+      const described = describeLedgerError(body({ error: "blast_radius_refused", code }));
+      expect(described.text, code).toBe(blastRadiusRefusalMessage(code));
+      expect(described.text, code).not.toBe(OTHER_REFUSAL_TEXT);
+      expect(described.text, code).not.toBe(RECALL_TOO_MANY_TEXT);
+      expect(described.code).toBe(`blast_radius_refused:${code}`);
+    }
+    expect(texts).toEqual([
+      "There are too many promises on this file to preview at once.",
+      "The proposed text is larger than ALIBI accepts for one file.",
+      "The proposed text contains a NUL character, which ALIBI refuses.",
+      "The proposed text cannot be encoded as UTF-8.",
+    ]);
   });
 
   it("each import_refused code has its own words, none of them the shared sentence (65g)", () => {
