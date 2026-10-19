@@ -38,6 +38,7 @@ function row(over: Partial<DraftRow> = {}): DraftRow {
 }
 
 const body = (rows: DraftRow[]) => ({
+  run_id: "0123456789abcdef",
   model: "m",
   file_name: "A.xlsx",
   complete: true,

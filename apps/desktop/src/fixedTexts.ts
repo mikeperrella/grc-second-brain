@@ -88,3 +88,47 @@ export const HEADERS_CHANGED_TEXT =
 
 /** `draft_refused` with any other loader code (ADR-021 decision 5). */
 export const DRAFT_UNREADABLE_TEXT = "ALIBI could not read this file as a draft.";
+
+// ----- the sidecar's own fixed sentences (chunk 65e; ADR-022 decision 2) -----------------------
+//
+// These are NOT window wording. Each is the sidecar's sentence exactly as its recorded reply carries
+// it (fixtures/contracts/replies/<route>.json, written by sidecar/tests/test_reply_contracts.py),
+// copied from those files. ipc/proxy.ts pins each reply field with `z.literal` of the constant here,
+// so a sidecar sentence that drifts makes the whole reply invalid instead of showing other words.
+// A screen shows the constant, never the string from the reply.
+
+/** Recall and blast radius `statement` (threat model F31-4b): ledger_recall.json, ledger_blast_radius.json. */
+export const RECALL_STATEMENT =
+  "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.";
+
+/** Recall and blast radius `scope`: ledger_recall.json, ledger_blast_radius.json. */
+export const RECALL_SCOPE =
+  "Recall watches the cited lines only; a change elsewhere in the document is not a state change.";
+
+/** Blast radius `preview`, on the report and on every item: ledger_blast_radius.json. */
+export const BLAST_PREVIEW_LINE = "this is a preview; nothing was saved or recorded";
+
+/** Blast radius `note` when no live promise matches: ledger_blast_radius.json (case `no_match`). */
+export const BLAST_NO_MATCH_LINE = "no live promise cites this path as written";
+
+/** Blast radius `coverage` (F32-4, G36): ledger_blast_radius.json. */
+export const BLAST_COVERAGE = "promises only; controls and linking documents are not checked";
+
+/** Reality check `statement`: reality_check.json. */
+export const REALITY_STATEMENT = "this export, this claim, this date; not evidence the control works";
+
+/** Reality check `staleness_note`: reality_check.json. */
+export const REALITY_STALENESS_NOTE =
+  "The date is the one the owner supplied. How old the export is, and whether it is the right export, is the owner's responsibility.";
+
+/** Reality check `duplicate_note`: reality_check.json. */
+export const REALITY_DUPLICATE_NOTE =
+  "Every row is counted on its own. A login that appears on more than one row can be an exception on one row and not on another.";
+
+/** Contradiction report `says` (threat model F33-9): contradictions_status.json (case `complete`). */
+export const CONTRADICTIONS_NUMERIC_ONLY_STATEMENT =
+  "This check compares numbers only (durations, percentages, counts, frequencies). A conflict without numbers is not found, and no finding does not mean the policies agree.";
+
+/** Vault graph `says`: vault_graph.json. */
+export const GRAPH_SAYS =
+  "Lines are the explicit links written in the files. A missing line does not mean two documents are unrelated.";

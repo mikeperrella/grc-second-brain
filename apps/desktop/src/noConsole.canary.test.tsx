@@ -19,7 +19,15 @@ import { foldersScreenView } from "./foldersScreen";
 import { INITIAL_INDEX_STATE, reduceIndex } from "./indexJob";
 import { getFolders, listFiles, pickFolder } from "./ipc/folders";
 import { fetchHealth } from "./ipc/health";
-import { callRoute, type CallResult, type Invoke } from "./ipc/proxy";
+import {
+  ROUTE_NAMES,
+  callRoute,
+  routeRequestSchema,
+  type CallResult,
+  type Invoke,
+  type RouteName,
+  type RouteRequest,
+} from "./ipc/proxy";
 import { DraftRowView } from "./components/DraftRowView";
 import { LongText } from "./components/LongText";
 import { ReviewQueueScreen } from "./components/ReviewQueueScreen";
@@ -33,6 +41,15 @@ import { summarizeFolders } from "./foldersSummary";
 
 const METHODS = ["log", "info", "warn", "error", "debug", "trace", "dir", "table", "group"] as const;
 const MARKER = "SECRET-DOCUMENT-TEXT";
+const M6_CORE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
+  "readiness",
+  "questionnaire_inspect",
+  "questionnaire_start",
+  "questionnaire_status",
+  "vault_index_start",
+  "vault_index_status",
+  "draft_rows",
+]);
 
 describe("no console output", () => {
   const spies = METHODS.map((method) => vi.spyOn(console, method).mockImplementation(() => undefined));
@@ -226,6 +243,83 @@ describe("no console output", () => {
     await callRoute<"draft_rows">(failing, { route: "draft_rows", file: MARKER });
     await listFiles(failing, "exports");
     expect(draftRefusedMessage("question_mismatch").length).toBeGreaterThan(10);
+    expectSilent();
+  });
+
+  it("is silent through every M6.5 route's failure paths, with the marker in the request and the reply", async () => {
+    const id = "0123456789abcdef";
+    const promise = "00000000-0000-4000-8000-000000000001";
+    // A valid request for every new route, with the marker in every free-text field it has.
+    const requests: RouteRequest[] = [
+      { route: "ledger_customers" },
+      { route: "ledger_promises", customer_id: id, include_voided: true, page: 1, page_size: 10 },
+      { route: "ledger_cited_paths" },
+      {
+        route: "ledger_import",
+        run_id: id,
+        file: `${MARKER}.xlsx`,
+        new_customer_name: MARKER,
+        confirm_new: true,
+        sent_on: "2026-10-10",
+        preview: true,
+      },
+      { route: "ledger_recall", customer_id: id },
+      { route: "ledger_void", promise_id: promise, reason: "other" },
+      { route: "ledger_acknowledge", promise_id: promise, seen_recall_event_id: 1 },
+      { route: "ledger_blast_radius", path: `${MARKER}.md`, proposed_text: MARKER, delete_file: false },
+      { route: "reality_inspect", file: `${MARKER}.csv` },
+      { route: "reality_claims" },
+      {
+        route: "reality_check",
+        file: `${MARKER}.csv`,
+        claim: { path: `${MARKER}.md`, start_line: 1, end_line: 1, quote: MARKER },
+        mfa_types: [MARKER],
+        phone_types: [MARKER],
+        active_statuses: [MARKER],
+        exported_at: "2026-10-01",
+      },
+      { route: "contradictions_start", scope: `${MARKER}/` },
+      { route: "contradictions_status", run_id: id },
+      { route: "vault_graph" },
+    ];
+    expect(requests.map((request) => request.route).sort()).toEqual(
+      ROUTE_NAMES.filter((route) => !M6_CORE_ROUTES.has(route)).sort(),
+    );
+    const hostile = { get status(): number { throw new Error(MARKER); } };
+    const failing: Invoke[] = [
+      () => Promise.reject(MARKER),
+      () => Promise.reject({ error: "new_word", detail: MARKER }),
+      () => Promise.reject(hostile),
+      () => Promise.resolve({ status: 200, body: { detail: MARKER } }),
+      () => Promise.resolve({ status: 422, body: { error: "recall_refused", code: MARKER } }),
+      () => Promise.resolve({ status: 200, body: [{ customer_id: id, display_name: MARKER, extra: MARKER }] }),
+      () => Promise.resolve(hostile),
+      () => {
+        throw new Error(MARKER);
+      },
+    ];
+    for (const request of requests) {
+      expect(routeRequestSchema.safeParse(request).success, request.route).toBe(true);
+      for (const invoke of failing) {
+        const result = await callRoute(invoke, request);
+        expect(result.kind, request.route).not.toBe("reply");
+        expect(JSON.stringify(result)).not.toContain(MARKER);
+      }
+      // A request the schema refuses is never sent, and says nothing either.
+      const refused = await callRoute(() => Promise.resolve({}), { ...request, extra: MARKER } as unknown as RouteRequest);
+      expect(refused).toEqual({ kind: "invalid_request" });
+    }
+    // A valid reply that carries the marker reaches the caller as data, with no console call.
+    const customers = await callRoute<"ledger_customers">(
+      () => Promise.resolve({ status: 200, body: [{ customer_id: id, display_name: MARKER }] }),
+      { route: "ledger_customers" },
+    );
+    expect(customers.kind).toBe("reply");
+    const refusal = await callRoute<"ledger_import">(
+      () => Promise.resolve({ status: 422, body: { error: "ledger_refused", code: "customer_exists", customer_id: id } }),
+      requests[3] as Extract<RouteRequest, { route: "ledger_import" }>,
+    );
+    expect(refusal.kind).toBe("reply");
     expectSilent();
   });
 
