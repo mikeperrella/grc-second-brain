@@ -187,14 +187,15 @@ describe("the shell", () => {
     expect(html).toContain("<main>");
   });
 
-  it("enables all seven screens, the review queue, ledger, recall and import included, when healthy", () => {
+  it("enables all eight screens, the review queue, ledger, recall, blast radius and import included, when healthy", () => {
     const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="folders" />);
     expect(html).not.toContain("not built yet");
     const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
-    expect(buttons).toHaveLength(7);
+    expect(buttons).toHaveLength(8);
     expect(buttons.some((button) => button.includes("Review queue"))).toBe(true);
     expect(buttons.some((button) => button.includes("Ledger"))).toBe(true);
     expect(buttons.some((button) => button.includes("Recall"))).toBe(true);
+    expect(buttons.some((button) => button.endsWith(">Blast radius</button>"))).toBe(true);
     expect(buttons.some((button) => button.endsWith(">Import</button>"))).toBe(true);
     for (const button of buttons) {
       expect(button.includes("disabled"), button).toBe(false);
@@ -210,6 +211,7 @@ describe("the shell", () => {
       review: "Review queue",
       ledger: "Ledger",
       recall: "Recall",
+      blast: "Blast radius",
       import: "Import",
     } as const;
     for (const [screen, label] of Object.entries(labels)) {
@@ -218,7 +220,7 @@ describe("the shell", () => {
       );
       expect(html.match(/aria-current/g), screen).toHaveLength(1);
       const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
-      expect(buttons).toHaveLength(7);
+      expect(buttons).toHaveLength(8);
       for (const button of buttons) {
         // The same box on every entry, so marking one cannot shift the others.
         expect(button).toMatch(/class="[^"]*\bborder\b[^"]*\bborder-border\b[^"]*\bborder-b-4\b/);
@@ -237,18 +239,27 @@ describe("the shell", () => {
     expect(renderToStaticMarkup(<Shell healthy statusBar={null} />)).not.toContain("aria-current");
   });
 
-  it("puts Import in the Promises group after Ledger and Recall (DESIGN.md 11.4), one entry per screen", () => {
+  it("puts the Promises group in the order Ledger, Recall, Blast radius, Import (DESIGN.md 11.4), one entry per screen", () => {
     const promises = NAV_GROUPS.find((group) => group.heading === "Promises");
     expect(promises?.entries.map((entry) => [entry.label, entry.screen])).toEqual([
       ["Ledger", "ledger"],
       ["Recall", "recall"],
+      ["Blast radius", "blast"],
       ["Import", "import"],
     ]);
     const screens = NAV_ENTRIES.map((entry) => entry.screen);
     expect(new Set(screens).size).toBe(screens.length);
-    expect(screens).toHaveLength(7);
+    expect(screens).toHaveLength(8);
     const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="import" />);
     expect(html).toMatch(/<button[^>]*aria-current="page"[^>]*>Import<\/button>/);
+    const blast = renderToStaticMarkup(<Shell healthy statusBar={null} current="blast" />);
+    expect(blast).toMatch(/<button[^>]*aria-current="page"[^>]*>Blast radius<\/button>/);
+    // In the markup too: Recall, then Blast radius, then Import.
+    const recallAt = html.indexOf(">Recall</button>");
+    const blastAt = html.indexOf(">Blast radius</button>");
+    expect(recallAt).toBeGreaterThan(0);
+    expect(blastAt).toBeGreaterThan(recallAt);
+    expect(html.indexOf(">Import</button>")).toBeGreaterThan(blastAt);
   });
 
   it("marks the review queue as the current screen", () => {
@@ -259,7 +270,7 @@ describe("the shell", () => {
   it("disables every entry, built or not, while the sidecar is not healthy", () => {
     const html = renderToStaticMarkup(<Shell healthy={false} statusBar={null} />);
     const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
-    expect(buttons).toHaveLength(7);
+    expect(buttons).toHaveLength(8);
     for (const button of buttons) {
       expect(button).toContain("disabled");
     }

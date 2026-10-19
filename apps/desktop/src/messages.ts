@@ -20,6 +20,10 @@ import {
 } from "./fixedTexts";
 import {
   ACKNOWLEDGE_STALE_NEXT_STEP,
+  BLAST_TEXT_HAS_NUL_TEXT,
+  BLAST_TEXT_NOT_UTF8_TEXT,
+  BLAST_TEXT_TOO_LARGE_TEXT,
+  BLAST_TOO_MANY_PROMISES_TEXT,
   CUSTOMER_EXISTS_TEXT,
   CUSTOMER_NAME_INVALID_TEXT,
   CUSTOMER_UNKNOWN_TEXT,
@@ -41,6 +45,7 @@ import type { FolderErrorWord, FolderProblem } from "./ipc/folders";
 import { FIXED_ERROR_WORDS } from "./ipc/proxy";
 import type {
   ApiError,
+  BLAST_RADIUS_REFUSAL_CODES,
   CallResult,
   DRAFT_REFUSAL_CODES,
   IMPORT_REFUSAL_CODES,
@@ -390,6 +395,24 @@ export function recallRefusalMessage(code: RecallRefusalCode): string {
   }
 }
 
+type BlastRadiusRefusalCode = (typeof BLAST_RADIUS_REFUSAL_CODES)[number];
+
+/** Each `blast_radius_refused` code has its own words (chunk 65h). No wildcard. */
+export function blastRadiusRefusalMessage(code: BlastRadiusRefusalCode): string {
+  switch (code) {
+    case "too_many_promises":
+      return BLAST_TOO_MANY_PROMISES_TEXT;
+    case "proposed_text_too_large":
+      return BLAST_TEXT_TOO_LARGE_TEXT;
+    case "proposed_text_has_nul":
+      return BLAST_TEXT_HAS_NUL_TEXT;
+    case "proposed_text_not_utf8":
+      return BLAST_TEXT_NOT_UTF8_TEXT;
+    default:
+      return assertNever(code);
+  }
+}
+
 /**
  * Turn one typed error body of a ledger route into fixed words. The M6 core families are handled
  * by describeApiError; the M6.5 families each have a typed case, with no catch-all label.
@@ -411,9 +434,10 @@ export function describeLedgerError(body: LedgerErrorBody): Described {
       return error(`recall_refused:${body.code}`, recallRefusalMessage(body.code));
     case "import_refused":
       return error(`import_refused:${body.code}`, importRefusalMessage(body.code));
+    case "blast_radius_refused":
+      return error(`blast_radius_refused:${body.code}`, blastRadiusRefusalMessage(body.code));
     case "export_refused":
     case "check_refused":
-    case "blast_radius_refused":
     case "graph_refused":
       return error(`${body.error}:${body.code}`, OTHER_REFUSAL_TEXT);
     default:

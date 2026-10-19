@@ -180,3 +180,24 @@ export const IMPORT_STEP_STATEMENT =
 /** Import, beside the sent date (DESIGN.md 11.1; ADR-017 decision 11). */
 export const IMPORT_DATE_STATEMENT =
   "The date is your statement of when you sent these answers. ALIBI cannot check it.";
+
+// ----- the blast radius screen (chunk 65h; docs/DESIGN.md 11.1, the three "Blast radius" rows, --
+// ----- and 11.3, approved by the owner on 2026-10-19). Each sentence is copied from the file. ---
+//
+// The screen also shows the sidecar's own sentences above (BLAST_PREVIEW_LINE, BLAST_NO_MATCH_LINE,
+// RECALL_STATEMENT, RECALL_SCOPE) from these constants. BLAST_COVERAGE stays the sidecar's pinned
+// `coverage` field and is NOT shown: the screen shows BLAST_SCREEN_COVERAGE instead.
+
+/** Blast radius, always visible above the results (DESIGN.md 11.1; threat model F32-4, G36). */
+export const BLAST_SCREEN_COVERAGE =
+  "Blast radius checks promises only. It does not check controls or the documents that link to this file.";
+
+/** Blast radius, always visible while results show (DESIGN.md 11.1 and 11.3; ADR-018 addendum, `flags_now`). */
+export const BLAST_NEW_FLAG_LINE = "New: this flag is not on the file as it is now.";
+
+/** The word in front of a new flag, inside a bordered inline box (DESIGN.md 11.3). */
+export const BLAST_NEW_FLAG_WORD = "New";
+
+/** Blast radius, always visible next to the proposed-text box (DESIGN.md 11.1; ADR-018 decision 7). */
+export const BLAST_PASTE_NOTE =
+  "The text you paste stays in this window for this preview only. ALIBI does not save it.";

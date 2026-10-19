@@ -1,9 +1,11 @@
-// Wires the built screens (the Ledger, Recall and Import screens included) to their thin hooks. The state of the index job and of the
+// Wires the built screens (the Ledger, Recall, Blast radius and Import screens included) to their thin hooks. The state of the index job and of the
 // questionnaire run lives here (not inside a screen), so leaving a screen does not forget a job
 // that is still running; the hooks' polling stops when health leaves `healthy` or this component
 // unmounts.
 
 import { useEffect } from "react";
+import { blastEventOnScreen } from "./blast";
+import { BlastScreen } from "./components/BlastScreen";
 import { FoldersScreen } from "./components/FoldersScreen";
 import { ImportScreen } from "./components/ImportScreen";
 import { IndexScreen } from "./components/IndexScreen";
@@ -15,6 +17,7 @@ import type { ScreenId } from "./components/Shell";
 import { confirmEventOnScreen } from "./confirm";
 import { folderInUse, foldersScreenView, ledgerInUse } from "./foldersScreen";
 import { useFolderPicker } from "./hooks/useFolderPicker";
+import { useBlast } from "./hooks/useBlast";
 import type { FoldersHandle } from "./hooks/useFolders";
 import { useImport } from "./hooks/useImport";
 import { useIndexJob } from "./hooks/useIndexJob";
@@ -44,30 +47,41 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
   const ledger = useLedger();
   const recall = useRecall();
   const imports = useImport();
+  const blast = useBlast();
 
   // Entering the Ledger reads the customers and a page of promises; entering Recall reads the
-  // customers only (its select); entering Import reads the customers and the exports folder's file
-  // names. All are read calls; nothing is written by entering a screen.
+  // customers only (its select); entering Blast radius reads the customers and the cited files;
+  // entering Import reads the customers and the exports folder's file names. All are read calls;
+  // nothing is written by entering a screen.
   const { refreshCustomers, refreshPromises } = ledger;
   const { refreshFiles: refreshImportFiles } = imports;
+  const { refreshPaths: refreshBlastPaths } = blast;
   useEffect(() => {
     if (healthy && screen === "ledger") {
       refreshCustomers();
       refreshPromises();
     } else if (healthy && screen === "recall") {
       refreshCustomers();
+    } else if (healthy && screen === "blast") {
+      refreshCustomers();
+      refreshBlastPaths();
     } else if (healthy && screen === "import") {
       refreshCustomers();
       refreshImportFiles();
     }
-  }, [healthy, screen, refreshCustomers, refreshPromises, refreshImportFiles]);
+  }, [healthy, screen, refreshCustomers, refreshPromises, refreshBlastPaths, refreshImportFiles]);
 
   // Leaving a screen (or entering another) cancels its open confirm area: nothing is sent and the
   // area is gone when the person returns (confirm.ts confirmEventOnScreen).
   const { cancelVoid } = ledger;
   const { cancelAcknowledge } = recall;
   const { cancelImport } = imports;
+  const { reset: resetBlast } = blast;
   useEffect(() => {
+    // The pasted text of the Blast radius screen stays for that preview only (DESIGN.md 11.1).
+    if (blastEventOnScreen(screen) !== null) {
+      resetBlast();
+    }
     if (confirmEventOnScreen<ScreenId>("ledger", screen) !== null) {
       cancelVoid();
     }
@@ -77,7 +91,7 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
     if (confirmEventOnScreen<ScreenId>("import", screen) !== null) {
       cancelImport();
     }
-  }, [screen, cancelVoid, cancelAcknowledge, cancelImport]);
+  }, [screen, cancelVoid, cancelAcknowledge, cancelImport, resetBlast]);
 
   const { refreshFiles } = questionnaire;
   useEffect(() => {
@@ -165,6 +179,16 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
           onOpenAcknowledge={recall.openAcknowledge}
           onConfirmAcknowledge={recall.confirmAcknowledge}
           onCancelAcknowledge={recall.cancelAcknowledge}
+        />
+      );
+    case "blast":
+      return (
+        <BlastScreen
+          state={blast.state}
+          customers={ledger.state.customers}
+          enabled={healthy}
+          onInputChange={blast.changeInput}
+          onPreview={blast.preview}
         />
       );
     case "import":

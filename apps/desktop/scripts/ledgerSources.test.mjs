@@ -10,16 +10,19 @@ import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const FILES = [
+  "src/blast.ts",
   "src/confirm.ts",
   "src/ledger.ts",
   "src/ledgerActions.ts",
   "src/ledgerImport.ts",
   "src/ledgerText.ts",
   "src/recall.ts",
+  "src/hooks/useBlast.ts",
   "src/hooks/useConfirm.ts",
   "src/hooks/useImport.ts",
   "src/hooks/useLedger.ts",
   "src/hooks/useRecall.ts",
+  "src/components/BlastScreen.tsx",
   "src/components/ConfirmStep.tsx",
   "src/components/ImportScreen.tsx",
   "src/components/LedgerScreen.tsx",
@@ -90,6 +93,8 @@ describe("the ledger and recall sources (F40)", () => {
       [
         "draft_rows",
         "ledger_acknowledge",
+        "ledger_blast_radius",
+        "ledger_cited_paths",
         "ledger_customers",
         "ledger_import",
         "ledger_promises",
@@ -97,6 +102,57 @@ describe("the ledger and recall sources (F40)", () => {
         "ledger_void",
       ].sort(),
     );
+  });
+
+  it("a ledger_blast_radius request is built and sent in exactly one window file, blast.ts (65h)", () => {
+    const built = allSources().filter((file) => /route:\s*"ledger_blast_radius"/.test(code(fs.readFileSync(file, "utf8"))));
+    expect(built).toEqual(["src/blast.ts"]);
+    const sent = allSources().filter((file) => /callRoute<"ledger_blast_radius">/.test(code(fs.readFileSync(file, "utf8"))));
+    expect(sent).toEqual(["src/blast.ts"]);
+    // The hook reaches the preview only through sendPreview, which sends nothing on an input problem.
+    const hook = code(sources.get("src/hooks/useBlast.ts") ?? "");
+    expect(hook).toMatch(/const sent = sendPreview\(invoke, state\.inputs\);\s*if \(sent === null\) \{\s*return;/);
+    expect(filesWith(/\bsendPreview\(/).sort()).toEqual(["src/blast.ts", "src/hooks/useBlast.ts"]);
+    const blast = code(sources.get("src/blast.ts") ?? "");
+    expect(blast).toMatch(/const fields = currentFields\(inputs\);\s*if \(fields === null\) \{\s*return null;/);
+    expect(blast).toMatch(/callRoute<"ledger_blast_radius">\(invoke, blastRequest\(fields\)\)/);
+  });
+
+  it("the blast radius files name no write route and build no confirm step (65h)", () => {
+    for (const file of ["src/blast.ts", "src/hooks/useBlast.ts", "src/components/BlastScreen.tsx"]) {
+      const text = code(sources.get(file) ?? "");
+      expect(text, file).not.toMatch(/ledger_(void|acknowledge|import)\b/);
+      expect(text, file).not.toMatch(/voidPromise|acknowledgePromise|importPromises|ledgerActions/);
+      expect(text, file).not.toMatch(/confirm|ConfirmStep|useConfirm/i);
+      expect(text, file).not.toMatch(/preview:\s*false/);
+      expect(text, file).not.toMatch(/\bstyle=|<a[\s>]|href=/);
+    }
+    const routes = new Set();
+    for (const file of ["src/blast.ts", "src/hooks/useBlast.ts", "src/components/BlastScreen.tsx"]) {
+      for (const match of code(sources.get(file) ?? "").matchAll(/route:\s*"([a-z_]+)"|callRoute<"([a-z_]+)">/g)) {
+        routes.add(match[1] ?? match[2]);
+      }
+    }
+    expect([...routes].sort()).toEqual(["ledger_blast_radius", "ledger_cited_paths"]);
+  });
+
+  it("ledgerText.ts keeps every 65h constant in its own DRAFT block after the 65g one (65h)", () => {
+    const text = (sources.get("src/ledgerText.ts") ?? "").replace(/\r\n/g, "\n");
+    const start = text.indexOf("// ===== 65h DRAFT ");
+    const end = text.indexOf("// ===== end of 65h DRAFT ");
+    expect(start).toBeGreaterThan(text.indexOf("// ===== end of 65g DRAFT "));
+    expect(end).toBeGreaterThan(start);
+    expect(text.indexOf("// ===== 65h DRAFT ", start + 1)).toBe(-1);
+    expect(text.slice(start, end)).toContain("They are DRAFTS until the owner approves them.");
+    expect(text.slice(end)).not.toMatch(/export const/);
+    let inside = 0;
+    for (const match of text.matchAll(/^export const ([A-Z0-9_]+)/gm)) {
+      const at = match.index ?? 0;
+      const in65h = at > start && at < end;
+      expect(in65h, match[1]).toBe(/^(BLAST_|NAV_LABEL_BLAST$)/.test(match[1]));
+      inside += in65h ? 1 : 0;
+    }
+    expect(inside).toBeGreaterThan(30);
   });
 
   it("ledger_import with preview false is built in exactly one window file, the action module (65g)", () => {
@@ -169,7 +225,28 @@ describe("the ledger and recall sources (F40)", () => {
         new RegExp(`if \\(confirmEventOnScreen<ScreenId>\\("${owner}", screen\\) !== null\\) \\{\\s*${cancel}\\(\\);`),
       );
     }
-    expect(screens).toMatch(/\}, \[screen, cancelVoid, cancelAcknowledge, cancelImport\]\);/);
+    expect(screens).toMatch(/\}, \[screen, cancelVoid, cancelAcknowledge, cancelImport, resetBlast\]\);/);
+  });
+
+  it("screens.tsx resets the Blast radius state when the screen shown is not blast (65h fix)", () => {
+    const screens = code(fs.readFileSync("src/screens.tsx", "utf8")).replace(/\r\n/g, "\n");
+    expect(screens).toMatch(/const \{ reset: resetBlast \} = blast;/);
+    expect(screens).toMatch(/if \(blastEventOnScreen\(screen\) !== null\) \{\s*resetBlast\(\);\s*\}/);
+    const blast = code(fs.readFileSync("src/blast.ts", "utf8")).replace(/\r\n/g, "\n");
+    expect(blast).toMatch(/return shown === "blast" \? null : \{ type: "reset" \};/);
+    const hook = code(fs.readFileSync("src/hooks/useBlast.ts", "utf8")).replace(/\r\n/g, "\n");
+    expect(hook).toMatch(/dispatch\(\{ type: "reset" \}\);/);
+  });
+
+  it("screens.tsx shows the Blast radius screen and only reads on entering it (65h)", () => {
+    const screens = code(fs.readFileSync("src/screens.tsx", "utf8"));
+    expect(screens).toMatch(
+      /\} else if \(healthy && screen === "blast"\) \{\s*refreshCustomers\(\);\s*refreshBlastPaths\(\);\s*\}/,
+    );
+    expect(screens).toMatch(/case "blast":\s*return \(\s*<BlastScreen/);
+    expect(screens).toMatch(/onPreview=\{blast\.preview\}/);
+    // The blast hook has no write and no confirm, so nothing of it is cancelled on leaving.
+    expect(screens).not.toMatch(/blast\.(cancel|confirm|open)/);
   });
 
   it("the recall hook keeps one copy of the customer: the store's (65f tidy-up c)", () => {
@@ -196,13 +273,19 @@ describe("the ledger and recall sources (F40)", () => {
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
     expect(text.indexOf("// ===== 65g DRAFT ", start + 1)).toBe(-1);
-    // Nothing is exported after the block, and every 65g name is inside it.
-    expect(text.slice(end)).not.toMatch(/export const/);
+    // Nothing is exported after the block but the 65h DRAFT block (checked in its own test), and
+    // every 65g name is inside it.
+    const after = text.slice(end);
+    const next = after.indexOf("// ===== 65h DRAFT ");
+    expect(after.slice(0, next < 0 ? after.length : next)).not.toMatch(/export const/);
     const newNames = /^(IMPORT_|NAV_LABEL_IMPORT$|CUSTOMER_(EXISTS|UNKNOWN|NAME_INVALID)_TEXT$)/;
     let inside = 0;
     for (const match of text.matchAll(/^export const ([A-Z0-9_]+)/gm)) {
       const name = match[1];
       const at = match.index ?? 0;
+      if (/^(BLAST_|NAV_LABEL_BLAST$)/.test(name)) {
+        continue;
+      }
       if (newNames.test(name)) {
         expect(at > start && at < end, name).toBe(true);
         inside += 1;
