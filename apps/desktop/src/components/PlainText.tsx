@@ -6,6 +6,11 @@ import { visibleControls } from "../plainText";
 
 const TEXT_CLASS = "font-mono whitespace-pre-wrap break-words [unicode-bidi:isolate]";
 
-export function PlainText({ text }: { text: string }) {
-  return <span className={TEXT_CLASS}>{visibleControls(text)}</span>;
+/** `identifier` marks an id, a path or a code, which a page translator must leave alone. */
+export function PlainText({ text, identifier = false }: { text: string; identifier?: boolean }) {
+  return (
+    <span className={TEXT_CLASS} translate={identifier ? "no" : undefined}>
+      {visibleControls(text)}
+    </span>
+  );
 }
