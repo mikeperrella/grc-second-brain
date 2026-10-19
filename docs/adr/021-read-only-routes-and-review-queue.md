@@ -98,3 +98,10 @@ Sources are named. The 6b and 6h proofs exist only in pull request bodies, so wh
 - Stated in the body of PR #47: "The queue has not yet shown a real draft. That needs a real questionnaire run with Ollama and a ledger folder (the owner's live check)."
 
 Revisit if: a draft needs to be opened after a rename (add a `run_id` field); the ledger repository has no way to look up by file name and the smallest lookup is not enough; or approval moves into the app (that needs its own ADR against ADR-014 decision 10).
+
+## Addendum (2026-10-18): M6.5 plan, proposed, not built
+
+This section records two proposed changes that touch this ADR's route and screen. **Nothing in it is built, no decision above changes, and the text above is not edited.** The design is in `M6_5_PLAN.md` and [ADR-022](022-m6-5-screens-writes-and-approval.md); both would be a debug build only until M8.
+
+- **`run_id` in the draft reply (planned, chunk 65b).** The Context above says the window cannot know a draft's full run id after ALIBI is closed. The draft route would return the run record's full `run_id` (from the record found by its full recorded `file_name`) alongside `model`, `file_name`, `complete` and `question_count`, so the import screen can pass it to `POST /ledger/import`. Decision 2 holds: a run is never matched by the 8-hex prefix, and a renamed draft still gets `run_record_missing`. Mutation proof planned: returning `run_id[:8]` must fail a test.
+- **`APPROVAL_LINE` wording (planned, chunk 65g).** Decision 7's fixed line, as built in `apps/desktop/src/fixedTexts.ts`, ends "(the import screen comes in a later chunk)". When the import screen exists that clause would be removed; the owner-literal test in `apps/desktop/src/components/reviewQueue.test.tsx` ("the fixed statements are exactly the owner's words") would change on purpose. The queue still records no approval, and still names no writing route: the import screen lives in separate files, so `apps/desktop/scripts/reviewQueueSources.test.mjs` (F37-3) stays unchanged.
