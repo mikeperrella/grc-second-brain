@@ -81,6 +81,27 @@ fn serve(mut stream: TcpStream, answer: &[u8], requests: &Mutex<Vec<String>>) {
             Ok(count) => request.extend_from_slice(&buffer[..count]),
         }
     }
+    // Read the body too when Content-Length says there is one, so a test can see what was sent.
+    let head_end = request
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map_or(request.len(), |at| at + 4);
+    let wanted = String::from_utf8_lossy(&request[..head_end])
+        .to_ascii_lowercase()
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("content-length: ")?
+                .trim()
+                .parse::<usize>()
+                .ok()
+        })
+        .unwrap_or(0);
+    while request.len() < head_end + wanted {
+        match stream.read(&mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(count) => request.extend_from_slice(&buffer[..count]),
+        }
+    }
     if let Ok(mut log) = requests.lock() {
         log.push(String::from_utf8_lossy(&request).into_owned());
     }

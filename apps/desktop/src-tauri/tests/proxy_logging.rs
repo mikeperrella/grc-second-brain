@@ -2,8 +2,9 @@
 //!
 //! This file is its own test binary, so it can install the process-wide `log` logger. The logger
 //! keeps every record at the most detailed level (`Trace`, with the global maximum set to match).
-//! A canary string is put in the file name the window sends and in the sidecar's replies (a 200
-//! body, a 500 body and a status line). After the calls, no captured record may contain the canary
+//! A canary string is put in the file name the window sends, in a proposed policy text (the
+//! `ledger_blast_radius` body, chunk 65d) and in the sidecar's replies (a 200 body, a 500 body, a
+//! status line, and a login in a `reality_check` reply). After the calls, no captured record may contain the canary
 //! or the token. The token is read from the request the fake server recorded, because the token
 //! type does not expose it outside the crate.
 //!
@@ -73,6 +74,7 @@ fn no_log_record_at_the_most_detailed_level_contains_the_canary_or_the_token(
     let token = AuthToken::generate()?;
     let draft = format!(r#"{{"route":"draft_rows","file":"{CANARY}.xlsx"}}"#);
     let mut heads = Vec::new();
+    let mut outcomes = Vec::new();
     for (answer, json) in [
         (
             json_response("200 OK", &format!(r#"{{"rows":[],"note":"{CANARY}"}}"#)),
@@ -93,10 +95,38 @@ fn no_log_record_at_the_most_detailed_level_contains_the_canary_or_the_token(
             json_response("200 OK", CANARY),
             r#"{"route":"readiness"}"#.to_owned(),
         ),
+        // Chunk 65d: policy text in a request (`proposed_text`, index 4) ...
+        (
+            json_response("200 OK", r#"{"checked":0,"items":[]}"#),
+            format!(
+                r#"{{"route":"ledger_blast_radius","path":"policies/a.md","proposed_text":"{CANARY} the whole proposed file","delete_file":false}}"#
+            ),
+        ),
+        // ... and a personal login in a reply (`reality_check`, index 5).
+        (
+            json_response(
+                "200 OK",
+                &format!(r#"{{"finding":"exceptions_found","logins":[{{"login":"{CANARY}","truncated":false}}]}}"#),
+            ),
+            r#"{"route":"reality_check","file":"users.csv","claim":{"path":"p.md","start_line":1,"end_line":1,"quote":"q"},"mfa_types":["A"],"phone_types":[],"active_statuses":["Active"],"exported_at":"2026-10-01"}"#
+                .to_owned(),
+        ),
     ] {
-        let (_outcome, head) = run_call(&token, answer, &json)?;
+        let (outcome, head) = run_call(&token, answer, &json)?;
         heads.push(head);
+        outcomes.push(outcome);
     }
+    // The canaries really were in play: the text reached the sidecar in the request body, and the
+    // login came back in the reply the call returned (so the check below is about logging).
+    assert!(
+        heads[4].contains(CANARY),
+        "the proposed text was not in the request"
+    );
+    assert!(
+        outcomes[5].contains(CANARY),
+        "the login was not in the reply: {}",
+        outcomes[5]
+    );
 
     // The token as the sidecar saw it, from the first recorded request.
     let token_text = heads[0]

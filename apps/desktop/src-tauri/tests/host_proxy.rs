@@ -186,3 +186,100 @@ fn a_bad_file_name_is_bad_request_and_no_connection_is_opened() -> TestResult {
     host.supervisor().shutdown()?;
     Ok(())
 }
+
+fn reality_check_json(file: &str) -> String {
+    format!(
+        r#"{{"route":"reality_check","file":"{file}","claim":{{"path":"p.md","start_line":1,"end_line":1,"quote":"q"}},"mfa_types":["A"],"phone_types":[],"active_statuses":["Active"],"exported_at":"2026-10-01"}}"#
+    )
+}
+
+fn ledger_import_json(file: &str) -> String {
+    format!(
+        r#"{{"route":"ledger_import","run_id":"0123456789abcdef","file":"{file}","confirm_new":false,"sent_on":"2026-10-01","preview":true}}"#
+    )
+}
+
+/// Chunk 65d, scope item 5 (the same rule as F35-3 for the other folders): a file name for the
+/// Imports folder (the two reality routes with a file) and for the Exports folder (`ledger_import`)
+/// is one plain name of a regular file in THAT folder, or `bad_request` with no connection.
+#[test]
+fn a_bad_file_name_for_the_imports_folder_is_bad_request_and_no_connection_is_opened() -> TestResult
+{
+    let scratch = Scratch::new("host_proxy_import_names")?;
+    let imports = scratch.file("imports");
+    let exports = scratch.file("exports");
+    fs::create_dir(&imports)?;
+    fs::create_dir(&exports)?;
+    fs::write(imports.join("users.csv"), b"synthetic")?;
+    fs::write(exports.join("draft.xlsx"), b"synthetic")?;
+    // A real file outside every folder, which a `..` name would reach if it were let through.
+    fs::write(scratch.file("outside.csv"), b"synthetic")?;
+
+    let server = Server::start(json_response("200 OK", r#"{"ok":true}"#))?;
+    let folders = UserFolders {
+        export: Some(&exports),
+        import: Some(&imports),
+        ..UserFolders::default()
+    };
+    let host = start_with_folders(
+        &scratch,
+        vec![
+            OsString::from("ready-on"),
+            OsString::from(server.port.to_string()),
+        ],
+        &folders,
+    )?;
+    let mut reaper = Reaper::new();
+    reaper.add(host.supervisor().child_pid());
+    host.supervisor()
+        .wait_until_settled(TEST_HANDSHAKE + SETTLE_SLACK)?;
+
+    let bad_names = [
+        r"..\\outside.csv",
+        "../outside.csv",
+        r"sub\\..\\..\\outside.csv",
+        "C:\\\\Windows\\\\win.ini",
+        r"\\\\server\\share\\users.csv",
+        "NUL.csv",
+        "users.csv.",
+        "users.csv:stream",
+        "missing.csv",
+        "users.csv\\u0000",
+    ];
+    for name in bad_names {
+        for json in [
+            format!(r#"{{"route":"reality_inspect","file":"{name}"}}"#),
+            reality_check_json(name),
+            ledger_import_json(name),
+        ] {
+            assert_eq!(call(&host, &json), Err(ProxyError::BadRequest), "{json}");
+        }
+    }
+    // The right name in the WRONG folder is a missing file there: an IT export is looked up in the
+    // import folder, a reviewed draft in the export folder.
+    for json in [
+        r#"{"route":"reality_inspect","file":"draft.xlsx"}"#.to_owned(),
+        reality_check_json("draft.xlsx"),
+        ledger_import_json("users.csv"),
+    ] {
+        assert_eq!(call(&host, &json), Err(ProxyError::BadRequest), "{json}");
+    }
+    assert_eq!(
+        server.accepted(),
+        0,
+        "a refused name must open no connection"
+    );
+
+    // The same routes with the right names go through to the announced port.
+    for json in [
+        r#"{"route":"reality_inspect","file":"users.csv"}"#.to_owned(),
+        reality_check_json("users.csv"),
+        ledger_import_json("draft.xlsx"),
+    ] {
+        assert_eq!(call(&host, &json)?.status, 200, "{json}");
+    }
+    assert_eq!(server.accepted(), 3);
+
+    host.supervisor().shutdown()?;
+    Ok(())
+}

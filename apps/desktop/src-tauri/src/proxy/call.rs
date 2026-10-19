@@ -187,8 +187,10 @@ mod tests {
             .collect()
     }
 
+    /// Renamed in chunk 65d from `url_builder_takes_only_a_port_and_a_route_id`: the builder takes a
+    /// port and typed values (a hex id, a promise id, a query of typed values) and nothing else.
     #[test]
-    fn url_builder_takes_only_a_port_and_a_route_id() {
+    fn url_builder_takes_only_a_port_and_typed_route_values() {
         let token = AuthToken::generate().unwrap();
         let server = FakeServer::start(json_ok(r#"{"job_id":"x"}"#));
         let reply = do_call(
@@ -224,6 +226,124 @@ mod tests {
                 "unexpected header {name}: {head}"
             );
         }
+    }
+
+    /// The request line the fake server recorded for each new path shape: a hex id, a promise id
+    /// with a closed suffix, and the one typed query. Nothing else is in a request line.
+    #[test]
+    fn the_request_lines_of_the_m65_routes_are_built_only_from_typed_values() {
+        let token = AuthToken::generate().unwrap();
+        let promise = "01234567-89ab-cdef-0123-456789abcdef";
+        let cases = [
+            (
+                format!(
+                    r#"{{"route":"ledger_promises","customer_id":"{ID}","include_voided":true,"page":3,"page_size":25}}"#
+                ),
+                format!("get /ledger/promises?customer_id={ID}&include_voided=true&page=3&page_size=25 http/1.1\r\n"),
+            ),
+            (
+                r#"{"route":"ledger_promises","include_voided":false,"page":1,"page_size":100}"#
+                    .to_owned(),
+                "get /ledger/promises?include_voided=false&page=1&page_size=100 http/1.1\r\n"
+                    .to_owned(),
+            ),
+            (
+                format!(r#"{{"route":"ledger_void","promise_id":"{promise}","reason":"other"}}"#),
+                format!("post /ledger/promises/{promise}/void http/1.1\r\n"),
+            ),
+            (
+                format!(
+                    r#"{{"route":"ledger_acknowledge","promise_id":"{promise}","seen_recall_event_id":9}}"#
+                ),
+                format!("post /ledger/promises/{promise}/acknowledge http/1.1\r\n"),
+            ),
+            (
+                format!(r#"{{"route":"contradictions_status","run_id":"{ID}"}}"#),
+                format!("get /contradictions/runs/{ID} http/1.1\r\n"),
+            ),
+            (
+                r#"{"route":"vault_graph"}"#.to_owned(),
+                "get /vault/graph http/1.1\r\n".to_owned(),
+            ),
+        ];
+        for (json, line) in cases {
+            let server = FakeServer::start(json_ok("{}"));
+            do_call(&server, &token, &request(&json)).unwrap();
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1, "{json}");
+            let head = requests[0].to_ascii_lowercase();
+            assert!(head.starts_with(&line), "{json}: {head}");
+            let allowed = [
+                "host",
+                "x-grc-auth",
+                "accept",
+                "content-length",
+                "content-type",
+            ];
+            for name in header_names(&requests[0]) {
+                assert!(allowed.contains(&name.as_str()), "{name}: {head}");
+            }
+        }
+    }
+
+    /// Chunk 65d, N2: Rust refuses a proposed text over the sidecar's 2 MiB (in UTF-8 bytes) as
+    /// `bad_request` and opens no connection; the control at the limit is sent whole.
+    #[test]
+    fn a_proposed_text_over_two_mib_is_bad_request_and_opens_no_connection() {
+        let token = AuthToken::generate().unwrap();
+        let server = FakeServer::start(json_ok("{}"));
+        let blast = |text: &str| {
+            RouteRequest::LedgerBlastRadius(crate::proxy::route::BlastArgs {
+                path: "policies/a.md".to_owned(),
+                proposed_text: Some(text.to_owned()),
+                delete_file: false,
+                customer_id: None,
+            })
+        };
+        let over = "a".repeat(2_097_153);
+        assert_eq!(
+            do_call(&server, &token, &blast(&over)),
+            Err(ProxyError::BadRequest)
+        );
+        assert_eq!(server.accepted(), 0, "a connection was opened");
+        assert!(server.requests().is_empty());
+
+        let at_limit = format!("{CANARY}{}", "a".repeat(2_097_152 - CANARY.len()));
+        assert_eq!(at_limit.len(), 2_097_152);
+        let reply = do_call(&server, &token, &blast(&at_limit)).unwrap();
+        assert_eq!(reply.status, 200);
+        assert_eq!(server.accepted(), 1);
+        let sent = &server.requests()[0];
+        assert!(sent.starts_with("POST /ledger/blast-radius HTTP/1.1\r\n"));
+        assert!(sent.contains(CANARY), "the text was not sent");
+    }
+
+    /// The body that reaches the sidecar has the trimmed lists, not the padded ones.
+    #[test]
+    fn a_reality_check_reaches_the_sidecar_with_its_lists_trimmed() {
+        let token = AuthToken::generate().unwrap();
+        let server = FakeServer::start(json_ok("{}"));
+        let json = r#"{"route":"reality_check","file":"u.csv","claim":{"path":"p.md","start_line":1,"end_line":1,"quote":"q"},"mfa_types":["  FIDO  "],"phone_types":["\tSMS"],"active_statuses":[" Active\n"],"exported_at":"2026-10-01"}"#;
+        do_call(&server, &token, &request(json)).unwrap();
+        let sent = &server.requests()[0];
+        assert!(
+            sent.starts_with("POST /reality/check HTTP/1.1\r\n"),
+            "{sent}"
+        );
+        assert!(
+            sent.ends_with(
+                r#"{"file":"u.csv","claim":{"path":"p.md","start_line":1,"end_line":1,"quote":"q"},"mfa_types":["FIDO"],"phone_types":["SMS"],"active_statuses":["Active"],"exported_at":"2026-10-01"}"#
+            ),
+            "{sent}"
+        );
+        // A list the host refuses opens no connection.
+        let refused = FakeServer::start(json_ok("{}"));
+        let long = json.replace("FIDO", &"x".repeat(65));
+        assert_eq!(
+            do_call(&refused, &token, &request(&long)),
+            Err(ProxyError::BadRequest)
+        );
+        assert_eq!(refused.accepted(), 0);
     }
 
     #[test]
@@ -570,8 +690,58 @@ mod tests {
                 "vault_index_start",
                 "vault_index_status",
                 "draft_rows",
+                "ledger_customers",
+                "ledger_promises",
+                "ledger_cited_paths",
+                "ledger_import",
+                "ledger_recall",
+                "ledger_void",
+                "ledger_acknowledge",
+                "ledger_blast_radius",
+                "reality_inspect",
+                "reality_claims",
+                "reality_check",
+                "contradictions_start",
+                "contradictions_status",
+                "vault_graph",
             ],
         })
+    }
+
+    /// One valid request for each route name, as the window would send it.
+    fn sample_request_json(name: &str) -> String {
+        let promise = "01234567-89ab-cdef-0123-456789abcdef";
+        match name {
+            "questionnaire_status" | "contradictions_status" => {
+                format!(r#"{{"route":"{name}","run_id":"{ID}"}}"#)
+            }
+            "vault_index_status" => format!(r#"{{"route":"{name}","job_id":"{ID}"}}"#),
+            "questionnaire_inspect" | "draft_rows" | "reality_inspect" => {
+                format!(r#"{{"route":"{name}","file":"f.xlsx"}}"#)
+            }
+            "questionnaire_start" => format!(
+                r#"{{"route":"{name}","file":"f.xlsx","mapping":{{"sheet":"S","header_row":1,"question_col":1}}}}"#
+            ),
+            "ledger_promises" => {
+                format!(r#"{{"route":"{name}","include_voided":false,"page":1,"page_size":100}}"#)
+            }
+            "ledger_import" => format!(
+                r#"{{"route":"{name}","run_id":"{ID}","file":"f.xlsx","confirm_new":false,"sent_on":"2026-10-01","preview":true}}"#
+            ),
+            "ledger_void" => {
+                format!(r#"{{"route":"{name}","promise_id":"{promise}","reason":"other"}}"#)
+            }
+            "ledger_acknowledge" => {
+                format!(r#"{{"route":"{name}","promise_id":"{promise}","seen_recall_event_id":1}}"#)
+            }
+            "ledger_blast_radius" => {
+                format!(r#"{{"route":"{name}","path":"a.md","delete_file":true}}"#)
+            }
+            "reality_check" => format!(
+                r#"{{"route":"{name}","file":"u.csv","claim":{{"path":"p.md","start_line":1,"end_line":1,"quote":"q"}},"mfa_types":["A"],"phone_types":[],"active_statuses":["Active"],"exported_at":"2026-10-01"}}"#
+            ),
+            _ => format!(r#"{{"route":"{name}"}}"#),
+        }
     }
 
     const CONTRACT_FILE: &str = concat!(
@@ -608,21 +778,18 @@ mod tests {
         // to `Route::ALL`.
         let names = contract_json()["route_names"].as_array().unwrap().clone();
         assert_eq!(names.len(), Route::ALL.len());
+        let mut seen = Vec::new();
         for name in names {
             let name = name.as_str().unwrap();
-            let json = match name {
-                "questionnaire_status" => format!(r#"{{"route":"{name}","run_id":"{ID}"}}"#),
-                "vault_index_status" => format!(r#"{{"route":"{name}","job_id":"{ID}"}}"#),
-                "questionnaire_inspect" | "draft_rows" => {
-                    format!(r#"{{"route":"{name}","file":"f.xlsx"}}"#)
-                }
-                "questionnaire_start" => format!(
-                    r#"{{"route":"{name}","file":"f.xlsx","mapping":{{"sheet":"S","header_row":1,"question_col":1}}}}"#
-                ),
-                _ => format!(r#"{{"route":"{name}"}}"#),
-            };
+            let json = sample_request_json(name);
             let parsed = RouteRequest::from_json(&json).unwrap_or_else(|_| panic!("{json}"));
             assert!(Route::ALL.contains(&parsed.route()), "{name}");
+            // The sample must be a request that also passes the host's own checks, and the route it
+            // parses to must be the one the name says (one fixture name per `Route`).
+            assert!(parsed.prepare().is_ok(), "{json}");
+            assert!(!seen.contains(&parsed.route()), "{name} appears twice");
+            seen.push(parsed.route());
         }
+        assert_eq!(seen.len(), Route::ALL.len());
     }
 }

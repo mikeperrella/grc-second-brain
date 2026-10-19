@@ -65,14 +65,15 @@ pub struct SidecarDirs<'a> {
     pub folders: UserFolders<'a>,
 }
 
-/// The two folders a window-supplied file name is resolved in (CLAUDE.md 3.6, backlog G9). Canonical
-/// paths, taken from the same folders the sidecar was started with, so the host and the sidecar
-/// agree on where a name points. A folder that is `None` is not set: the sidecar then answers the
-/// route with its own typed refusal.
+/// The three folders a window-supplied file name is resolved in (CLAUDE.md 3.6, backlog G9).
+/// Canonical paths, taken from the same folders the sidecar was started with, so the host and the
+/// sidecar agree on where a name points. A folder that is `None` is not set: the sidecar then
+/// answers the route with its own typed refusal.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FileRoots {
     questionnaire: Option<PathBuf>,
     export: Option<PathBuf>,
+    import: Option<PathBuf>,
 }
 
 impl FileRoots {
@@ -81,14 +82,20 @@ impl FileRoots {
         Self {
             questionnaire: canonical(folders.questionnaire),
             export: canonical(folders.export),
+            import: canonical(folders.import),
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn new(questionnaire: Option<PathBuf>, export: Option<PathBuf>) -> Self {
+    pub(crate) fn new(
+        questionnaire: Option<PathBuf>,
+        export: Option<PathBuf>,
+        import: Option<PathBuf>,
+    ) -> Self {
         Self {
             questionnaire,
             export,
+            import,
         }
     }
 }
@@ -111,6 +118,7 @@ pub(crate) fn check_request_file(
     let root = match folder {
         FileFolder::Questionnaires => roots.questionnaire.as_deref(),
         FileFolder::Exports => roots.export.as_deref(),
+        FileFolder::Imports => roots.import.as_deref(),
     };
     match root {
         Some(root) => files::resolve_file(root, name)
@@ -402,6 +410,17 @@ mod tests {
             r#"{"route":"readiness"}"#,
             r#"{"route":"vault_index_start"}"#,
             r#"{"route":"questionnaire_status","run_id":"0123456789abcdef"}"#,
+            r#"{"route":"ledger_customers"}"#,
+            r#"{"route":"ledger_promises","include_voided":false,"page":1,"page_size":100}"#,
+            r#"{"route":"ledger_cited_paths"}"#,
+            r#"{"route":"ledger_recall"}"#,
+            r#"{"route":"ledger_void","promise_id":"01234567-89ab-cdef-0123-456789abcdef","reason":"other"}"#,
+            r#"{"route":"ledger_acknowledge","promise_id":"01234567-89ab-cdef-0123-456789abcdef","seen_recall_event_id":1}"#,
+            r#"{"route":"ledger_blast_radius","path":"a.md","delete_file":true}"#,
+            r#"{"route":"reality_claims"}"#,
+            r#"{"route":"contradictions_start"}"#,
+            r#"{"route":"contradictions_status","run_id":"0123456789abcdef"}"#,
+            r#"{"route":"vault_graph"}"#,
         ] {
             let request = RouteRequest::from_json(json).unwrap();
             assert_eq!(check_request_file(&request, &roots), Ok(()), "{json}");
@@ -411,8 +430,8 @@ mod tests {
     #[test]
     fn a_name_that_is_not_one_component_is_bad_request_even_with_no_folder_set() {
         // No root at all: the one-component step has nothing to resolve against and still refuses.
-        let roots = FileRoots::new(None, None);
-        for route in ["questionnaire_inspect", "draft_rows"] {
+        let roots = FileRoots::new(None, None, None);
+        for route in ["questionnaire_inspect", "draft_rows", "reality_inspect"] {
             for name in [
                 "..\\x.xlsx",
                 "a/b.xlsx",
@@ -439,8 +458,8 @@ mod tests {
     fn a_missing_file_in_a_set_folder_is_bad_request() {
         // The crate's own source folder exists, and holds no `nope.xlsx`.
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let roots = FileRoots::new(Some(dir.clone()), Some(dir));
-        for route in ["questionnaire_inspect", "draft_rows"] {
+        let roots = FileRoots::new(Some(dir.clone()), Some(dir.clone()), Some(dir));
+        for route in ["questionnaire_inspect", "draft_rows", "reality_inspect"] {
             assert_eq!(
                 check_request_file(&file_request(route, "nope.xlsx"), &roots),
                 Err(ProxyError::BadRequest)
