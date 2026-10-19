@@ -53,6 +53,17 @@ export function reduceConfirm<T>(state: ConfirmState<T>, event: ConfirmEvent<T>)
   }
 }
 
+/**
+ * What a screen change does to the confirm area that belongs to the screen `owner` (65f tidy-up a):
+ * when the screen now shown is another one, the area is cancelled, so nothing is sent and the area
+ * is gone when the person comes back. On the owner's own screen it does nothing. A write already
+ * confirmed is not stopped (`cancel` leaves `confirmed` alone; `done` ends it).
+ * screens.tsx sends this for every screen that has a confirm area.
+ */
+export function confirmEventOnScreen<S extends string>(owner: S, shown: S): { type: "cancel" } | null {
+  return shown === owner ? null : { type: "cancel" };
+}
+
 /** The `Confirmed` made by this step, or `null`: set only when an open area became confirmed. */
 export function confirmationOf<T>(before: ConfirmState<T>, after: ConfirmState<T>): Confirmed<T> | null {
   return before.phase === "open" && after.phase === "confirmed" ? after.confirmed : null;

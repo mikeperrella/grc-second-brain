@@ -76,7 +76,7 @@ export const QUESTION_MISMATCH_TEXT =
 
 /** Always shown in the queue: the queue records no approval (ADR-021 decision 7). */
 export const APPROVAL_LINE =
-  'This queue is for reading. ALIBI does not record approval. To approve an answer, type "approved" in the Review column of the workbook, then import it into the ledger (the import screen comes in a later chunk).';
+  'This queue is for reading. ALIBI does not record approval. To approve an answer, type "approved" in the Review column of the workbook, then import it into the ledger.';
 
 /** `draft_refused` with `run_record_missing` (ADR-021 decision 5). */
 export const RUN_RECORD_MISSING_TEXT =
@@ -162,3 +162,21 @@ export const PROMISES_PAGE_TOO_LARGE =
 /** Recall, shown before the run action (DESIGN.md 11.1; ADR-017 decision 20). */
 export const RECALL_BEFORE_RUN =
   "Checking records a change of state in the ledger when one is found. It never edits a promise.";
+
+// ----- the import screen (chunk 65g; docs/DESIGN.md 11.1, the four "Import" rows, approved by ---
+// ----- the owner on 2026-10-19). Each sentence is copied from the section 11.1 table. ---------
+
+/** Import, always visible (DESIGN.md 11.1; ADR-017 decisions 1, 2). */
+export const IMPORT_APPROVAL_LINE =
+  'Approval happens in the workbook: type "approved" in the Review column, save the file with Save (not Save As), then import it here.';
+
+/** Import, always visible (DESIGN.md 11.1; ADR-014 decision 10, ADR-021 decision 7). */
+export const IMPORT_READS_ONLY = "ALIBI only reads the workbook. It never saves it.";
+
+/** Import, second step (DESIGN.md 11.1; ADR-017 decisions 8, 10, 13). */
+export const IMPORT_STEP_STATEMENT =
+  "Importing creates promises that cannot be deleted, only voided. A new customer cannot be removed.";
+
+/** Import, beside the sent date (DESIGN.md 11.1; ADR-017 decision 11). */
+export const IMPORT_DATE_STATEMENT =
+  "The date is your statement of when you sent these answers. ALIBI cannot check it.";

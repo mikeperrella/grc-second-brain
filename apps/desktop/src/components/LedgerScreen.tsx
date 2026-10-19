@@ -270,7 +270,9 @@ function PromiseBlock({
               id={reasonId}
               name={reasonId}
               className={FIELD}
-              disabled={!enabled || sending}
+              // While this promise's confirm is open the reason is locked, so the reason shown is
+              // always the one the confirm would send (65f tidy-up b).
+              disabled={!enabled || sending || confirming}
               value={reason ?? ""}
               onChange={(event) =>
                 onChooseReason(promise.promise_id, isVoidReason(event.target.value) ? event.target.value : null)

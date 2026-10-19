@@ -1,6 +1,9 @@
-// The wording of the ledger and recall screens (chunk 65f) that is NOT in docs/DESIGN.md section 11.
+// The wording of the ledger, recall and import screens (chunks 65f and 65g) that is NOT in
+// docs/DESIGN.md section 11.
 //
-// EVERY constant in this file is a DRAFT for the owner's approval. The sentences of DESIGN.md 11.1
+// The 65f constants and the 65g constants in this file were all approved by the owner on
+// 2026-10-19 (the 65g ones are under the "65g DRAFT" comment near the end of this file; the name
+// is historical). The sentences of DESIGN.md 11.1
 // (approved 2026-10-19) are in fixedTexts.ts, not here. Everything below is either a plain
 // functional label (a heading, a button, a field name) or one short sentence a refusal needs. A
 // screen shows these constants and never text built from sidecar, file or model data. No
@@ -120,3 +123,85 @@ export const FLAG_DOCUMENT_CHANGED_ELSEWHERE = "Document changed elsewhere";
 export const FLAG_REVIEW_OVERDUE = "Review overdue";
 export const FLAG_FRONTMATTER_INVALID = "Front matter invalid";
 export const UNKNOWN_FLAG_TEXT = "Unknown flag: ALIBI cannot show a label for this value.";
+
+// ===== 65g DRAFT ================================================================================
+// Every constant from here to the end of the file was added in chunk 65g (the Import screen). They
+// were approved by the owner on 2026-10-19; the block name "65g DRAFT" is historical, and scripts
+// look for it. Plain functional labels, and one short sentence per refusal or input problem that names what the code means. The import screen's statements are the four
+// DESIGN.md 11.1 "Import" rows in fixedTexts.ts, not here.
+
+export const NAV_LABEL_IMPORT = "Import";
+
+export const IMPORT_TITLE = "Import";
+export const IMPORT_CHOOSE_HEADING = "Choose a draft";
+export const IMPORT_READING_FILES = "Reading the file names in the exports folder.";
+export const IMPORT_FILES_CUT_SHORT = "The list was cut short; only the first names are shown.";
+export const IMPORT_USE_DRAFT = "Use this draft";
+export const IMPORT_SELECTED = "Selected";
+export const IMPORT_READING_DRAFT = "Reading the draft";
+export const IMPORT_DRAFT_FILE = "Draft";
+export const IMPORT_RUN_LABEL = "Run";
+export const IMPORT_QUESTIONS_LABEL = "Questions";
+
+export const IMPORT_CUSTOMER_HEADING = "Customer";
+export const IMPORT_EXISTING_CUSTOMER = "Existing customer";
+export const IMPORT_NO_EXISTING_CUSTOMER = "None (new customer)";
+export const IMPORT_NEW_CUSTOMER_NAME = "New customer name";
+export const IMPORT_CONFIRM_NEW = "I confirm this is a new customer";
+export const IMPORT_NEW_LABEL = "new";
+export const IMPORT_SENT_ON_LABEL = "Sent on (YYYY-MM-DD)";
+
+export const IMPORT_PREVIEW_BUTTON = "Preview the import";
+export const IMPORT_PREVIEWING = "Previewing the import.";
+export const IMPORT_BUTTON = "Import";
+export const IMPORT_CONFIRM_BUTTON = "Confirm import";
+export const IMPORT_SENDING = "Importing.";
+export const IMPORT_NEEDS_PREVIEW = "Preview these exact choices first.";
+
+export const IMPORT_PREVIEW_RESULT_HEADING = "Preview result";
+export const IMPORT_RESULT_HEADING = "Import result";
+export const IMPORT_CREATED = "Promises created";
+export const IMPORT_CREATED_EDITED = "Created with an answer edited after drafting";
+export const IMPORT_WOULD_CREATE = "Promises that would be created";
+export const IMPORT_WOULD_CREATE_EDITED = "Of those, with an answer edited after drafting";
+export const IMPORT_TO_CREATE ="Promises to create (from the preview)";
+export const IMPORT_CUSTOMER_CREATED = "Customer created";
+export const IMPORT_CUSTOMER_ID = "Customer id";
+export const IMPORT_SKIPPED = "Skipped, by code";
+export const IMPORT_REVIEW_COUNTS = "Review column values, by kind";
+export const IMPORT_OTHER_VALUES = "Other Review values (text from the workbook)";
+export const IMPORT_OTHER_VALUE_COUNT = "Rows";
+export const IMPORT_OTHER_VALUE_CUT = "cut short by the sidecar";
+export const IMPORT_ALREADY_CHANGED = "Already changed since drafting";
+export const IMPORT_NOT_AVAILABLE = "not available";
+export const IMPORT_YES = "yes";
+export const IMPORT_NO = "no";
+export const IMPORT_NONE = "none";
+export const IMPORT_EXISTING_CUSTOMER_ID = "Existing customer id";
+
+/** Input problems, found before any call. */
+export const IMPORT_PROBLEM_NO_DRAFT = "Choose a draft first.";
+export const IMPORT_PROBLEM_CUSTOMER_CHOICE =
+  "Choose an existing customer or type a new customer name, not both.";
+export const IMPORT_PROBLEM_NAME_LENGTH = "The new customer name must be 1 to 1,000 characters.";
+export const IMPORT_PROBLEM_NOT_CONFIRMED = "Tick the box to confirm the new customer.";
+export const IMPORT_PROBLEM_NO_SENT_ON = "Enter the sent date as YYYY-MM-DD.";
+export const IMPORT_PROBLEM_SENT_ON_INVALID = "The sent date is not a real date in the form YYYY-MM-DD.";
+
+/** `import_refused` codes (the sidecar's refusals). */
+export const IMPORT_RUN_RECORD_MISSING_TEXT = "ALIBI has no run record for this draft, so it cannot import it.";
+export const IMPORT_QUESTION_MISMATCH_TEXT =
+  "A question in this file was changed after ALIBI drafted it, so ALIBI cannot match the rows to its record and imports none of them.";
+export const IMPORT_CUSTOMER_CHOICE_INVALID_TEXT = "The sidecar needs exactly one of an existing customer and a new name.";
+export const IMPORT_NOT_CONFIRMED_TEXT = "A new customer name needs the confirmation box ticked.";
+export const IMPORT_SENT_ON_INVALID_TEXT = "The sent date is not a valid date.";
+export const IMPORT_SENT_ON_IN_FUTURE_TEXT = "The sent date is after today.";
+export const IMPORT_SENT_BEFORE_DRAFTED_TEXT = "The sent date is before the draft was made.";
+
+/** `ledger_refused` codes an import can meet. */
+export const CUSTOMER_EXISTS_TEXT =
+  "A customer with this name is already in the ledger. Choose that customer instead.";
+export const CUSTOMER_UNKNOWN_TEXT = "That customer is not in the ledger.";
+export const CUSTOMER_NAME_INVALID_TEXT = "The ledger does not accept this customer name.";
+
+// ===== end of 65g DRAFT =========================================================================

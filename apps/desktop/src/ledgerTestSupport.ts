@@ -3,10 +3,13 @@
 // from a body the real schemas accept. No hostile text is written in this source except the one
 // harmless canary marker below.
 
+import draftFile from "../../../fixtures/contracts/replies/draft_rows.json";
+import importFile from "../../../fixtures/contracts/replies/ledger_import.json";
 import customersFile from "../../../fixtures/contracts/replies/ledger_customers.json";
 import promisesFile from "../../../fixtures/contracts/replies/ledger_promises.json";
 import recallFile from "../../../fixtures/contracts/replies/ledger_recall.json";
 import type { Customer, PromiseRow } from "./ledger";
+import type { ImportReport } from "./ledgerImport";
 import type { RecallItem, RecallReport } from "./recall";
 
 interface Recorded {
@@ -59,4 +62,19 @@ export function recallItem(over: Partial<RecallItem> = {}): RecallItem {
 export function recallReport(items: RecallItem[], over: Partial<RecallReport> = {}): RecallReport {
   const base = recorded(recallFile, "intact").body as RecallReport;
   return { ...base, checked: items.length, events_recorded: 0, items, ...over };
+}
+
+/** A recorded `ledger_import` 200 body (case `preview` or `created`), with fields replaced. */
+export function importReport(name: "preview" | "created" | "preview_again", over: Partial<ImportReport> = {}): ImportReport {
+  return { ...(recorded(importFile, name).body as ImportReport), ...over };
+}
+
+/** The recorded `ledger_import` reply of one case, as status and body. */
+export function recordedImport(name: string): { status: number; body: unknown } {
+  return recorded(importFile, name);
+}
+
+/** The recorded `draft_rows` 200 body (case `ok`): its `run_id` is the full id. */
+export function draftBody(): { run_id: string; file_name: string; question_count: number } & Record<string, unknown> {
+  return recorded(draftFile, "ok").body as { run_id: string; file_name: string; question_count: number };
 }

@@ -195,3 +195,29 @@ export function reduceRecall(state: RecallState, event: RecallEvent): RecallStat
     }
   }
 }
+
+// ----- the store the hook holds (65f tidy-up c) -----------------------------------------------
+
+export interface RecallStore {
+  state(): RecallState;
+  /** Apply one event through the reducer and return the new state. */
+  dispatch(event: RecallEvent): RecallState;
+  /** The request for the customer the reducer holds now. There is no second copy of the customer. */
+  request(): Extract<RouteRequest, { route: "ledger_recall" }>;
+}
+
+/**
+ * The state the Recall hook holds. The customer a run uses is read from the reducer's state, so a
+ * choice the reducer ignores (a run is in progress) can never change what the next run sends.
+ */
+export function createRecallStore(): RecallStore {
+  let current: RecallState = INITIAL_RECALL_STATE;
+  return {
+    state: () => current,
+    dispatch: (event) => {
+      current = reduceRecall(current, event);
+      return current;
+    },
+    request: () => recallRequest(current.customerId),
+  };
+}
