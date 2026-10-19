@@ -5,18 +5,26 @@ route.
 
 - `POST /contradictions/run`   compare the numbers in the vault's company-policy text, ask the local
                                model one question per kept pair, and return the findings
+- `POST /contradictions/runs`  the same run as start then poll (G40): takes the shared slot, starts
+                               a task and answers 202 `{run_id}`; 409 `run_in_progress`, 409
+                               `index_not_built`, 503 `vault_root_not_configured` as `run` does
+- `GET  /contradictions/runs/{run_id}`  the run's status, its pair counts and, once complete, the
+                               same response `run` gives; 404 `run_not_found` for an unknown or
+                               evicted id (the last few finished runs are kept, in memory only)
 
-**One JSON response** (deviation M55-12): the request stays open for the whole run, which is minutes
-when each pair takes tens of seconds on a CPU-only machine (speed unmeasured). That is acceptable
-on loopback; the Rust host proxy of M6 will need a timeout and probably a run-id design (G40).
+**`/run` is one JSON response** (deviation M55-12): the request stays open for the whole run, which
+is minutes when each pair takes tens of seconds on a CPU-only machine (speed unmeasured). That is
+acceptable on loopback, and it stays for the existing tests and outside the host proxy (N7). The
+start-then-poll pair is the one the window uses (M6.5): no request is held open for the whole run.
 Findings carry verified quotes from the vault and the model's capped explanation, so they are
-returned in the response body and never logged. The request model has no url, token, credential or
-host field, and an unknown field is refused without echoing its value.
+returned in the response body and never logged or stored. The request model has no url, token,
+credential or host field, and an unknown field is refused without echoing its value.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request
+from fastapi import Path as PathParam
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from grc_sidecar.contradictions.models import (
@@ -29,6 +37,7 @@ from grc_sidecar.contradictions.models import (
     Relation,
 )
 from grc_sidecar.contradictions.pairs import DEFAULT_PAIR_CAP
+from grc_sidecar.contradictions.run_jobs import RunStatus
 from grc_sidecar.contradictions.runs import ContradictionRuns
 from grc_sidecar.contradictions.verdict import PAIR_TEMPLATE_SHA256
 from grc_sidecar.errors import ContradictionsNotConfiguredError
@@ -37,6 +46,7 @@ router = APIRouter()
 
 MAX_SCOPE_CHARS = 260
 MAX_CAP = 100  # a starting value, mine and unmeasured: more pairs than this is hours of model time
+RUN_ID_PATTERN = r"^[0-9a-f]{8,64}$"
 
 
 def get_contradictions(request: Request) -> ContradictionRuns:
@@ -160,7 +170,46 @@ def run_response(report: DetectionReport, model: str) -> RunResponse:
     )
 
 
+class StartResponse(_Body):
+    run_id: str
+
+
+class RunStatusResponse(_Body):
+    run_id: str
+    status: Literal["running", "complete", "failed", "cancelled"]
+    pairs_total: int | None  # None until reading and verification are done
+    pairs_done: int
+    failure: str | None  # a fixed word, never exception text
+    report: RunResponse | None  # set only when complete
+
+
+def _status_response(status: RunStatus, model_name: str) -> RunStatusResponse:
+    return RunStatusResponse(
+        run_id=status.run_id,
+        status=status.status,
+        pairs_total=status.pairs_total,
+        pairs_done=status.pairs_done,
+        failure=status.failure,
+        report=None if status.report is None else run_response(status.report, model_name),
+    )
+
+
 @router.post("/contradictions/run")
 async def run_contradictions(body: RunRequest, runs: Runs) -> RunResponse:
     report = await runs.run(scope=body.scope, cap=body.cap or DEFAULT_PAIR_CAP)
     return run_response(report, runs.model_name)
+
+
+@router.post("/contradictions/runs", status_code=202)
+async def start_contradictions(body: RunRequest, runs: Runs) -> StartResponse:
+    return StartResponse(
+        run_id=await runs.start(scope=body.scope, cap=body.cap or DEFAULT_PAIR_CAP)
+    )
+
+
+RunId = Annotated[str, PathParam(pattern=RUN_ID_PATTERN)]
+
+
+@router.get("/contradictions/runs/{run_id}")
+async def contradictions_status(run_id: RunId, runs: Runs) -> RunStatusResponse:
+    return _status_response(runs.get(run_id), runs.model_name)

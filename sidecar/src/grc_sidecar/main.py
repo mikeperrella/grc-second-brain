@@ -24,6 +24,7 @@ from grc_sidecar.api.ledger import router as ledger_router
 from grc_sidecar.api.questionnaire import router as questionnaire_router
 from grc_sidecar.api.readiness import router as readiness_router
 from grc_sidecar.api.reality import router as reality_router
+from grc_sidecar.api.vault_graph import router as vault_graph_router
 from grc_sidecar.api.vault_index import router as vault_index_router
 from grc_sidecar.config import Settings
 from grc_sidecar.contradiction_runtime import build_contradiction_runtime
@@ -38,6 +39,7 @@ from grc_sidecar.questionnaire.runtime import build_runtime
 from grc_sidecar.reality.runtime import RealityRuntime, build_reality_runtime
 from grc_sidecar.security.auth import ASGIApp, AuthMiddleware
 from grc_sidecar.vault.clock import SystemClock
+from grc_sidecar.vault.graph import VaultGraphService
 from grc_sidecar.vault.index_jobs import IndexJobs
 
 LOOPBACK_HOST: Final = "127.0.0.1"
@@ -73,6 +75,15 @@ def _model_check_lifespan(
             settings, None if runtime is None else runtime.ledger, SystemClock()
         )
         app.state.ledger = ledger
+        # The graph reads the vault, never the index; its promise counts come from the ledger when
+        # a ledger folder is in use, and are absent (never 0) when it is not.
+        app.state.vault_graph = (
+            None
+            if settings.vault_dir is None
+            else VaultGraphService(
+                settings.vault_dir, None if ledger is None else ledger.live_promise_counts
+            )
+        )
         app.state.reality = build_reality_runtime(settings)
         indexing = build_index_runtime(settings, gate, client, slot)
         app.state.index_jobs = None if indexing is None else indexing.jobs
@@ -106,6 +117,7 @@ def create_app(
     ledger: LedgerService | None = None,
     contradictions: ContradictionRuns | None = None,
     index_jobs: IndexJobs | None = None,
+    vault_graph: VaultGraphService | None = None,
 ) -> ASGIApp:
     """Build the app with authentication wrapped around it from the outside.
 
@@ -126,6 +138,7 @@ def create_app(
     api.state.ledger = ledger
     api.state.contradictions = contradictions
     api.state.index_jobs = index_jobs
+    api.state.vault_graph = vault_graph
     register_error_handlers(api)
     api.include_router(health_router)
     api.include_router(readiness_router)
@@ -134,6 +147,7 @@ def create_app(
     api.include_router(reality_router)
     api.include_router(ledger_router)
     api.include_router(vault_index_router)
+    api.include_router(vault_graph_router)
     # Wrapping (instead of api.add_middleware) puts auth outside Starlette's own
     # error handling, so even 404/405/422/500 responses require the token.
     return AuthMiddleware(api, token)

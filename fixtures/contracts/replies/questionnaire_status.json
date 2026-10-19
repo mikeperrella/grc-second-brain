@@ -1,0 +1,73 @@
+{
+  "route": "questionnaire_status",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "questionnaire_root_not_configured"
+      }
+    },
+    {
+      "case": "running",
+      "status": 200,
+      "body": {
+        "run_id": "00000001000000000000000000000000",
+        "status": "running",
+        "total": 3,
+        "completed": 0,
+        "failure": null,
+        "summary": null
+      }
+    },
+    {
+      "case": "complete",
+      "status": 200,
+      "body": {
+        "run_id": "00000001000000000000000000000000",
+        "status": "complete",
+        "total": 3,
+        "completed": 3,
+        "failure": null,
+        "summary": {
+          "model": "llama3.1:8b",
+          "digest_before": "sha256:digest-one",
+          "digest_after": "sha256:digest-one",
+          "template_sha256": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
+          "input_sha256": "87cdd68d5a1aa53b07bb0c3a2177e8adb00856ca6b182bc25deb2c224b9c9978",
+          "complete": true,
+          "counts": {
+            "SUPPORTED": 3,
+            "PARTIAL": 0,
+            "NEEDS_REVIEW": 0
+          },
+          "reason_counts": {},
+          "file_name": "Vendor Questionnaire-UNREVIEWED-DRAFT-00000001.xlsx",
+          "rows_written": 3,
+          "dropped_parts": [],
+          "warnings": [
+            "run_record_not_kept"
+          ],
+          "seconds": 0.0
+        }
+      }
+    },
+    {
+      "case": "run_not_found",
+      "status": 404,
+      "body": {
+        "error": "run_not_found"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "path.run_id"
+        ]
+      }
+    }
+  ]
+}

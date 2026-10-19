@@ -1,0 +1,161 @@
+{
+  "route": "ledger_blast_radius",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "proposed_text",
+      "status": 200,
+      "body": {
+        "checked": 1,
+        "would_change": 0,
+        "counts": {
+          "intact": 0,
+          "moved": 0,
+          "changed": 1,
+          "missing": 0
+        },
+        "items": [
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000001",
+            "customer_id": "00000001000000000000000000000000",
+            "source_path": "policies/encryption-policy.md",
+            "start_line": 8,
+            "end_line": 8,
+            "state_now": "changed",
+            "state_proposed": "changed",
+            "would_change": false,
+            "proposed_detail": "quote_not_found",
+            "locations": [],
+            "locations_not_listed": 0,
+            "flags": [],
+            "flags_now": [],
+            "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+            "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change.",
+            "preview": "this is a preview; nothing was saved or recorded"
+          }
+        ],
+        "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+        "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change.",
+        "coverage": "promises only; controls and linking documents are not checked",
+        "preview": "this is a preview; nothing was saved or recorded",
+        "note": null
+      }
+    },
+    {
+      "case": "delete_file",
+      "status": 200,
+      "body": {
+        "checked": 1,
+        "would_change": 1,
+        "counts": {
+          "intact": 0,
+          "moved": 0,
+          "changed": 0,
+          "missing": 1
+        },
+        "items": [
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000001",
+            "customer_id": "00000001000000000000000000000000",
+            "source_path": "policies/encryption-policy.md",
+            "start_line": 8,
+            "end_line": 8,
+            "state_now": "changed",
+            "state_proposed": "missing",
+            "would_change": true,
+            "proposed_detail": "not_found",
+            "locations": [],
+            "locations_not_listed": 0,
+            "flags": [],
+            "flags_now": [],
+            "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+            "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change.",
+            "preview": "this is a preview; nothing was saved or recorded"
+          }
+        ],
+        "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+        "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change.",
+        "coverage": "promises only; controls and linking documents are not checked",
+        "preview": "this is a preview; nothing was saved or recorded",
+        "note": null
+      }
+    },
+    {
+      "case": "no_match",
+      "status": 200,
+      "body": {
+        "checked": 0,
+        "would_change": 0,
+        "counts": {
+          "intact": 0,
+          "moved": 0,
+          "changed": 0,
+          "missing": 0
+        },
+        "items": [],
+        "statement": "intact means the cited lines are unchanged since drafting; it does not mean the promise is still true.",
+        "scope": "Recall watches the cited lines only; a change elsewhere in the document is not a state change.",
+        "coverage": "promises only; controls and linking documents are not checked",
+        "preview": "this is a preview; nothing was saved or recorded",
+        "note": "no live promise cites this path as written"
+      }
+    },
+    {
+      "case": "proposed_text_has_nul",
+      "status": 422,
+      "body": {
+        "error": "blast_radius_refused",
+        "code": "proposed_text_has_nul"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body"
+        ]
+      }
+    },
+    {
+      "case": "too_many_promises",
+      "status": 422,
+      "body": {
+        "error": "blast_radius_refused",
+        "code": "too_many_promises",
+        "counts": {
+          "promises": 1,
+          "cap": 0
+        }
+      }
+    },
+    {
+      "case": "vault_root_not_configured",
+      "status": 503,
+      "body": {
+        "error": "vault_root_not_configured"
+      }
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

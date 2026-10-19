@@ -1,0 +1,218 @@
+{
+  "route": "vault_graph",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "vault_root_not_configured"
+      }
+    },
+    {
+      "case": "no_ledger_folder",
+      "status": 200,
+      "body": {
+        "nodes": [
+          {
+            "index": 0,
+            "path": "alpha.md",
+            "doc_id": "ALPHA",
+            "type": "policy",
+            "live_promises": null
+          },
+          {
+            "index": 1,
+            "path": "beta.md",
+            "doc_id": "BETA",
+            "type": "policy",
+            "live_promises": null
+          },
+          {
+            "index": 2,
+            "path": "delta.md",
+            "doc_id": "DELTA",
+            "type": "policy",
+            "live_promises": null
+          },
+          {
+            "index": 3,
+            "path": "gamma.md",
+            "doc_id": "GAMMA",
+            "type": "policy",
+            "live_promises": null
+          },
+          {
+            "index": 4,
+            "path": "similar-1.md",
+            "doc_id": "SIMILAR-1",
+            "type": "policy",
+            "live_promises": null
+          },
+          {
+            "index": 5,
+            "path": "similar-2.md",
+            "doc_id": "SIMILAR-2",
+            "type": "policy",
+            "live_promises": null
+          },
+          {
+            "index": 6,
+            "path": "x/dup.md",
+            "doc_id": "DUP-X",
+            "type": "policy",
+            "live_promises": null
+          },
+          {
+            "index": 7,
+            "path": "y/dup.md",
+            "doc_id": "DUP-Y",
+            "type": "policy",
+            "live_promises": null
+          }
+        ],
+        "edges": [
+          {
+            "from": 0,
+            "to": 1,
+            "origin": "body",
+            "count": 2
+          },
+          {
+            "from": 0,
+            "to": 2,
+            "origin": "frontmatter",
+            "count": 1
+          },
+          {
+            "from": 0,
+            "to": 3,
+            "origin": "body",
+            "count": 1
+          },
+          {
+            "from": 1,
+            "to": 0,
+            "origin": "body",
+            "count": 1
+          }
+        ],
+        "unresolved_links": 1,
+        "ambiguous_links": 1,
+        "rejected_links": 4,
+        "links_not_drawn": 2,
+        "files_refused": 0,
+        "says": "Lines are the explicit links written in the files. A missing line does not mean two documents are unrelated."
+      }
+    },
+    {
+      "case": "with_ledger",
+      "status": 200,
+      "body": {
+        "nodes": [
+          {
+            "index": 0,
+            "path": "alpha.md",
+            "doc_id": "ALPHA",
+            "type": "policy",
+            "live_promises": 2
+          },
+          {
+            "index": 1,
+            "path": "beta.md",
+            "doc_id": "BETA",
+            "type": "policy",
+            "live_promises": 1
+          },
+          {
+            "index": 2,
+            "path": "delta.md",
+            "doc_id": "DELTA",
+            "type": "policy",
+            "live_promises": 0
+          },
+          {
+            "index": 3,
+            "path": "gamma.md",
+            "doc_id": "GAMMA",
+            "type": "policy",
+            "live_promises": 0
+          },
+          {
+            "index": 4,
+            "path": "similar-1.md",
+            "doc_id": "SIMILAR-1",
+            "type": "policy",
+            "live_promises": 0
+          },
+          {
+            "index": 5,
+            "path": "similar-2.md",
+            "doc_id": "SIMILAR-2",
+            "type": "policy",
+            "live_promises": 0
+          },
+          {
+            "index": 6,
+            "path": "x/dup.md",
+            "doc_id": "DUP-X",
+            "type": "policy",
+            "live_promises": 0
+          },
+          {
+            "index": 7,
+            "path": "y/dup.md",
+            "doc_id": "DUP-Y",
+            "type": "policy",
+            "live_promises": 0
+          }
+        ],
+        "edges": [
+          {
+            "from": 0,
+            "to": 1,
+            "origin": "body",
+            "count": 2
+          },
+          {
+            "from": 0,
+            "to": 2,
+            "origin": "frontmatter",
+            "count": 1
+          },
+          {
+            "from": 0,
+            "to": 3,
+            "origin": "body",
+            "count": 1
+          },
+          {
+            "from": 1,
+            "to": 0,
+            "origin": "body",
+            "count": 1
+          }
+        ],
+        "unresolved_links": 1,
+        "ambiguous_links": 1,
+        "rejected_links": 4,
+        "links_not_drawn": 2,
+        "files_refused": 0,
+        "says": "Lines are the explicit links written in the files. A missing line does not mean two documents are unrelated."
+      }
+    },
+    {
+      "case": "graph_too_large",
+      "status": 422,
+      "body": {
+        "error": "graph_refused",
+        "code": "graph_too_large",
+        "counts": {
+          "nodes": 8,
+          "edges": 4,
+          "node_cap": 7,
+          "edge_cap": 5000
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "route": "ledger_promises",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "empty",
+      "status": 200,
+      "body": {
+        "page": 1,
+        "page_size": 100,
+        "total": 0,
+        "promises": []
+      }
+    },
+    {
+      "case": "page",
+      "status": 200,
+      "body": {
+        "page": 1,
+        "page_size": 100,
+        "total": 3,
+        "promises": [
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000001",
+            "customer_id": "00000001000000000000000000000000",
+            "run_id": "00000002000000000000000000000000",
+            "run_row_index": 2,
+            "question_text": "Do you encrypt data at rest, question 1?",
+            "answer_text": "Yes, answer 1.",
+            "status": "SUPPORTED",
+            "source_path": "policies/encryption-policy.md",
+            "doc_id": "ENC-001",
+            "start_line": 12,
+            "end_line": 13,
+            "quote": "Data at rest is encrypted with AES-256.",
+            "edited_after_draft": false,
+            "sent_on": "2026-10-10",
+            "created_on": "2026-10-10",
+            "voided": false,
+            "recall_event_id": null,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false
+          },
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000002",
+            "customer_id": "00000001000000000000000000000000",
+            "run_id": "00000002000000000000000000000000",
+            "run_row_index": 3,
+            "question_text": "Do you encrypt data at rest, question 2?",
+            "answer_text": "Yes, answer 2.",
+            "status": "SUPPORTED",
+            "source_path": "policies/encryption-policy.md",
+            "doc_id": "ENC-001",
+            "start_line": 12,
+            "end_line": 13,
+            "quote": "Data at rest is encrypted with AES-256.",
+            "edited_after_draft": false,
+            "sent_on": "2026-10-10",
+            "created_on": "2026-10-10",
+            "voided": false,
+            "recall_event_id": null,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false
+          },
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000003",
+            "customer_id": "00000001000000000000000000000000",
+            "run_id": "00000002000000000000000000000000",
+            "run_row_index": 4,
+            "question_text": "Do you encrypt data at rest, question 3?",
+            "answer_text": "Yes, answer 3.",
+            "status": "SUPPORTED",
+            "source_path": "policies/encryption-policy.md",
+            "doc_id": "ENC-001",
+            "start_line": 12,
+            "end_line": 13,
+            "quote": "Data at rest is encrypted with AES-256.",
+            "edited_after_draft": false,
+            "sent_on": "2026-10-10",
+            "created_on": "2026-10-10",
+            "voided": false,
+            "recall_event_id": null,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false
+          }
+        ]
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "query.page"
+        ]
+      }
+    },
+    {
+      "case": "voided_included_small_page",
+      "status": 200,
+      "body": {
+        "page": 1,
+        "page_size": 1,
+        "total": 3,
+        "promises": [
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000001",
+            "customer_id": "00000001000000000000000000000000",
+            "run_id": "00000002000000000000000000000000",
+            "run_row_index": 2,
+            "question_text": "Do you encrypt data at rest, question 1?",
+            "answer_text": "Yes, answer 1.",
+            "status": "SUPPORTED",
+            "source_path": "policies/encryption-policy.md",
+            "doc_id": "ENC-001",
+            "start_line": 12,
+            "end_line": 13,
+            "quote": "Data at rest is encrypted with AES-256.",
+            "edited_after_draft": false,
+            "sent_on": "2026-10-10",
+            "created_on": "2026-10-10",
+            "voided": true,
+            "recall_event_id": null,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false
+          }
+        ]
+      }
+    },
+    {
+      "case": "acknowledged",
+      "status": 200,
+      "body": {
+        "page": 1,
+        "page_size": 100,
+        "total": 2,
+        "promises": [
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000004",
+            "customer_id": "00000003000000000000000000000000",
+            "run_id": "00000002000000000000000000000000",
+            "run_row_index": 2,
+            "question_text": "Do you encrypt data at rest, question 1?",
+            "answer_text": "Yes, answer 1.",
+            "status": "SUPPORTED",
+            "source_path": "policies/encryption-policy.md",
+            "doc_id": "ENC-001",
+            "start_line": 8,
+            "end_line": 8,
+            "quote": "Data at rest is encrypted with AES-256.",
+            "edited_after_draft": false,
+            "sent_on": "2026-10-10",
+            "created_on": "2026-10-10",
+            "voided": false,
+            "recall_event_id": 5,
+            "acknowledged_event_id": 6,
+            "acknowledged_state": "changed",
+            "acknowledgement_current": true
+          },
+          {
+            "promise_id": "00000000-0000-4000-8000-000000000005",
+            "customer_id": "00000003000000000000000000000000",
+            "run_id": "00000002000000000000000000000000",
+            "run_row_index": 3,
+            "question_text": "Do you encrypt data at rest, question 2?",
+            "answer_text": "Yes, answer 2.",
+            "status": "SUPPORTED",
+            "source_path": "policies/backup-policy.md",
+            "doc_id": "ENC-001",
+            "start_line": 8,
+            "end_line": 8,
+            "quote": "Backups are daily.",
+            "edited_after_draft": false,
+            "sent_on": "2026-10-10",
+            "created_on": "2026-10-10",
+            "voided": false,
+            "recall_event_id": 4,
+            "acknowledged_event_id": null,
+            "acknowledged_state": null,
+            "acknowledgement_current": false
+          }
+        ]
+      }
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

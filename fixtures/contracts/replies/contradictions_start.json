@@ -1,0 +1,43 @@
+{
+  "route": "contradictions_start",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "vault_root_not_configured"
+      }
+    },
+    {
+      "case": "accepted",
+      "status": 202,
+      "body": {
+        "run_id": "00000001000000000000000000000000"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.cap"
+        ]
+      }
+    },
+    {
+      "case": "run_in_progress",
+      "status": 409,
+      "body": {
+        "error": "run_in_progress"
+      }
+    },
+    {
+      "case": "index_not_built",
+      "status": 409,
+      "body": {
+        "error": "index_not_built"
+      }
+    }
+  ]
+}

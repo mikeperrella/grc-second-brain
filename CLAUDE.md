@@ -71,7 +71,7 @@ The owner (Mike) must be able to explain every design decision and every line of
 | Generation model | `llama3.1:8b` via Ollama (configurable; default pinned) |
 | Embedding model | `nomic-embed-text` via Ollama |
 | Vector store | `sqlite-vec` behind a `VectorRepository` protocol (see ADR-001) |
-| Graph | NetworkX, built only from explicit links |
+| Graph | None (no graph library; plain lists from explicit links only, ADR-023) |
 | Excel | OpenPyXL |
 | Knowledge vault | Obsidian-compatible Markdown with YAML frontmatter |
 

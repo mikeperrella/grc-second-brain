@@ -1,0 +1,67 @@
+{
+  "route": "questionnaire_inspect",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "questionnaire_root_not_configured"
+      }
+    },
+    {
+      "case": "ok",
+      "status": 200,
+      "body": {
+        "sheets": [
+          {
+            "name": "Questions",
+            "rows": 4,
+            "columns": 2
+          }
+        ],
+        "suggestion": {
+          "sheet": "Questions",
+          "header_row": 1,
+          "question_col": 2,
+          "id_col": 1
+        },
+        "macro_enabled": false,
+        "parts": {},
+        "warnings": [],
+        "sha256": "87cdd68d5a1aa53b07bb0c3a2177e8adb00856ca6b182bc25deb2c224b9c9978"
+      }
+    },
+    {
+      "case": "file_not_found",
+      "status": 404,
+      "body": {
+        "error": "file_not_found"
+      }
+    },
+    {
+      "case": "path_not_allowed",
+      "status": 400,
+      "body": {
+        "error": "path_not_allowed"
+      }
+    },
+    {
+      "case": "workbook_refused",
+      "status": 422,
+      "body": {
+        "error": "workbook_refused",
+        "code": "doctype"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.file"
+        ]
+      }
+    }
+  ]
+}

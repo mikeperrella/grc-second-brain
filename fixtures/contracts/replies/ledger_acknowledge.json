@@ -1,0 +1,69 @@
+{
+  "route": "ledger_acknowledge",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "ledger_root_not_configured"
+      }
+    },
+    {
+      "case": "acknowledge_stale",
+      "status": 422,
+      "body": {
+        "error": "recall_refused",
+        "code": "acknowledge_stale"
+      }
+    },
+    {
+      "case": "promise_unknown",
+      "status": 422,
+      "body": {
+        "error": "ledger_refused",
+        "code": "promise_unknown"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.seen_recall_event_id"
+        ]
+      }
+    },
+    {
+      "case": "acknowledge_stale",
+      "status": 422,
+      "body": {
+        "error": "recall_refused",
+        "code": "acknowledge_stale"
+      }
+    },
+    {
+      "case": "ok",
+      "status": 200,
+      "body": {
+        "promise_id": "00000000-0000-4000-8000-000000000001",
+        "event_id": 6,
+        "kind": "acknowledged"
+      }
+    },
+    {
+      "case": "ledger_unusable",
+      "status": 503,
+      "body": {
+        "error": "ledger_unusable"
+      }
+    },
+    {
+      "case": "ledger_store_error",
+      "status": 503,
+      "body": {
+        "error": "ledger_store_error"
+      }
+    }
+  ]
+}

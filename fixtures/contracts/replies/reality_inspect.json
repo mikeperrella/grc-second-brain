@@ -1,0 +1,112 @@
+{
+  "route": "reality_inspect",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "import_root_not_configured"
+      }
+    },
+    {
+      "case": "ok",
+      "status": 200,
+      "body": {
+        "sha256": "2f70196855ceca5b28031de475f25605521b52c41028eee426e93552ba466507",
+        "size_bytes": 7509,
+        "data_rows": 40,
+        "malformed_rows": 0,
+        "statuses": [
+          {
+            "value": "Active",
+            "count": 32,
+            "truncated": false
+          },
+          {
+            "value": "Deprovisioned",
+            "count": 3,
+            "truncated": false
+          },
+          {
+            "value": "Staged",
+            "count": 2,
+            "truncated": false
+          },
+          {
+            "value": "Suspended",
+            "count": 2,
+            "truncated": false
+          },
+          {
+            "value": "Pending user action",
+            "count": 1,
+            "truncated": false
+          }
+        ],
+        "statuses_not_listed": 0,
+        "authenticator_types": [
+          {
+            "value": "Password",
+            "count": 35,
+            "truncated": false
+          },
+          {
+            "value": "Okta Verify",
+            "count": 20,
+            "truncated": false
+          },
+          {
+            "value": "Email",
+            "count": 18,
+            "truncated": false
+          },
+          {
+            "value": "Phone",
+            "count": 4,
+            "truncated": false
+          },
+          {
+            "value": "Forgotten Password Question",
+            "count": 1,
+            "truncated": false
+          }
+        ],
+        "authenticator_types_not_listed": 0,
+        "duplicate_logins": 1
+      }
+    },
+    {
+      "case": "file_not_found",
+      "status": 404,
+      "body": {
+        "error": "file_not_found"
+      }
+    },
+    {
+      "case": "path_not_allowed",
+      "status": 400,
+      "body": {
+        "error": "path_not_allowed"
+      }
+    },
+    {
+      "case": "export_refused",
+      "status": 422,
+      "body": {
+        "error": "export_refused",
+        "code": "missing_column",
+        "column": "user.login"
+      }
+    },
+    {
+      "case": "invalid_request",
+      "status": 422,
+      "body": {
+        "error": "invalid_request",
+        "fields": [
+          "body.file"
+        ]
+      }
+    }
+  ]
+}

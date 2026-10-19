@@ -1,0 +1,56 @@
+{
+  "route": "reality_claims",
+  "replies": [
+    {
+      "case": "not_configured",
+      "status": 503,
+      "body": {
+        "error": "import_root_not_configured"
+      }
+    },
+    {
+      "case": "ok",
+      "status": 200,
+      "body": {
+        "candidates": [
+          {
+            "path": "access-control-policy.md",
+            "doc_id": "MQ-POL-001",
+            "start_line": 23,
+            "end_line": 23,
+            "quote": "Multi-factor authentication (MFA) is required for all staff accounts on every system that stores customer data, and for all remote access.",
+            "qualifier_words": [
+              "staff",
+              "remote",
+              "customer"
+            ],
+            "mapped_to_authentication_control": true,
+            "matched_control_ids": [
+              "NIST-800-53:IA-2",
+              "SOC2:CC6.1"
+            ],
+            "control_note": "This document maps to an authentication control."
+          }
+        ],
+        "candidates_not_listed": 0,
+        "too_long": 0,
+        "scanned_documents": 12,
+        "excluded_framework": 0
+      }
+    },
+    {
+      "case": "control_map_too_large",
+      "status": 422,
+      "body": {
+        "error": "control_map_too_large"
+      }
+    },
+    {
+      "case": "auth_controls_invalid",
+      "status": 503,
+      "body": {
+        "error": "auth_controls_invalid"
+      }
+    }
+  ]
+}
