@@ -7,12 +7,15 @@ questions and answers, and none of it is ever logged.
 
 - `POST /ledger/import`      turn the approved rows of a reviewed draft into promises
 - `GET  /ledger/customers`   the customers
-- `GET  /ledger/promises`    a page of promises (voided ones only with `include_voided=true`)
+- `GET  /ledger/promises`    a page of promises (voided ones only with `include_voided=true`;
+                             `page_size` 1 to 100)
+- `GET  /ledger/cited-paths` the distinct paths live promises cite, with counts (read-only)
 - `POST /ledger/recall`      check live promises against the current vault (a POST: it can append)
 - `POST /ledger/blast-radius`  preview what saving or deleting one vault file would do to the
                               promises that cite it (promises only; nothing saved or recorded)
 - `POST /ledger/promises/{id}/void`        correct a mistake: a fixed reason, no free text
-- `POST /ledger/promises/{id}/acknowledge`  record that the owner saw a flag
+- `POST /ledger/promises/{id}/acknowledge`  record the recall state the owner saw (it must still
+                              be the latest one, else `acknowledge_stale`)
 """
 
 import re
@@ -25,6 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from grc_sidecar.errors import LedgerRootNotConfiguredError
 from grc_sidecar.ledger.service import (
+    MAX_PAGE_SIZE,
+    PAGE_SIZE,
     BlastItem,
     BlastReport,
     CustomerChoice,
@@ -49,6 +54,7 @@ PROMISE_ID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 MAX_FILE_NAME_CHARS = 260
 MAX_NEW_NAME_CHARS = 1_000  # a bound on the request; the ledger's own name rules decide the rest
 MAX_PAGE = 100_000
+MAX_EVENT_ID = 2**63 - 1  # SQLite's largest integer; an event id can never be larger
 
 
 def get_ledger(request: Request) -> LedgerService:
@@ -72,6 +78,7 @@ class ImportRequest(_Body):
     new_customer_name: str | None = Field(default=None, min_length=1, max_length=MAX_NEW_NAME_CHARS)
     confirm_new: bool = False
     sent_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    preview: bool = False  # every check and count, nothing written, no customer made
 
 
 class OtherValueResponse(_Body):
@@ -90,6 +97,16 @@ class ImportResponse(_Body):
     other_values: list[OtherValueResponse]
     promise_ids: list[str]
     already_changed_since_draft: int | None = None  # information only; None with no vault folder
+    preview: bool = False  # True: nothing was written; `created` is what a real import would make
+
+
+class CitedPathResponse(_Body):
+    source_path: str
+    promise_count: int
+
+
+class CitedPathsResponse(_Body):
+    paths: list[CitedPathResponse]
 
 
 class CustomerResponse(_Body):
@@ -114,6 +131,10 @@ class PromiseResponse(_Body):
     sent_on: date
     created_on: date
     voided: bool
+    recall_event_id: int | None
+    acknowledged_event_id: int | None
+    acknowledged_state: str | None
+    acknowledgement_current: bool
 
 
 class RecallRequest(_Body):
@@ -124,8 +145,10 @@ class VoidRequest(_Body):
     reason: VoidReason  # one of a fixed set: free text cannot be sent
 
 
-class EmptyRequest(_Body):
-    """A body with nothing in it, so an unknown field is refused like everywhere else."""
+class AcknowledgeRequest(_Body):
+    """The recall event the owner saw (G35). A whole number from 1: a boolean or text is refused."""
+
+    seen_recall_event_id: int = Field(ge=1, le=MAX_EVENT_ID, strict=True)
 
 
 class LocationResponse(_Body):
@@ -135,12 +158,21 @@ class LocationResponse(_Body):
 
 class RecallItemResponse(_Body):
     promise_id: str
+    customer_id: str
+    source_path: str
+    start_line: int
+    end_line: int
     state: str
     detail: str | None
     locations: list[LocationResponse]
+    locations_not_listed: int
     flags: list[str]
     previous_state: str | None
     event_recorded: bool
+    recall_event_id: int | None
+    acknowledged_event_id: int | None
+    acknowledged_state: str | None
+    acknowledgement_current: bool
     statement: str
     scope: str
 
@@ -192,12 +224,18 @@ class BlastRadiusRequest(_Body):
 
 class BlastItemResponse(_Body):
     promise_id: str
+    customer_id: str
+    source_path: str
+    start_line: int
+    end_line: int
     state_now: str
     state_proposed: str
     would_change: bool
     proposed_detail: str | None
     locations: list[LocationResponse]
+    locations_not_listed: int
     flags: list[str]
+    flags_now: list[str]
     statement: str
     scope: str
     preview: str
@@ -210,6 +248,7 @@ class BlastRadiusResponse(_Body):
     items: list[BlastItemResponse]
     statement: str
     scope: str
+    coverage: str
     preview: str
     note: str | None
 
@@ -238,6 +277,7 @@ def _import_response(outcome: ImportOutcome) -> ImportResponse:
         other_values=[OtherValueResponse(**vars(v)) for v in outcome.other_values],
         promise_ids=list(outcome.promise_ids),
         already_changed_since_draft=outcome.already_changed_since_draft,
+        preview=outcome.preview,
     )
 
 
@@ -264,6 +304,10 @@ def _promise_response(view: PromiseView) -> PromiseResponse:
         sent_on=p.sent_on,
         created_on=p.created_on,
         voided=view.voided,
+        recall_event_id=view.ack.recall_event_id,
+        acknowledged_event_id=view.ack.acknowledged_event_id,
+        acknowledged_state=view.ack.acknowledged_state,
+        acknowledgement_current=view.ack.acknowledgement_current,
     )
 
 
@@ -279,12 +323,21 @@ def _promises_response(found: PromisePage) -> PromisesResponse:
 def _recall_item_response(item: RecallItem) -> RecallItemResponse:
     return RecallItemResponse(
         promise_id=item.promise_id,
+        customer_id=item.customer_id,
+        source_path=item.source_path,
+        start_line=item.start_line,
+        end_line=item.end_line,
         state=item.state,
         detail=item.detail,
         locations=[LocationResponse(start_line=s, end_line=e) for s, e in item.locations],
+        locations_not_listed=item.locations_not_listed,
         flags=list(item.flags),
         previous_state=item.previous_state,
         event_recorded=item.event_recorded,
+        recall_event_id=item.ack.recall_event_id,
+        acknowledged_event_id=item.ack.acknowledged_event_id,
+        acknowledged_state=item.ack.acknowledged_state,
+        acknowledgement_current=item.ack.acknowledgement_current,
         statement=item.statement,
         scope=item.scope,
     )
@@ -304,12 +357,18 @@ def _recall_response(report: RecallReport) -> RecallResponse:
 def _blast_item_response(item: BlastItem) -> BlastItemResponse:
     return BlastItemResponse(
         promise_id=item.promise_id,
+        customer_id=item.customer_id,
+        source_path=item.source_path,
+        start_line=item.start_line,
+        end_line=item.end_line,
         state_now=item.state_now,
         state_proposed=item.state_proposed,
         would_change=item.would_change,
         proposed_detail=item.proposed_detail,
         locations=[LocationResponse(start_line=s, end_line=e) for s, e in item.locations],
+        locations_not_listed=item.locations_not_listed,
         flags=list(item.flags),
+        flags_now=list(item.flags_now),
         statement=item.statement,
         scope=item.scope,
         preview=item.preview,
@@ -324,6 +383,7 @@ def _blast_response(report: BlastReport) -> BlastRadiusResponse:
         items=[_blast_item_response(item) for item in report.items],
         statement=report.statement,
         scope=report.scope,
+        coverage=report.coverage,
         preview=report.preview,
         note=report.note,
     )
@@ -344,6 +404,7 @@ async def import_reviewed(body: ImportRequest, ledger: Ledger) -> ImportResponse
             confirm_new=body.confirm_new,
         ),
         body.sent_on,
+        body.preview,
     )
     return _import_response(outcome)
 
@@ -353,14 +414,25 @@ async def customers(ledger: Ledger) -> list[CustomerResponse]:
     return [_customer_response(c) for c in await ledger.customers()]
 
 
+@router.get("/ledger/cited-paths")
+async def cited_paths(ledger: Ledger) -> CitedPathsResponse:
+    return CitedPathsResponse(
+        paths=[
+            CitedPathResponse(source_path=c.source_path, promise_count=c.promise_count)
+            for c in await ledger.cited_paths()
+        ]
+    )
+
+
 @router.get("/ledger/promises")
 async def promises(
     ledger: Ledger,
     customer_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
     include_voided: bool = False,
     page: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = PAGE_SIZE,
 ) -> PromisesResponse:
-    return _promises_response(await ledger.promises(customer_id, include_voided, page))
+    return _promises_response(await ledger.promises(customer_id, include_voided, page, page_size))
 
 
 @router.post("/ledger/recall")
@@ -386,6 +458,6 @@ async def void_promise(promise_id: PromiseId, body: VoidRequest, ledger: Ledger)
 
 @router.post("/ledger/promises/{promise_id}/acknowledge")
 async def acknowledge_promise(
-    promise_id: PromiseId, ledger: Ledger, body: EmptyRequest | None = None
+    promise_id: PromiseId, body: AcknowledgeRequest, ledger: Ledger
 ) -> EventResponse:
-    return _event_response(await ledger.acknowledge(promise_id))
+    return _event_response(await ledger.acknowledge(promise_id, body.seen_recall_event_id))

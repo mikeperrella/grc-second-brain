@@ -333,7 +333,9 @@ class DraftRefusedError(GrcError):
         self.counts: dict[str, int] = {} if counts is None else dict(counts)
 
 
-RecallRefusal = Literal["too_many_promises", "promise_voided"]
+RecallRefusal = Literal[
+    "too_many_promises", "promise_voided", "acknowledge_stale", "too_many_paths"
+]
 
 
 class RecallRefusedError(GrcError):

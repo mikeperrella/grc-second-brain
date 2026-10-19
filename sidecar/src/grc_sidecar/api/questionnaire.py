@@ -126,6 +126,7 @@ class DraftRowOut(_Body):
 
 
 class DraftResponse(_Body):
+    run_id: str  # the run record's full id, for `POST /ledger/import`
     model: str
     file_name: str
     complete: bool
@@ -135,6 +136,7 @@ class DraftResponse(_Body):
 
 def _draft_response(draft: DraftRows) -> DraftResponse:
     return DraftResponse(
+        run_id=draft.run_id,
         model=draft.model,
         file_name=draft.file_name,
         complete=draft.complete,

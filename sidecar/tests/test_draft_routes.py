@@ -45,6 +45,7 @@ from .ledgerkit import (
     supported_outcomes,
 )
 from .runskit import CANARY, FILE_NAME, MAPPING, make_workbook, outcome, setup, supported
+from .test_ledger_routes import call
 from .xlsxkit import simple_bytes, to_bytes
 
 pytestmark = pytest.mark.usefixtures("clean_grc_env")
@@ -115,7 +116,8 @@ def test_an_untouched_draft_returns_the_records_rows_and_no_edit_flags(tmp_path:
         response = ask(d)
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {"model", "file_name", "complete", "question_count", "rows"}
+        assert set(body) == {"run_id", "model", "file_name", "complete", "question_count", "rows"}
+        assert body["run_id"] == d.run_id and len(body["run_id"]) > 8  # the full id (chunk 65b)
         assert body["file_name"] == d.path.name and body["question_count"] == 3
         assert body["model"] == "llama3.1:8b" and body["complete"] is True
         rows = rows_by_number(response)
@@ -289,6 +291,28 @@ def test_two_records_sharing_a_prefix_return_only_the_exact_match(tmp_path: Path
     assert one.json()["file_name"] == first and one.json()["question_count"] == 3
     assert two.json()["file_name"] == second and two.json()["question_count"] == 2
     assert len(one.json()["rows"]) == 3 and len(two.json()["rows"]) == 2
+
+
+def test_each_draft_returns_its_own_full_run_id_never_the_8_hex_prefix(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    service, _, first, second = two_drafts_sharing_a_prefix(tmp_path)
+    one = post(service, {"file": first}).json()["run_id"]
+    two = post(service, {"file": second}).json()["run_id"]
+    # The ids share their first 8 hex digits, so only the full id tells the drafts apart.
+    assert one == "abcdef12" + "1" * 24 and two == "abcdef12" + "2" * 24
+    assert len(one) == len(two) == 32 and one != two
+
+
+def test_the_full_run_id_is_the_one_the_import_accepts(tmp_path: Path) -> None:
+    with draft_for(tmp_path, outcomes()) as d:
+        run_id = ask(d).json()["run_id"]
+        assert run_id == d.run_id and run_id[:8] in d.path.name
+        body = {"file": d.path.name, "run_id": run_id, "sent_on": "2026-10-10", "preview": True}
+        body |= {"new_customer_name": "Acme Test Co", "confirm_new": True}
+        response = call(d.service, "POST", "/ledger/import", headers=AUTH, json=body)
+        assert response.status_code == 200, response.text
+        assert response.json()["preview"] is True
 
 
 def test_a_renamed_copy_is_refused_even_with_the_same_8_hex_digits(tmp_path: Path) -> None:  # [NEG]

@@ -33,6 +33,7 @@ from .ledgerkit import (
     supported_outcomes,
 )
 from .retrievalkit import stack
+from .test_ledger_store import old_style_acknowledgement
 from .vaultkit import doc_text
 
 TODAY = date(2026, 10, 10)  # the fake clock's day in `ledgerkit`
@@ -469,7 +470,7 @@ def test_a_voided_promise_cannot_be_voided_or_acknowledged_again(tmp_path: Path)
         run(s.d.service.void(pid, "other"))
         for action in (
             lambda: run(s.d.service.void(pid, "other")),
-            lambda: run(s.d.service.acknowledge(pid)),
+            lambda: run(s.d.service.acknowledge(pid, 1)),
         ):
             with pytest.raises(RecallRefusedError) as info:
                 action()
@@ -481,7 +482,7 @@ def test_an_unknown_promise_is_refused(tmp_path: Path) -> None:  # [NEG]
     with scenario(tmp_path) as s:
         for action in (
             lambda: run(s.d.service.void("00000000-0000-4000-8000-000000000000", "other")),
-            lambda: run(s.d.service.acknowledge("00000000-0000-4000-8000-000000000000")),
+            lambda: run(s.d.service.acknowledge("00000000-0000-4000-8000-000000000000", 1)),
         ):
             with pytest.raises(LedgerRefusedError) as info:
                 action()
@@ -491,10 +492,160 @@ def test_an_unknown_promise_is_refused(tmp_path: Path) -> None:  # [NEG]
 def test_acknowledge_records_that_the_owner_saw_the_flag(tmp_path: Path) -> None:
     with scenario(tmp_path) as s:
         [pid] = s.promise_ids()
-        event = run(s.d.service.acknowledge(pid))
-        assert (event.kind, event.state, event.detail_code) == ("acknowledged", None, None)
-        assert kinds(s, pid) == ["created", "acknowledged"]
-        assert recall(s).items[0].previous_state is None  # an acknowledgement is not a recall state
+        seen = recall(s).items[0].ack.recall_event_id
+        assert seen is not None
+        event = run(s.d.service.acknowledge(pid, seen))
+        assert (event.kind, event.state, event.detail_code) == ("acknowledged", "intact", None)
+        assert kinds(s, pid) == ["created", "recall_state_changed", "acknowledged"]
+        again = recall(s).items[
+            0
+        ]  # an acknowledgement is not a recall state: nothing new to record
+        assert (again.previous_state, again.event_recorded) == ("intact", False)
+
+
+GONE = policy_text(HEADING, "Data at rest is not encrypted.", KEYS)
+
+
+def test_a_stale_acknowledgement_is_refused_and_the_ledger_file_is_unchanged(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+        first = recall(s).items[0].ack.recall_event_id
+        set_text(s.vault, POLICY, GONE)
+        second = recall(s).items[0].ack.recall_event_id
+        assert first is not None and second is not None and second > first
+        ledger_file = tmp_path / "ledger" / "ledger.sqlite3"  # where `draft_for` keeps it
+        before = ledger_file.read_bytes()
+        with pytest.raises(RecallRefusedError) as info:
+            run(s.d.service.acknowledge(pid, first))  # the owner saw "intact"; it is "changed" now
+        assert info.value.code == "acknowledge_stale" and info.value.counts == {}
+        assert kinds(s, pid) == ["created", "recall_state_changed", "recall_state_changed"]
+        assert ledger_file.read_bytes() == before
+
+
+def test_an_acknowledgement_with_no_recall_yet_is_stale(tmp_path: Path) -> None:  # [NEG]
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+        with pytest.raises(RecallRefusedError) as info:
+            run(s.d.service.acknowledge(pid, 1))
+        assert info.value.code == "acknowledge_stale"
+        assert kinds(s, pid) == ["created"]
+
+
+def test_recall_and_the_listing_say_which_state_was_acknowledged_and_whether_it_is_current(
+    tmp_path: Path,
+) -> None:
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+
+        def listed() -> tuple[int | None, int | None, str | None, bool]:
+            [view] = run(s.d.service.promises(None, False, 1)).items
+            a = view.ack
+            return (
+                a.recall_event_id,
+                a.acknowledged_event_id,
+                a.acknowledged_state,
+                (a.acknowledgement_current),
+            )
+
+        assert listed() == (None, None, None, False)  # no recall, no acknowledgement
+        set_text(s.vault, POLICY, GONE)
+        item = recall(s).items[0]
+        seen = item.ack.recall_event_id
+        assert seen is not None and item.ack.acknowledged_event_id is None
+        assert item.ack.acknowledgement_current is False  # nothing acknowledged
+        ack = run(s.d.service.acknowledge(pid, seen))
+        assert listed() == (seen, ack.event_id, "changed", True)
+        again = recall(s).items[0]  # nothing changed, so no new recall event: still current
+        assert (again.event_recorded, again.ack.acknowledgement_current) == (False, True)
+        assert again.ack.acknowledged_state == "changed"
+        set_text(s.vault, POLICY, BASE)
+        back = recall(s).items[0]  # a later recall event exists: the acknowledgement is old news
+        assert back.event_recorded and back.state == "intact"
+        assert back.ack.recall_event_id is not None and back.ack.recall_event_id > ack.event_id
+        assert back.ack.acknowledged_event_id == ack.event_id
+        assert back.ack.acknowledged_state == "changed"
+        assert back.ack.acknowledgement_current is False
+        assert listed() == (back.ack.recall_event_id, ack.event_id, "changed", False)
+
+
+def test_an_old_acknowledgement_with_no_state_is_shown_without_one(tmp_path: Path) -> None:
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+        seen = recall(s).items[0].ack.recall_event_id
+        assert seen is not None
+        old_style_acknowledgement(tmp_path / "ledger" / "ledger.sqlite3", pid)
+        item = recall(s).items[0]
+        assert item.ack.acknowledged_state is None and item.ack.acknowledged_event_id is not None
+        assert item.ack.acknowledgement_current is True  # no recall event after it
+        [view] = run(s.d.service.promises(None, False, 1)).items
+        assert view.ack.acknowledged_state is None
+
+
+# ----- item fields, the locations cap and flags_now -----------------------------------------------
+
+
+def test_recall_items_say_which_promise_they_are_in_codes_and_numbers(tmp_path: Path) -> None:
+    with scenario(tmp_path) as s:
+        [promise] = run(s.d.repo.list_promises())
+        item = recall(s).items[0]
+        assert (item.customer_id, item.source_path) == (promise.customer_id, POLICY)
+        assert (item.start_line, item.end_line) == (QUOTE_LINE, QUOTE_LINE)
+
+
+def test_moved_locations_are_capped_at_twenty_with_a_count_of_the_rest(tmp_path: Path) -> None:
+    many = policy_text(HEADING, "Gone.", *([QUOTE] * 25))
+    with scenario(tmp_path) as s:
+        set_text(s.vault, POLICY, many)
+        item = recall(s).items[0]
+        assert item.state == "moved"
+        assert len(item.locations) == service_module.MAX_LOCATIONS == 20
+        assert item.locations_not_listed == 5
+        assert item.locations[0] == (9, 9) and item.locations[-1] == (28, 28)
+
+
+def test_twenty_locations_are_all_listed_and_none_are_hidden(tmp_path: Path) -> None:
+    exactly = policy_text(HEADING, "Gone.", *([QUOTE] * 20))
+    with scenario(tmp_path) as s:
+        set_text(s.vault, POLICY, exactly)
+        item = recall(s).items[0]
+        assert (len(item.locations), item.locations_not_listed) == (20, 0)
+
+
+def test_a_blast_item_names_its_promise_and_carries_the_flags_of_the_current_file(
+    tmp_path: Path,
+) -> None:
+    overdue = BASE.replace("review_by: 2030-01-01", "review_by: 2020-01-01")
+    with scenario(tmp_path) as s:
+        set_text(s.vault, POLICY, overdue)  # the file as it is NOW: a review that is overdue
+        [promise] = run(s.d.repo.list_promises())
+        report = run(s.d.service.blast_radius(POLICY, BASE, None))  # proposed: the date is fixed
+        [item] = report.items
+        assert item.flags == () and item.flags_now == (
+            "document_changed_elsewhere",
+            "review_overdue",
+        )
+        assert (item.customer_id, item.source_path) == (promise.customer_id, POLICY)
+        assert (item.start_line, item.end_line) == (QUOTE_LINE, QUOTE_LINE)
+        proposed_overdue = run(s.d.service.blast_radius(POLICY, overdue, None)).items[0]
+        assert proposed_overdue.flags == proposed_overdue.flags_now != ()
+
+
+def test_the_blast_radius_report_states_what_it_covers(tmp_path: Path) -> None:
+    with scenario(tmp_path) as s:
+        report = run(s.d.service.blast_radius(POLICY, BASE, None))
+        assert report.coverage == "promises only; controls and linking documents are not checked"
+        nothing = run(s.d.service.blast_radius("policies/none.md", BASE, None))
+        assert nothing.items == () and nothing.coverage == report.coverage
+
+
+def test_blast_locations_are_capped_at_twenty_with_a_count_of_the_rest(tmp_path: Path) -> None:
+    with scenario(tmp_path) as s:
+        proposed = policy_text(HEADING, "Gone.", *([QUOTE] * 30))
+        [item] = run(s.d.service.blast_radius(POLICY, proposed, None)).items
+        assert item.state_proposed == "moved"
+        assert (len(item.locations), item.locations_not_listed) == (20, 10)
 
 
 # ----- the import's information count -------------------------------------------------------------
@@ -557,9 +708,10 @@ def test_a_canary_in_a_quote_an_answer_and_a_customer_name_reaches_no_log(  # [N
         recall_report = run(d.service.recall(None))
         assert recall_report.items[0].state == "intact"
         set_text(vault, POLICY, policy_text(HEADING, f"{CANARY} was removed.", KEYS))
-        assert run(d.service.recall(None)).items[0].state == "changed"
+        changed = run(d.service.recall(None)).items[0]
+        assert changed.state == "changed" and changed.ack.recall_event_id is not None
         [pid] = [p.promise_id for p in run(d.repo.list_promises())]
-        run(d.service.acknowledge(pid))
+        run(d.service.acknowledge(pid, changed.ack.recall_event_id))
         run(d.service.void(pid, "other"))
         run(d.service.promises(None, True, 1))
     assert CANARY not in caplog.text

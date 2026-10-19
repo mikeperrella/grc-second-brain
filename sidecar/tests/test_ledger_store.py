@@ -2,6 +2,7 @@
 is synthetic."""
 
 import asyncio
+import hashlib
 import inspect
 import logging
 import re
@@ -21,6 +22,7 @@ from grc_sidecar.errors import (
     LedgerRootNotConfiguredError,
     LedgerSchemaMismatchError,
     LedgerStoreError,
+    RecallRefusedError,
 )
 from grc_sidecar.repositories import sqlite_ledger_repo
 from grc_sidecar.repositories.base import (
@@ -475,7 +477,8 @@ def test_events_are_ordered_by_integer_id_and_dated_by_the_clock(populated: Path
     async def scenario() -> None:
         repo = await open_repo(populated)
         promise = (await repo.list_promises())[0]
-        await repo.add_event(NewPromiseEvent(promise_id=promise.promise_id, kind="acknowledged"))
+        [_, seen] = await repo.list_events(promise.promise_id)  # created, then the recall event
+        await repo.acknowledge_current(promise.promise_id, seen.event_id)
         await repo.add_event(
             NewPromiseEvent(
                 promise_id=promise.promise_id, kind="voided", detail_code="wrong_customer"
@@ -500,7 +503,10 @@ def test_events_are_ordered_by_integer_id_and_dated_by_the_clock(populated: Path
     "event",
     [
         {"kind": "recall_state_changed"},  # a state change needs a state
+        # G35: an acknowledgement is written only by `acknowledge_current`, which checks the latest
+        # recall event; through `add_event` it is refused with a state and without one.
         {"kind": "acknowledged", "state": "intact"},
+        {"kind": "acknowledged"},
         {"kind": "voided"},  # a void needs a reason code
         {"kind": "voided", "detail_code": "free text is not allowed"},
         {"kind": "voided", "state": "intact", "detail_code": "other"},
@@ -528,11 +534,205 @@ def test_an_event_for_an_unknown_promise_is_refused(populated: Path) -> None:  #
     async def scenario() -> None:
         repo = await open_repo(populated)
         with pytest.raises(LedgerRefusedError) as info:
-            await repo.add_event(NewPromiseEvent(promise_id="nope", kind="acknowledged"))
+            await repo.add_event(
+                NewPromiseEvent(promise_id="nope", kind="voided", detail_code="other")
+            )
         assert info.value.code == "promise_unknown"
         await repo.close()
 
     asyncio.run(scenario())
+
+
+# ----- acknowledge_current (G35, chunk 65b) -------------------------------------------------
+
+
+def sha256_of(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_an_acknowledgement_copies_the_state_and_detail_of_the_recall_event_seen(
+    populated: Path,
+) -> None:
+    async def scenario() -> None:
+        repo = await open_repo(populated)
+        promise = (await repo.list_promises())[0]
+        pid = promise.promise_id
+        changed = await repo.add_event(
+            NewPromiseEvent(
+                promise_id=pid,
+                kind="recall_state_changed",
+                state="changed",
+                detail_code="quote_not_found",
+            )
+        )
+        ack = await repo.acknowledge_current(pid, changed.event_id)
+        assert (ack.kind, ack.state, ack.detail_code) == (
+            "acknowledged",
+            "changed",
+            "quote_not_found",
+        )
+        assert ack.event_id > changed.event_id and ack.on_date == TODAY
+        again = await repo.acknowledge_current(pid, changed.event_id)  # still the latest: allowed
+        assert again.event_id > ack.event_id
+        assert [e.kind for e in await repo.list_events(pid)] == [
+            "created",
+            "recall_state_changed",
+            "recall_state_changed",
+            "acknowledged",
+            "acknowledged",
+        ]
+        await repo.close()
+
+    asyncio.run(scenario())
+
+
+def test_an_acknowledgement_of_an_older_recall_event_is_stale_and_writes_nothing(  # [NEG]
+    populated: Path,
+) -> None:
+    async def scenario() -> None:
+        repo = await open_repo(populated)
+        pid = (await repo.list_promises())[0].promise_id
+        [_, first] = await repo.list_events(pid)
+        await repo.add_event(
+            NewPromiseEvent(
+                promise_id=pid,
+                kind="recall_state_changed",
+                state="changed",
+                detail_code="quote_not_found",
+            )
+        )
+        await repo.close()
+        before = sha256_of(populated)
+        repo = await open_repo(populated)
+        with pytest.raises(RecallRefusedError) as info:
+            await repo.acknowledge_current(pid, first.event_id)
+        assert info.value.code == "acknowledge_stale"
+        await repo.close()
+        assert sha256_of(populated) == before  # not one byte of the ledger file changed
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("seen", [1, 9_999])
+def test_an_acknowledgement_naming_any_other_event_is_stale(  # [NEG]
+    populated: Path, seen: int
+) -> None:
+    async def scenario() -> None:
+        repo = await open_repo(populated)
+        pid = (await repo.list_promises())[0].promise_id
+        before = len(await repo.list_events(pid))
+        with pytest.raises(RecallRefusedError) as info:
+            await repo.acknowledge_current(pid, seen)  # 1 is the `created` event, not a recall
+        assert info.value.code == "acknowledge_stale"
+        assert len(await repo.list_events(pid)) == before
+        await repo.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_promise_with_no_recall_event_cannot_be_acknowledged(  # [NEG]
+    ledger_file: Path,
+) -> None:
+    async def scenario() -> None:
+        repo = await open_repo(ledger_file)
+        await repo.add_run_record(new_run(), [answer(2)])
+        customer = await repo.add_customer("Acme Corp")
+        promise = await repo.add_promise(new_promise(customer.customer_id, 2))
+        with pytest.raises(RecallRefusedError) as info:
+            await repo.acknowledge_current(promise.promise_id, 1)
+        assert info.value.code == "acknowledge_stale"
+        assert [e.kind for e in await repo.list_events(promise.promise_id)] == ["created"]
+        await repo.close()
+
+    asyncio.run(scenario())
+
+
+def test_an_unknown_or_voided_promise_cannot_be_acknowledged(populated: Path) -> None:  # [NEG]
+    async def scenario() -> None:
+        repo = await open_repo(populated)
+        with pytest.raises(LedgerRefusedError) as unknown:
+            await repo.acknowledge_current("nope", 2)
+        assert unknown.value.code == "promise_unknown"
+        pid = (await repo.list_promises())[0].promise_id
+        [_, seen] = await repo.list_events(pid)
+        await repo.add_event(NewPromiseEvent(promise_id=pid, kind="voided", detail_code="other"))
+        with pytest.raises(RecallRefusedError) as voided:
+            await repo.acknowledge_current(pid, seen.event_id)
+        assert voided.value.code == "promise_voided"
+        assert [e.kind for e in await repo.list_events(pid)] == [
+            "created",
+            "recall_state_changed",
+            "voided",
+        ]
+        await repo.close()
+
+    asyncio.run(scenario())
+
+
+def old_style_acknowledgement(path: Path, promise_id: str) -> None:
+    """An `acknowledged` row with no state, as ALIBI wrote them before chunk 65b (raw INSERT)."""
+    values = (promise_id, "acknowledged", None, None, TODAY.isoformat())
+    con = sqlite3.connect(path)
+    try:
+        con.execute(
+            "INSERT INTO promise_event (promise_id, kind, state, detail_code, on_date, row_sha256)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (*values, row_hash("promise_event", values)),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def test_an_old_acknowledgement_with_no_state_is_still_readable(populated: Path) -> None:
+    async def scenario() -> None:
+        repo = await open_repo(populated)
+        pid = (await repo.list_promises())[0].promise_id
+        await repo.close()
+        old_style_acknowledgement(populated, pid)
+        repo = await open_repo(populated)
+        events = await repo.list_events(pid)
+        assert [e.kind for e in events] == ["created", "recall_state_changed", "acknowledged"]
+        assert (events[-1].state, events[-1].detail_code) == (None, None)
+        await repo.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_ledger_written_before_this_change_still_opens(  # [NEG]
+    ledger_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SCHEMA_VERSION stays 1: a file made by the earlier code (same tables, version 1, an old
+    stateless acknowledgement in it) must open with the code as it is now."""
+
+    async def old_writer() -> str:
+        repo = await open_repo(ledger_file)  # the version this module wrote before the change
+        await repo.add_run_record(new_run(), [answer(2)])
+        customer = await repo.add_customer("Acme Corp")
+        promise = await repo.add_promise(new_promise(customer.customer_id, 2))
+        await repo.close()
+        return promise.promise_id
+
+    with monkeypatch.context() as earlier_code:
+        earlier_code.setattr(sqlite_ledger_repo, "SCHEMA_VERSION", 1)
+        pid = asyncio.run(old_writer())
+    old_style_acknowledgement(ledger_file, pid)
+    con = sqlite3.connect(ledger_file)
+    try:
+        assert con.execute("SELECT version FROM schema_info").fetchall() == [(1,)]
+    finally:
+        con.close()
+    before = sha256_of(ledger_file)  # and now the code as it is must accept the file
+
+    async def reopen() -> list[str]:
+        repo = SqliteLedgerRepository(ledger_file, FixedClock(TODAY))
+        await repo.open_or_create()
+        kinds = [e.kind for e in await repo.list_events(pid)]
+        await repo.close()
+        return kinds
+
+    assert asyncio.run(reopen()) == ["created", "acknowledged"]
+    assert sha256_of(ledger_file) == before
 
 
 # ----- row hashes ---------------------------------------------------------------------------

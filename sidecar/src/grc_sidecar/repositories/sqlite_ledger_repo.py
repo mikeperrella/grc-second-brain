@@ -29,6 +29,7 @@ from grc_sidecar.errors import (
     LedgerRootNotConfiguredError,
     LedgerSchemaMismatchError,
     LedgerStoreError,
+    RecallRefusedError,
 )
 from grc_sidecar.repositories.base import (
     Customer,
@@ -648,7 +649,7 @@ class _LedgerStore:
     def add_event(self, event: NewPromiseEvent) -> PromiseEvent:
         valid = {
             "recall_state_changed": event.state is not None,
-            "acknowledged": event.state is None,
+            "acknowledged": False,  # only `acknowledge_current` writes one, with its precondition
             "voided": event.state is None and event.detail_code in _VOID_REASONS,
         }[event.kind]
         if not valid:
@@ -664,6 +665,36 @@ class _LedgerStore:
                 self._clock.today().isoformat(),
             )
         for stored in self.list_events(event.promise_id):
+            if stored.event_id == event_id:
+                return stored
+        raise LedgerStoreError  # pragma: no cover  (the row was just committed)
+
+    def acknowledge_current(self, promise_id: str, seen_recall_event_id: int) -> PromiseEvent:
+        """An append with a precondition (G35): the owner saw the promise's LATEST recall state.
+
+        Everything is decided inside one `BEGIN IMMEDIATE` transaction, so a recall event that
+        arrives between the check and the insert cannot be missed. The state and detail code of
+        the recall event the owner saw are copied into the new event. It is not an update: the
+        recall event is read, a new row is added, nothing is changed. A refusal writes nothing.
+        """
+        with self._transaction():
+            if not self._exists("promise", "promise_id", promise_id):
+                raise LedgerRefusedError("promise_unknown")
+            events = self.list_events(promise_id)
+            if any(event.kind == "voided" for event in events):
+                raise RecallRefusedError("promise_voided")
+            recalls = [event for event in events if event.kind == "recall_state_changed"]
+            latest = recalls[-1] if recalls else None
+            if latest is None or latest.event_id != seen_recall_event_id:
+                raise RecallRefusedError("acknowledge_stale")
+            event_id = self._insert_event(
+                promise_id,
+                "acknowledged",
+                latest.state,
+                latest.detail_code,
+                self._clock.today().isoformat(),
+            )
+        for stored in self.list_events(promise_id):
             if stored.event_id == event_id:
                 return stored
         raise LedgerStoreError  # pragma: no cover  (the row was just committed)
@@ -765,6 +796,10 @@ class SqliteLedgerRepository:
     async def add_event(self, event: NewPromiseEvent) -> PromiseEvent:
         store = self._store()
         return await self._run(lambda: store.add_event(event))
+
+    async def acknowledge_current(self, promise_id: str, seen_recall_event_id: int) -> PromiseEvent:
+        store = self._store()
+        return await self._run(lambda: store.acknowledge_current(promise_id, seen_recall_event_id))
 
     async def list_events(self, promise_id: str) -> list[PromiseEvent]:
         store = self._store()

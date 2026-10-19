@@ -56,10 +56,11 @@ EXPECTED_REQUEST_FIELDS = {
         "new_customer_name",
         "confirm_new",
         "sent_on",
+        "preview",
     },
     "RecallRequest": {"customer_id"},
     "VoidRequest": {"reason"},
-    "EmptyRequest": set(),
+    "AcknowledgeRequest": {"seen_recall_event_id"},
     "BlastRadiusRequest": {"path", "proposed_text", "delete_file", "customer_id"},
 }
 
