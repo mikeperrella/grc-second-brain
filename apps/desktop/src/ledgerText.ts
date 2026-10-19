@@ -1,9 +1,9 @@
 // The wording of the ledger, recall and import screens (chunks 65f and 65g) that is NOT in
 // docs/DESIGN.md section 11.
 //
-// The 65f constants in this file were approved by the owner on 2026-10-19, and any constant added
-// in 65g is a DRAFT until the owner approves it (all of them are under the "65g DRAFT" comment
-// near the end of this file). The sentences of DESIGN.md 11.1
+// The 65f constants and the 65g constants in this file were all approved by the owner on
+// 2026-10-19 (the 65g ones are under the "65g DRAFT" comment near the end of this file; the name
+// is historical). The sentences of DESIGN.md 11.1
 // (approved 2026-10-19) are in fixedTexts.ts, not here. Everything below is either a plain
 // functional label (a heading, a button, a field name) or one short sentence a refusal needs. A
 // screen shows these constants and never text built from sidecar, file or model data. No
@@ -125,9 +125,9 @@ export const FLAG_FRONTMATTER_INVALID = "Front matter invalid";
 export const UNKNOWN_FLAG_TEXT = "Unknown flag: ALIBI cannot show a label for this value.";
 
 // ===== 65g DRAFT ================================================================================
-// Every constant from here to the end of the file was added in chunk 65g (the Import screen) and is
-// a DRAFT until the owner approves it. Plain functional labels, and one short sentence per refusal
-// or input problem that names what the code means. The import screen's statements are the four
+// Every constant from here to the end of the file was added in chunk 65g (the Import screen). They
+// were approved by the owner on 2026-10-19; the block name "65g DRAFT" is historical, and scripts
+// look for it. Plain functional labels, and one short sentence per refusal or input problem that names what the code means. The import screen's statements are the four
 // DESIGN.md 11.1 "Import" rows in fixedTexts.ts, not here.
 
 export const NAV_LABEL_IMPORT = "Import";

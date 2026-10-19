@@ -51,7 +51,7 @@ const WORDS = {
   mismatch:
     "A question in this file was changed after ALIBI drafted it, so ALIBI cannot match the rows to its record and shows none of them. Open the original draft instead, or run the questionnaire again. (Code: question_mismatch)",
   approval:
-    'This queue is for reading. ALIBI does not record approval. To approve an answer, type "approved" in the Review column of the workbook, then import it into the ledger (the import screen comes in a later chunk).',
+    'This queue is for reading. ALIBI does not record approval. To approve an answer, type "approved" in the Review column of the workbook, then import it into the ledger.',
   recordMissing:
     "ALIBI has no record of this draft, so it cannot show its answers with verified citations. This happens when the run was made without a ledger folder, or the file was renamed. Set the ledger folder, restart ALIBI and run again.",
   headers:
@@ -161,6 +161,7 @@ describe("the fixed statements are exactly the owner's words", () => {
     expect(EDITED_ANSWER_LINE).toBe(WORDS.editedAnswer);
     expect(QUESTION_MISMATCH_TEXT).toBe(WORDS.mismatch);
     expect(APPROVAL_LINE).toBe(WORDS.approval);
+    expect(APPROVAL_LINE).not.toContain("later chunk");
     expect(RUN_RECORD_MISSING_TEXT).toBe(WORDS.recordMissing);
     expect(HEADERS_CHANGED_TEXT).toBe(WORDS.headers);
     expect(DRAFT_UNREADABLE_TEXT).toBe(WORDS.unreadable);

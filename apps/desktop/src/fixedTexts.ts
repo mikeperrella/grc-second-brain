@@ -76,7 +76,7 @@ export const QUESTION_MISMATCH_TEXT =
 
 /** Always shown in the queue: the queue records no approval (ADR-021 decision 7). */
 export const APPROVAL_LINE =
-  'This queue is for reading. ALIBI does not record approval. To approve an answer, type "approved" in the Review column of the workbook, then import it into the ledger (the import screen comes in a later chunk).';
+  'This queue is for reading. ALIBI does not record approval. To approve an answer, type "approved" in the Review column of the workbook, then import it into the ledger.';
 
 /** `draft_refused` with `run_record_missing` (ADR-021 decision 5). */
 export const RUN_RECORD_MISSING_TEXT =

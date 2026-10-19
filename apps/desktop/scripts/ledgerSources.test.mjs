@@ -184,9 +184,13 @@ describe("the ledger and recall sources (F40)", () => {
   it("ledgerText.ts says which constants are approved and keeps every 65g one in its DRAFT block (65f tidy-up d)", () => {
     const text = (sources.get("src/ledgerText.ts") ?? "").replace(/\r\n/g, "\n");
     const header = text.split("\n").slice(0, 12).join("\n");
-    expect(header).toContain("The 65f constants in this file were approved by the owner on 2026-10-19");
-    expect(header).toContain("any constant added\n// in 65g is a DRAFT until the owner approves it");
+    expect(header).toContain(
+      "The 65f constants and the 65g constants in this file were all approved by the owner on\n// 2026-10-19",
+    );
+    expect(header).not.toContain("is a DRAFT until the owner approves it");
     expect(text).not.toContain("EVERY constant in this file is a DRAFT");
+    expect(text).not.toContain("is\n// a DRAFT until the owner approves it");
+    expect(text).toContain("They\n// were approved by the owner on 2026-10-19; the block name \"65g DRAFT\" is historical");
     const start = text.indexOf("// ===== 65g DRAFT ");
     const end = text.indexOf("// ===== end of 65g DRAFT ");
     expect(start).toBeGreaterThan(0);
