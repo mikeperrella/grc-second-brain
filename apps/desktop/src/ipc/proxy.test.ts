@@ -7,18 +7,40 @@ import {
   ERROR_STATUSES,
   FIXED_ERROR_WORDS,
   FORWARDED_STATUSES,
+  M65_API_ERROR_WORDS,
   MAPPING_REFUSAL_CODES,
+  MAX_PROPOSED_TEXT_BYTES,
   ROUTE_NAMES,
   SUCCESS_STATUSES,
   WORKBOOK_REFUSAL_CODES,
   callRoute,
+  codePointCount,
+  isCalendarDate,
+  isTypeItem,
   parseRejection,
   proxyErrorSchema,
   routeReplySchemas,
   routeRequestSchema,
+  utf8ByteLength,
   type Invoke,
   type RouteName,
 } from "./proxy";
+
+// The sidecar's recorded replies (written by sidecar/tests/test_reply_contracts.py). The full
+// parse of every case is scripts/replyContracts.test.mjs; here only the first success of each.
+const RECORDED = import.meta.glob<{ route: string; replies: { case: string; status: number; body: unknown }[] }>(
+  "../../../../fixtures/contracts/replies/*.json",
+  { eager: true, import: "default" },
+);
+
+function firstSuccess(route: string): { status: number; body: unknown } {
+  const file = Object.entries(RECORDED).find(([path]) => path.endsWith(`/${route}.json`))?.[1];
+  const found = file?.replies.find((entry) => entry.status === 200 || entry.status === 202);
+  if (found === undefined) {
+    throw new Error(`no recorded success for ${route}`);
+  }
+  return { status: found.status, body: found.body };
+}
 
 // The names the schema accepts, read from the schema itself (not from a second hand-kept list).
 const schemaErrors = proxyErrorSchema.options.map((option) => option.shape.error.value);
@@ -28,7 +50,7 @@ const sorted = <T extends string | number>(values: readonly T[]): T[] => [...val
 describe("the contract fixture written by the Rust test", () => {
   it("is not empty, so the checks below cannot pass over nothing", () => {
     expect(contract.errors.length).toBe(8);
-    expect(contract.route_names.length).toBe(7);
+    expect(contract.route_names.length).toBe(21);
     expect(contract.forwarded_statuses.length).toBe(7);
   });
 
@@ -61,6 +83,9 @@ describe("the contract fixture written by the Rust test", () => {
 
 const HEX = "0123456789abcdef";
 const SHA = HEX.repeat(4);
+const PROMISE = "00000000-0000-4000-8000-000000000001";
+
+const CLAIM = { path: "access-control-policy.md", start_line: 23, end_line: 23, quote: "MFA is required." };
 
 const REQUESTS = {
   readiness: { route: "readiness" },
@@ -74,6 +99,36 @@ const REQUESTS = {
   vault_index_start: { route: "vault_index_start" },
   vault_index_status: { route: "vault_index_status", job_id: HEX },
   draft_rows: { route: "draft_rows", file: "caiq-UNREVIEWED-DRAFT-0123abcd.xlsx" },
+  ledger_customers: { route: "ledger_customers" },
+  ledger_promises: { route: "ledger_promises", include_voided: false, page: 1, page_size: 100 },
+  ledger_cited_paths: { route: "ledger_cited_paths" },
+  ledger_import: {
+    route: "ledger_import",
+    run_id: HEX,
+    file: "caiq-UNREVIEWED-DRAFT-0123abcd.xlsx",
+    new_customer_name: "Acme Test Co",
+    confirm_new: true,
+    sent_on: "2026-10-10",
+    preview: true,
+  },
+  ledger_recall: { route: "ledger_recall" },
+  ledger_void: { route: "ledger_void", promise_id: PROMISE, reason: "other" },
+  ledger_acknowledge: { route: "ledger_acknowledge", promise_id: PROMISE, seen_recall_event_id: 5 },
+  ledger_blast_radius: { route: "ledger_blast_radius", path: "policies/enc.md", proposed_text: "new", delete_file: false },
+  reality_inspect: { route: "reality_inspect", file: "okta.csv" },
+  reality_claims: { route: "reality_claims" },
+  reality_check: {
+    route: "reality_check",
+    file: "okta.csv",
+    claim: CLAIM,
+    mfa_types: ["Okta Verify"],
+    phone_types: [],
+    active_statuses: ["Active"],
+    exported_at: "2026-10-01",
+  },
+  contradictions_start: { route: "contradictions_start" },
+  contradictions_status: { route: "contradictions_status", run_id: HEX },
+  vault_graph: { route: "vault_graph" },
 } as const satisfies Record<RouteName, unknown>;
 
 describe("the request schema", () => {
@@ -103,6 +158,258 @@ describe("the request schema", () => {
     for (const request of bad) {
       expect(routeRequestSchema.safeParse(request).success, JSON.stringify(request)).toBe(false);
     }
+  });
+});
+
+// The host's checks in src-tauri/src/proxy/route.rs, repeated in the window (chunk 65e). Each
+// case is one route.rs rule; `ok` mutates a valid request, `refused` must fail.
+describe("the M6.5 request schemas mirror the host's route.rs", () => {
+  const accepts = (request: unknown): boolean => routeRequestSchema.safeParse(request).success;
+  const without = (request: object, key: string): Record<string, unknown> => {
+    const copy: Record<string, unknown> = { ...request };
+    delete copy[key];
+    return copy;
+  };
+
+  it("ledger_promises needs include_voided, page and page_size every time, each in range", () => {
+    const base = REQUESTS.ledger_promises;
+    expect(accepts(base)).toBe(true);
+    expect(accepts({ ...base, customer_id: HEX })).toBe(true);
+    expect(accepts({ ...base, page: 100_000, page_size: 1 })).toBe(true);
+    for (const key of ["include_voided", "page", "page_size"]) {
+      expect(accepts(without(base, key)), `missing ${key}`).toBe(false);
+    }
+    for (const bad of [
+      { page: 0 },
+      { page: 100_001 },
+      { page: 1.5 },
+      { page: "1" },
+      { page_size: 0 },
+      { page_size: 101 },
+      { page_size: -1 },
+      { include_voided: "true" },
+      { customer_id: "ABCDEF12" },
+      { customer_id: PROMISE },
+      { query: "page=1" },
+    ]) {
+      expect(accepts({ ...base, ...bad }), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("a promise id is a dashed lowercase UUID, never a hex id or anything with other characters", () => {
+    const voidOf = (promise_id: unknown) => ({ ...REQUESTS.ledger_void, promise_id });
+    const lettered = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+    expect(accepts(voidOf(PROMISE))).toBe(true);
+    expect(accepts(voidOf(lettered))).toBe(true);
+    for (const bad of [
+      lettered.toUpperCase(),
+      "0A1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "00000000-0000-4000-8000-00000000000A",
+      `{${PROMISE}}`,
+      PROMISE.split("-").join(""),
+      "00000000-00004-000-8000-000000000001",
+      `${PROMISE}0`,
+      PROMISE.slice(1),
+      "00000000-0000-4000-8000-0000000000.1",
+      "00000000-0000-4000-8000-00000000/../",
+      "00000000-0000-4000-8000-000000000?01",
+      HEX,
+      "",
+    ]) {
+      expect(accepts(voidOf(bad)), bad).toBe(false);
+      expect(accepts({ ...REQUESTS.ledger_acknowledge, promise_id: bad }), bad).toBe(false);
+    }
+  });
+
+  it("void takes one of the four reasons and nothing else; acknowledge a whole event id from 1", () => {
+    for (const reason of ["wrong_customer", "imported_in_error", "not_actually_sent", "other"]) {
+      expect(accepts({ ...REQUESTS.ledger_void, reason }), reason).toBe(true);
+    }
+    for (const reason of ["Other", "typo", "", "wrong customer"]) {
+      expect(accepts({ ...REQUESTS.ledger_void, reason }), reason).toBe(false);
+    }
+    expect(accepts(without(REQUESTS.ledger_void, "reason"))).toBe(false);
+    expect(accepts({ ...REQUESTS.ledger_void, suffix: "/acknowledge" })).toBe(false);
+    for (const id of [0, -1, 1.5, "5", null, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(accepts({ ...REQUESTS.ledger_acknowledge, seen_recall_event_id: id }), String(id)).toBe(false);
+    }
+    expect(accepts(without(REQUESTS.ledger_acknowledge, "seen_recall_event_id"))).toBe(false);
+  });
+
+  it("a date is ASCII YYYY-MM-DD with a day that exists", () => {
+    const importOn = (sent_on: unknown) => ({ ...REQUESTS.ledger_import, sent_on });
+    const checkOn = (exported_at: unknown) => ({ ...REQUESTS.reality_check, exported_at });
+    for (const good of ["2024-02-29", "2026-12-31", "0001-01-01", "9999-12-31", "2000-02-29"]) {
+      expect(accepts(importOn(good)), good).toBe(true);
+      expect(accepts(checkOn(good)), good).toBe(true);
+    }
+    for (const bad of [
+      "2026-02-30",
+      "2025-02-29",
+      "1900-02-29",
+      "2026-04-31",
+      "2026-13-01",
+      "2026-00-10",
+      "2026-10-00",
+      "0000-01-01",
+      "2026-1-01",
+      "26-10-10",
+      "2026/10/10",
+      "２０２６-10-10",
+      "2026-10-10T00:00",
+      " 2026-10-10",
+      "",
+    ]) {
+      expect(accepts(importOn(bad)), bad).toBe(false);
+      expect(accepts(checkOn(bad)), bad).toBe(false);
+    }
+  });
+
+  it("ledger_import needs every field but the customer choice, each within its bound", () => {
+    const base = REQUESTS.ledger_import;
+    for (const key of ["run_id", "file", "confirm_new", "sent_on", "preview"]) {
+      expect(accepts(without(base, key)), `missing ${key}`).toBe(false);
+    }
+    expect(accepts(without(base, "new_customer_name"))).toBe(true);
+    expect(accepts({ ...without(base, "new_customer_name"), existing_customer_id: HEX })).toBe(true);
+    expect(accepts({ ...base, new_customer_name: "x".repeat(1_000) })).toBe(true);
+    // 1,000 characters outside the BMP (2,000 UTF-16 units): Rust counts characters.
+    expect(accepts({ ...base, new_customer_name: "\u{1F600}".repeat(1_000) })).toBe(true);
+    for (const bad of [
+      { new_customer_name: "" },
+      { new_customer_name: "x".repeat(1_001) },
+      { existing_customer_id: "ABCDEF12" },
+      { run_id: PROMISE },
+      { preview: "false" },
+      { confirm_new: 1 },
+      { file: "" },
+    ]) {
+      expect(accepts({ ...base, ...bad }), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("blast radius takes exactly one of the text or delete_file, and a vault-relative path", () => {
+    const base = REQUESTS.ledger_blast_radius;
+    expect(accepts({ ...without(base, "proposed_text"), delete_file: true })).toBe(true);
+    expect(accepts({ ...base, delete_file: true })).toBe(false);
+    expect(accepts(without(base, "proposed_text"))).toBe(false);
+    expect(accepts(without(base, "delete_file"))).toBe(false);
+    expect(accepts({ ...base, customer_id: HEX })).toBe(true);
+    expect(accepts({ ...base, path: "x".repeat(1_000) })).toBe(true);
+    expect(accepts({ ...base, path: "a..b/c..d.md" })).toBe(true);
+    for (const path of ["", "/etc/passwd", "C:secret.md", "c:/x.md", "a\\b.md", "a/../b.md", "..", "a/\0.md", "x".repeat(1_001)]) {
+      expect(accepts({ ...base, path }), JSON.stringify(path)).toBe(false);
+    }
+  });
+
+  it("blast radius counts the proposed text in UTF-8 bytes, not characters", () => {
+    const base = REQUESTS.ledger_blast_radius;
+    const withText = (proposed_text: string) => ({ ...base, proposed_text });
+    expect(MAX_PROPOSED_TEXT_BYTES).toBe(2_097_152);
+    expect(accepts(withText("a".repeat(MAX_PROPOSED_TEXT_BYTES)))).toBe(true);
+    expect(accepts(withText("a".repeat(MAX_PROPOSED_TEXT_BYTES + 1)))).toBe(false);
+    // 1,048,577 characters of two bytes each: 2,097,154 bytes, under the cap in characters.
+    const twoByte = "\u00e9".repeat(1_048_577);
+    expect(utf8ByteLength(twoByte)).toBe(2_097_154);
+    expect(accepts(withText(twoByte))).toBe(false);
+    // 1,048,576 of them is exactly the cap.
+    expect(accepts(withText("\u00e9".repeat(1_048_576)))).toBe(true);
+    // 699,051 three-byte characters: 2,097,153 bytes.
+    expect(accepts(withText("\u20ac".repeat(699_051)))).toBe(false);
+    expect(utf8ByteLength("\u{1F600}")).toBe(4);
+  });
+
+  it("reality_check needs all three lists, trims each item as Rust does and keeps the host's bounds", () => {
+    const base = REQUESTS.reality_check;
+    for (const key of ["file", "claim", "mfa_types", "phone_types", "active_statuses", "exported_at"]) {
+      expect(accepts(without(base, key)), `missing ${key}`).toBe(false);
+    }
+    const lists = (over: object) => ({ ...base, ...over });
+    expect(accepts(lists({ mfa_types: ["  Okta Verify  "], active_statuses: ["\u3000Active\u0085"] }))).toBe(true);
+    expect(accepts(lists({ phone_types: Array.from({ length: 50 }, (_, i) => `Phone ${i}`) }))).toBe(true);
+    expect(accepts(lists({ mfa_types: ["x".repeat(64)] }))).toBe(true);
+    expect(accepts(lists({ mfa_types: [` ${"x".repeat(64)} `] }))).toBe(true);
+    for (const bad of [
+      { mfa_types: [] },
+      { active_statuses: [] },
+      { phone_types: Array.from({ length: 51 }, (_, i) => `Phone ${i}`) },
+      { mfa_types: ["x".repeat(65)] },
+      { mfa_types: [" "] },
+      { mfa_types: [""] },
+      { mfa_types: ["\u001cOkta"] },
+      { mfa_types: ["Okta\u001f"] },
+      { mfa_types: [" \u001dOkta "] },
+      // U+FEFF is not White_Space: Rust leaves it, so the item is 65 characters.
+      { mfa_types: [`\ufeff${"x".repeat(64)}`] },
+      { mfa_types: [7] },
+    ]) {
+      expect(accepts(lists(bad)), JSON.stringify(bad)).toBe(false);
+    }
+    expect(isTypeItem("Okta\u001cVerify")).toBe(true);
+  });
+
+  it("a claim has lines in order from 1, a path of 1 to 512 and a quote of 1 to 2,000 characters", () => {
+    const claimed = (over: object) => ({ ...REQUESTS.reality_check, claim: { ...CLAIM, ...over } });
+    expect(accepts(claimed({ start_line: 1, end_line: 1 }))).toBe(true);
+    expect(accepts(claimed({ quote: "q".repeat(2_000), path: "p".repeat(512) }))).toBe(true);
+    for (const bad of [
+      { start_line: 0, end_line: 1 },
+      { start_line: 5, end_line: 4 },
+      { start_line: 1.5 },
+      { end_line: 4_294_967_296 },
+      { quote: "" },
+      { quote: "q".repeat(2_001) },
+      { path: "" },
+      { path: "p".repeat(513) },
+      { doc_id: "MQ-POL-001" },
+    ]) {
+      expect(accepts(claimed(bad)), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("contradictions_start takes an optional cap of 1 to 100 and a vault-relative scope", () => {
+    const base = REQUESTS.contradictions_start;
+    expect(accepts({ ...base, cap: 1, scope: "policies/" })).toBe(true);
+    expect(accepts({ ...base, cap: 100 })).toBe(true);
+    for (const bad of [
+      { cap: 0 },
+      { cap: 101 },
+      { cap: 2.5 },
+      { scope: "" },
+      { scope: "/abs" },
+      { scope: "C:x" },
+      { scope: "a\\b" },
+      { scope: "a/../b" },
+      { scope: "x".repeat(261) },
+    ]) {
+      expect(accepts({ ...base, ...bad }), JSON.stringify(bad)).toBe(false);
+    }
+    expect(accepts({ route: "contradictions_status", run_id: "ABCDEF12" })).toBe(false);
+  });
+
+  it("no new route takes a key route.rs does not name (a query, suffix or path key included)", () => {
+    for (const route of [
+      "ledger_customers",
+      "ledger_cited_paths",
+      "reality_claims",
+      "vault_graph",
+      "ledger_recall",
+      "contradictions_start",
+    ] as const) {
+      for (const extra of [{ query: "x=1" }, { suffix: "/void" }, { path: "/ledger/customers" }, { url: "http://x.test/" }]) {
+        expect(accepts({ ...REQUESTS[route], ...extra }), `${route} ${JSON.stringify(extra)}`).toBe(false);
+      }
+    }
+    expect(accepts({ ...REQUESTS.ledger_recall, customer_id: HEX })).toBe(true);
+    expect(accepts({ ...REQUESTS.ledger_recall, customer_id: null })).toBe(false);
+    expect(accepts({ ...REQUESTS.reality_inspect, file: "" })).toBe(false);
+  });
+
+  it("counts characters as Rust does (code points, not UTF-16 units)", () => {
+    expect(codePointCount("\u{1F600}a")).toBe(2);
+    expect(codePointCount("")).toBe(0);
+    expect(isCalendarDate("2024-02-29")).toBe(true);
+    expect(isCalendarDate("2023-02-29")).toBe(false);
   });
 });
 
@@ -147,6 +454,7 @@ describe("the reply schemas", () => {
       draft_rows: {
         status: 200,
         body: {
+          run_id: HEX,
           model: "llama3.1:8b",
           file_name: "x-UNREVIEWED-DRAFT-0123abcd.xlsx",
           complete: true,
@@ -166,9 +474,53 @@ describe("the reply schemas", () => {
           ],
         },
       },
+      ledger_customers: firstSuccess("ledger_customers"),
+      ledger_promises: firstSuccess("ledger_promises"),
+      ledger_cited_paths: firstSuccess("ledger_cited_paths"),
+      ledger_import: firstSuccess("ledger_import"),
+      ledger_recall: firstSuccess("ledger_recall"),
+      ledger_void: firstSuccess("ledger_void"),
+      ledger_acknowledge: firstSuccess("ledger_acknowledge"),
+      ledger_blast_radius: firstSuccess("ledger_blast_radius"),
+      reality_inspect: firstSuccess("reality_inspect"),
+      reality_claims: firstSuccess("reality_claims"),
+      reality_check: firstSuccess("reality_check"),
+      contradictions_start: firstSuccess("contradictions_start"),
+      contradictions_status: firstSuccess("contradictions_status"),
+      vault_graph: firstSuccess("vault_graph"),
     };
     for (const route of ROUTE_NAMES) {
       expect(routeReplySchemas[route].safeParse(success[route]).success, route).toBe(true);
+    }
+  });
+
+  it("an M6.5 route accepts its seven refusal families and every M6 core error; an M6 core route does not take the new ones", () => {
+    const samples = [
+      { error: "export_refused", code: "missing_column", column: "user.login" },
+      { error: "check_refused", code: "no_users_in_scope" },
+      { error: "ledger_refused", code: "customer_exists", customer_id: HEX },
+      { error: "import_refused", code: "question_mismatch", counts: { mismatched_rows: 1 } },
+      { error: "recall_refused", code: "acknowledge_stale" },
+      { error: "blast_radius_refused", code: "proposed_text_too_large", counts: { bytes: 3, cap: 2 } },
+      { error: "graph_refused", code: "graph_too_large", counts: { nodes: 501 } },
+    ];
+    expect(M65_API_ERROR_WORDS.length).toBe(API_ERROR_WORDS.length + 7);
+    for (const body of samples) {
+      expect(routeReplySchemas.ledger_void.safeParse({ status: 422, body }).success, body.error).toBe(true);
+      expect(M65_API_ERROR_WORDS).toContain(body.error);
+      expect(routeReplySchemas.draft_rows.safeParse({ status: 422, body }).success, body.error).toBe(false);
+    }
+    expect(routeReplySchemas.vault_graph.safeParse({ status: 503, body: { error: "ledger_unusable" } }).success).toBe(true);
+    for (const bad of [
+      { error: "graph_refused", code: "graph_too_big" },
+      { error: "recall_refused", code: "too_many_promises", counts: { promises: "2" } },
+      { error: "ledger_refused", code: "customer_exists", customer_id: "Acme Test Co" },
+      { error: "ledger_refused", code: "customer_exists", name: "Acme Test Co" },
+      { error: "check_refused", code: "claim_not_verbatim", counts: { a: 1 } },
+      { error: "export_refused", code: "missing_column", value: "row text" },
+      { error: "contradiction_refused", code: "x" },
+    ]) {
+      expect(routeReplySchemas.ledger_void.safeParse({ status: 422, body: bad }).success, JSON.stringify(bad)).toBe(false);
     }
   });
 
@@ -236,6 +588,7 @@ describe("the reply schemas", () => {
     const reply = {
       status: 200,
       body: {
+        run_id: HEX,
         model: "m",
         file_name: "f.xlsx",
         complete: true,

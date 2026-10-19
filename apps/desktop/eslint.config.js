@@ -27,6 +27,15 @@ export default defineConfig(
     files: ["src/**/*.{ts,tsx}"],
     rules: {
       "no-console": "error",
+      // ADR-022 decision 3: nothing the window holds (logins, policy text, customer names) may
+      // land in the webview's profile folder. scripts/noWebStorage.test.mjs also scans every src
+      // file as text, which catches `window.localStorage` and the names this rule cannot see.
+      "no-restricted-globals": [
+        "error",
+        { name: "localStorage", message: "Web storage is banned in the window (ADR-022 decision 3)." },
+        { name: "sessionStorage", message: "Web storage is banned in the window (ADR-022 decision 3)." },
+        { name: "indexedDB", message: "Web storage is banned in the window (ADR-022 decision 3)." },
+      ],
       "no-restricted-syntax": [
         "error",
         {

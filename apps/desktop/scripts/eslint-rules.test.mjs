@@ -25,6 +25,25 @@ describe("the console ban (F36-4)", () => {
   });
 });
 
+describe("the web storage ban (ADR-022 decision 3)", () => {
+  it("rejects localStorage, sessionStorage and indexedDB as globals in src", async () => {
+    for (const code of [
+      'localStorage.setItem("k", "v");\n',
+      'export const v = sessionStorage.getItem("k");\n',
+      'export const db = indexedDB.open("alibi");\n',
+    ]) {
+      for (const filePath of ["src/probe.ts", "src/components/Probe.tsx"]) {
+        expect(await firedRules(code, filePath), `${filePath}: ${code}`).toContain("no-restricted-globals");
+      }
+    }
+  });
+
+  it("does not flag a local name that only looks similar", async () => {
+    const code = "export const storageNote = (local: string) => local.length;\n";
+    expect(await firedRules(code, "src/probe.ts")).not.toContain("no-restricted-globals");
+  });
+});
+
 describe("the raw HTML ban (F36-1)", () => {
   it("rejects dangerouslySetInnerHTML as a JSX prop", async () => {
     const code = 'export const A = () => <div dangerouslySetInnerHTML={{ __html: "x" }} />;\n';
