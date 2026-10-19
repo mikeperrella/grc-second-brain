@@ -154,6 +154,53 @@ def test_every_item_and_the_report_carry_the_fixed_words(tmp_path: Path) -> None
         assert report["note"] is None
 
 
+def test_the_report_carries_a_fixed_coverage_sentence_even_with_no_match(tmp_path: Path) -> None:
+    with scenario(tmp_path) as s:
+        sentence = "promises only; controls and linking documents are not checked"
+        assert sentence == service_module.COVERAGE_LINE
+        assert ok(s, proposed_text=BASE)["coverage"] == sentence
+        assert ok(s, proposed_text=BASE, path=OTHER)["coverage"] == sentence  # no promise cites it
+
+
+def test_each_item_names_its_promise_by_path_lines_and_customer_and_holds_no_text(
+    tmp_path: Path,
+) -> None:
+    with scenario(tmp_path) as s:
+        [promise] = run(s.d.repo.list_promises())
+        response = blast(s, proposed_text=policy_text(HEADING, GONE, KEYS))
+        item = only_item(response.json())
+        assert item["customer_id"] == promise.customer_id == s.imported.customer_id
+        assert item["source_path"] == POLICY
+        assert (item["start_line"], item["end_line"]) == (8, 8)
+        assert "Do you encrypt" not in response.text and "Yes, answer" not in response.text
+
+
+def test_flags_now_are_the_flags_of_the_current_file_not_the_proposed_one(tmp_path: Path) -> None:
+    overdue = BASE.replace("review_by: 2030-01-01", "review_by: 2020-01-01")
+    with scenario(tmp_path) as s:
+        set_text(s.vault, POLICY, overdue)  # the file as it is NOW
+        item = only_item(ok(s, proposed_text=BASE))  # saving would fix the date
+        assert item["flags_now"] == ["document_changed_elsewhere", "review_overdue"]
+        assert item["flags"] == []
+        set_text(s.vault, POLICY, BASE)  # now the file is fine
+        fine = only_item(ok(s, proposed_text=overdue))  # saving would make the review overdue
+        assert fine["flags_now"] == []
+        assert fine["flags"] == ["document_changed_elsewhere", "review_overdue"]
+
+
+def test_the_locations_of_a_moved_quote_stop_at_twenty_and_the_rest_are_counted(
+    tmp_path: Path,
+) -> None:  # [NEG]
+    with scenario(tmp_path) as s:
+        item = only_item(ok(s, proposed_text=policy_text(HEADING, "Gone.", *([QUOTE] * 45))))
+        assert item["state_proposed"] == "moved"
+        locations = item["locations"]
+        assert isinstance(locations, list) and len(locations) == 20
+        assert item["locations_not_listed"] == 25
+        small = only_item(ok(s, proposed_text=policy_text(HEADING, "Gone.", QUOTE, "x", QUOTE)))
+        assert len(small["locations"]) == 2 and small["locations_not_listed"] == 0  # type: ignore[arg-type]
+
+
 def test_it_reads_the_vault_now_not_a_copy_from_the_last_call(tmp_path: Path) -> None:
     with scenario(tmp_path) as s:
         assert only_item(ok(s, proposed_text=BASE))["state_now"] == "intact"

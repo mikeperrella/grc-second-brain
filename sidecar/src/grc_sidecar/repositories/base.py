@@ -344,7 +344,15 @@ class LedgerRepository(Protocol):
 
     async def list_promises(self, customer_id: str | None = None) -> list[Promise]: ...
 
-    async def add_event(self, event: NewPromiseEvent) -> PromiseEvent: ...
+    async def add_event(self, event: NewPromiseEvent) -> PromiseEvent:
+        """Append a `recall_state_changed` or `voided` event. An `acknowledged` event is refused
+        here (`event_invalid`): it is written only by `acknowledge_current`."""
+
+    async def acknowledge_current(self, promise_id: str, seen_recall_event_id: int) -> PromiseEvent:
+        """Append an `acknowledged` event in ONE transaction, only if the promise's latest
+        `recall_state_changed` event has id `seen_recall_event_id`, copying that event's `state`
+        and `detail_code`. Refuses `promise_unknown`, `promise_voided` and `acknowledge_stale`
+        (no recall event, or a different one is the latest); a refusal writes nothing."""
 
     async def list_events(self, promise_id: str) -> list[PromiseEvent]:
         """Oldest first, by event id (an integer, so the order never depends on a timestamp)."""

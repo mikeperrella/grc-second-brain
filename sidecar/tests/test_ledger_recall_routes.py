@@ -1,6 +1,8 @@
 """The recall, void and acknowledge routes (ADR-017 decisions 13, 17 and 20): authenticated, typed
 refusals with fixed words, no free text anywhere, and the vault folder named when it is missing."""
 
+import hashlib
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,7 @@ from .test_ledger_recall import (
     KEYS,
     POLICY,
     QUOTE,
+    Scenario,
     policy_text,
     scenario,
     set_text,
@@ -31,7 +34,7 @@ REASONS = ("wrong_customer", "imported_in_error", "not_actually_sent", "other")
 NEW_ROUTES = [
     ("POST", "/ledger/recall", {"json": {}}),
     ("POST", f"/ledger/promises/{SOME_ID}/void", {"json": {"reason": "other"}}),
-    ("POST", f"/ledger/promises/{SOME_ID}/acknowledge", {}),
+    ("POST", f"/ledger/promises/{SOME_ID}/acknowledge", {"json": {"seen_recall_event_id": 1}}),
 ]
 
 
@@ -64,7 +67,8 @@ def test_recall_without_a_vault_folder_names_the_vault_never_the_ledger(
         assert response.json() == {"error": "vault_root_not_configured"}
         # Void and acknowledge need no vault, so they still work.
         [pid] = s.promise_ids()
-        ack = call(no_vault, "POST", f"/ledger/promises/{pid}/acknowledge", headers=AUTH)
+        seen = recall_event_id(s)
+        ack = call(no_vault, "POST", ack_url(pid), headers=AUTH, json=seen_body(seen))
         assert ack.status_code == 200 and ack.json()["kind"] == "acknowledged"
 
 
@@ -254,26 +258,104 @@ def test_void_refuses_an_unknown_promise_a_second_void_and_a_malformed_id(  # [N
 # ----- acknowledge --------------------------------------------------------------------------------
 
 
-def test_acknowledge_appends_one_event_and_takes_no_fields(tmp_path: Path) -> None:
+def ack_url(promise_id: str) -> str:
+    return f"/ledger/promises/{promise_id}/acknowledge"
+
+
+def seen_body(seen: object) -> dict[str, object]:
+    return {"seen_recall_event_id": seen}
+
+
+def recall_event_id(s: Scenario) -> int:
+    """Run recall and return the id of the recall event the owner would be looking at."""
+    items = call(s.d.service, "POST", "/ledger/recall", headers=AUTH, json={}).json()["items"]
+    seen = items[0]["recall_event_id"]
+    assert isinstance(seen, int)
+    return seen
+
+
+def test_acknowledge_appends_one_event_carrying_the_state_the_owner_saw(tmp_path: Path) -> None:
     with scenario(tmp_path) as s:
         [pid] = s.promise_ids()
-        url = f"/ledger/promises/{pid}/acknowledge"
-        ok = call(s.d.service, "POST", url, headers=AUTH)
+        seen = recall_event_id(s)
+        ok = call(s.d.service, "POST", ack_url(pid), headers=AUTH, json=seen_body(seen))
         assert ok.status_code == 200 and ok.json()["kind"] == "acknowledged"
-        assert call(s.d.service, "POST", url, headers=AUTH, json={}).status_code == 200
-        refused = call(s.d.service, "POST", url, headers=AUTH, json={"note": CANARY})
-        assert refused.status_code == 422 and CANARY not in refused.text
+        assert set(ok.json()) == {"promise_id", "event_id", "kind"}
+        [*_, stored] = run(s.d.repo.list_events(pid))
+        assert (stored.kind, stored.state, stored.event_id) == (
+            "acknowledged",
+            "intact",
+            ok.json()["event_id"],
+        )
         assert [e.kind for e in run(s.d.repo.list_events(pid))] == [
             "created",
-            "acknowledged",
+            "recall_state_changed",
             "acknowledged",
         ]
+
+
+def test_a_stale_acknowledgement_is_a_422_with_a_fixed_word_and_the_ledger_is_unchanged(
+    tmp_path: Path,
+) -> None:  # [NEG]
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+        seen = recall_event_id(s)
+        set_text(s.vault, POLICY, policy_text(HEADING, "Gone.", KEYS))
+        recall_event_id(s)  # a newer recall event now exists
+        ledger_file = tmp_path / "ledger" / "ledger.sqlite3"
+        before = hashlib.sha256(ledger_file.read_bytes()).hexdigest()
+        stale = call(s.d.service, "POST", ack_url(pid), headers=AUTH, json=seen_body(seen))
+        assert stale.status_code == 422
+        assert stale.json() == {"error": "recall_refused", "code": "acknowledge_stale"}
+        assert hashlib.sha256(ledger_file.read_bytes()).hexdigest() == before
+        assert [e.kind for e in run(s.d.repo.list_events(pid))] == [
+            "created",
+            "recall_state_changed",
+            "recall_state_changed",
+        ]
+
+
+def test_acknowledging_before_any_recall_is_stale(tmp_path: Path) -> None:  # [NEG]
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+        stale = call(s.d.service, "POST", ack_url(pid), headers=AUTH, json=seen_body(1))
+        assert stale.json() == {"error": "recall_refused", "code": "acknowledge_stale"}
+        assert [e.kind for e in run(s.d.repo.list_events(pid))] == ["created"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        None,  # no body at all: the field is required
+        {},
+        {"seen_recall_event_id": 0},
+        {"seen_recall_event_id": -3},
+        {"seen_recall_event_id": "1"},
+        {"seen_recall_event_id": True},
+        {"seen_recall_event_id": 1.5},
+        {"seen_recall_event_id": None},
+        {"seen_recall_event_id": 2**63},  # larger than any event id SQLite can hold
+        {"seen_recall_event_id": 1, "note": CANARY},
+        {"seen_recall_event_id": 1, "url": "http://example.invalid"},
+    ],
+)
+def test_a_malformed_acknowledge_body_is_a_422_that_echoes_nothing_and_writes_nothing(  # [NEG]
+    tmp_path: Path, body: dict[str, object] | None
+) -> None:
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+        kwargs: dict[str, object] = {} if body is None else {"json": body}
+        refused = call(s.d.service, "POST", ack_url(pid), headers=AUTH, **kwargs)
+        assert refused.status_code == 422 and refused.json()["error"] == "invalid_request"
+        assert CANARY not in refused.text and "example.invalid" not in refused.text
+        assert [e.kind for e in run(s.d.repo.list_events(pid))] == ["created"]
 
 
 def test_acknowledge_refuses_an_unknown_and_a_voided_promise(tmp_path: Path) -> None:  # [NEG]
     with scenario(tmp_path) as s:
         [pid] = s.promise_ids()
-        unknown = call(s.d.service, "POST", f"/ledger/promises/{SOME_ID}/acknowledge", headers=AUTH)
+        seen = recall_event_id(s)
+        unknown = call(s.d.service, "POST", ack_url(SOME_ID), headers=AUTH, json=seen_body(seen))
         assert unknown.json() == {"error": "ledger_refused", "code": "promise_unknown"}
         call(
             s.d.service,
@@ -282,8 +364,124 @@ def test_acknowledge_refuses_an_unknown_and_a_voided_promise(tmp_path: Path) -> 
             headers=AUTH,
             json={"reason": "other"},
         )
-        voided = call(s.d.service, "POST", f"/ledger/promises/{pid}/acknowledge", headers=AUTH)
+        voided = call(s.d.service, "POST", ack_url(pid), headers=AUTH, json=seen_body(seen))
         assert voided.json() == {"error": "recall_refused", "code": "promise_voided"}
+
+
+def test_recall_and_the_listing_carry_the_acknowledgement_fields(tmp_path: Path) -> None:
+    with scenario(tmp_path) as s:
+        [pid] = s.promise_ids()
+        first = call(s.d.service, "POST", "/ledger/recall", headers=AUTH, json={}).json()["items"][
+            0
+        ]
+        assert first["acknowledged_event_id"] is None and first["acknowledgement_current"] is False
+        assert first["acknowledged_state"] is None
+        ack = call(
+            s.d.service,
+            "POST",
+            ack_url(pid),
+            headers=AUTH,
+            json=seen_body(first["recall_event_id"]),
+        ).json()
+        listed = call(s.d.service, "GET", "/ledger/promises", headers=AUTH).json()["promises"][0]
+        assert listed["recall_event_id"] == first["recall_event_id"]
+        assert listed["acknowledged_event_id"] == ack["event_id"]
+        assert listed["acknowledged_state"] == "intact"
+        assert listed["acknowledgement_current"] is True
+        set_text(s.vault, POLICY, policy_text(HEADING, "Gone.", KEYS))
+        later = call(s.d.service, "POST", "/ledger/recall", headers=AUTH, json={}).json()["items"][
+            0
+        ]
+        assert later["recall_event_id"] > ack["event_id"]
+        assert later["acknowledged_event_id"] == ack["event_id"]
+        assert later["acknowledged_state"] == "intact" and later["state"] == "changed"
+        assert later["acknowledgement_current"] is False
+        again = call(s.d.service, "GET", "/ledger/promises", headers=AUTH).json()["promises"][0]
+        assert again["acknowledgement_current"] is False
+
+
+# ----- cited paths (chunk 65b) --------------------------------------------------------------------
+
+OTHER_POLICY = "policies/backup-policy.md"
+BACKUP_LINE = "Backups are daily."
+CITED = "/ledger/cited-paths"
+
+
+def three_cites(tmp_path: Path) -> AbstractContextManager[Scenario]:
+    files = {POLICY: BASE, OTHER_POLICY: policy_text(HEADING, BACKUP_LINE, KEYS)}
+    cites = [(POLICY, QUOTE), (OTHER_POLICY, BACKUP_LINE), (POLICY, QUOTE)]
+    return scenario(tmp_path, files=files, cites=cites)
+
+
+def test_cited_paths_lists_each_live_path_once_with_its_count_and_nothing_else(
+    tmp_path: Path,
+) -> None:
+    with three_cites(tmp_path) as s:
+        response = call(s.d.service, "GET", CITED, headers=AUTH)
+        assert response.status_code == 200
+        assert response.json() == {
+            "paths": [
+                {"source_path": OTHER_POLICY, "promise_count": 1},
+                {"source_path": POLICY, "promise_count": 2},
+            ]
+        }
+        assert "Do you encrypt" not in response.text and "Yes, answer" not in response.text
+
+
+def test_cited_paths_leaves_out_voided_promises(tmp_path: Path) -> None:  # [NEG]
+    with three_cites(tmp_path) as s:
+        first, second, third = s.promise_ids()
+        void = {"reason": "other"}
+        call(s.d.service, "POST", f"/ledger/promises/{second}/void", headers=AUTH, json=void)
+        shown = call(s.d.service, "GET", CITED, headers=AUTH).json()["paths"]
+        assert shown == [{"source_path": POLICY, "promise_count": 2}]  # the only backup is voided
+        call(s.d.service, "POST", f"/ledger/promises/{first}/void", headers=AUTH, json=void)
+        shown = call(s.d.service, "GET", CITED, headers=AUTH).json()["paths"]
+        assert shown == [{"source_path": POLICY, "promise_count": 1}]  # counts live ones only
+        call(s.d.service, "POST", f"/ledger/promises/{third}/void", headers=AUTH, json=void)
+        assert call(s.d.service, "GET", CITED, headers=AUTH).json() == {"paths": []}
+
+
+def test_cited_paths_keeps_the_stored_spelling_and_reads_the_vault_not_at_all(
+    tmp_path: Path,
+) -> None:
+    with three_cites(tmp_path) as s:
+        s.file.unlink()  # the vault file is gone; the stored path is still what was promised
+        paths = call(s.d.service, "GET", CITED, headers=AUTH).json()["paths"]
+        assert [p["source_path"] for p in paths] == [OTHER_POLICY, POLICY]
+
+
+def test_cited_paths_refuses_the_whole_list_above_the_cap_with_counts_only(  # [NEG]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with three_cites(tmp_path) as s:
+        monkeypatch.setattr(service_module, "MAX_CITED_PATHS", 1)
+        refused = call(s.d.service, "GET", CITED, headers=AUTH)
+        assert refused.status_code == 422
+        assert refused.json() == {
+            "error": "recall_refused",
+            "code": "too_many_paths",
+            "counts": {"paths": 2, "cap": 1},
+        }
+        monkeypatch.setattr(service_module, "MAX_CITED_PATHS", 2)  # exactly at the cap is fine
+        assert len(call(s.d.service, "GET", CITED, headers=AUTH).json()["paths"]) == 2
+
+
+def test_cited_paths_counts_distinct_paths_not_promises_against_the_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with three_cites(tmp_path) as s:
+        monkeypatch.setattr(service_module, "MAX_CITED_PATHS", 2)  # three promises, two paths
+        assert call(s.d.service, "GET", CITED, headers=AUTH).status_code == 200
+
+
+def test_cited_paths_writes_nothing_and_takes_no_query_or_body(tmp_path: Path) -> None:  # [NEG]
+    with three_cites(tmp_path) as s:
+        ledger_file = tmp_path / "ledger" / "ledger.sqlite3"
+        before = hashlib.sha256(ledger_file.read_bytes()).hexdigest()
+        call(s.d.service, "GET", CITED, headers=AUTH, params={"path": CANARY})
+        assert hashlib.sha256(ledger_file.read_bytes()).hexdigest() == before
+        assert call(s.d.service, "POST", CITED, headers=AUTH).status_code == 405
 
 
 # ----- the import's information count -------------------------------------------------------------

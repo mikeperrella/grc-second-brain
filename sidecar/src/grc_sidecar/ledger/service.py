@@ -71,6 +71,10 @@ SKIP_CODES: Final = (
     "already_imported",
 )
 PAGE_SIZE: Final = 100  # a starting value, unmeasured (M5.5 plan, Section 3)
+MAX_PAGE_SIZE: Final = 100  # the closed range of `page_size` is 1 to this
+MAX_LOCATIONS: Final = 20  # a starting value, unmeasured (ADR-022 decision 9)
+MAX_CITED_PATHS: Final = 2_000  # a starting value, unmeasured (ADR-022 decision 8)
+COVERAGE_LINE: Final = "promises only; controls and linking documents are not checked"
 MAX_RECALL_PROMISES: Final = 2_000  # a starting value, unmeasured (M5.5 plan, Section 3)
 MAX_BLAST_PROMISES: Final = 2_000  # a starting value, unmeasured (ADR-018)
 RECALL_STATES: Final = ("intact", "moved", "changed", "missing")
@@ -112,6 +116,23 @@ class ImportOutcome:
     # How many of the promises just created already rest on lines that are not as they were when
     # the answer was drafted. Information only; None when no vault folder is configured.
     already_changed_since_draft: int | None = None
+    # True when nothing was written: the counts are what a real import would have done.
+    preview: bool = False
+
+
+@dataclass(frozen=True)
+class AckState:
+    """What the owner has acknowledged, against the latest recall event (G35). Ids and codes only.
+
+    `acknowledgement_current` is False when nothing was acknowledged, and False when a recall event
+    with a larger id than the acknowledgement exists. An old acknowledgement written before ALIBI
+    recorded the state seen has `acknowledged_state` None and is still readable.
+    """
+
+    recall_event_id: int | None  # the latest `recall_state_changed` event
+    acknowledged_event_id: int | None  # the latest `acknowledged` event
+    acknowledged_state: str | None
+    acknowledgement_current: bool
 
 
 @dataclass(frozen=True)
@@ -119,12 +140,18 @@ class RecallItem:
     """Recall's finding for one promise. Codes, line numbers and ids only: no text."""
 
     promise_id: str
+    customer_id: str
+    source_path: str  # the promise's stored citation, so a screen can say which promise this is
+    start_line: int
+    end_line: int
     state: str
     detail: str | None
-    locations: tuple[tuple[int, int], ...]
+    locations: tuple[tuple[int, int], ...]  # at most `MAX_LOCATIONS`
+    locations_not_listed: int
     flags: tuple[str, ...]
     previous_state: str | None  # the last recorded recall state, None at a first recall
     event_recorded: bool  # a `recall_state_changed` event was appended for this promise
+    ack: AckState
     statement: str
     scope: str
 
@@ -144,12 +171,18 @@ class BlastItem:
     """What a proposed edit would do to one promise. Codes, line numbers and ids only: no text."""
 
     promise_id: str
+    customer_id: str
+    source_path: str  # the promise's stored citation, so a screen can say which promise this is
+    start_line: int
+    end_line: int
     state_now: str
     state_proposed: str
     would_change: bool  # any difference in state
     proposed_detail: str | None
-    locations: tuple[tuple[int, int], ...]  # for `moved`, every place the quote would be
-    flags: tuple[str, ...]
+    locations: tuple[tuple[int, int], ...]  # for `moved`, the places the quote would be (capped)
+    locations_not_listed: int
+    flags: tuple[str, ...]  # the flags the PROPOSED text would have
+    flags_now: tuple[str, ...]  # the flags the CURRENT file has (F32-2: a flag not here is new)
     statement: str
     scope: str
     preview: str
@@ -165,14 +198,24 @@ class BlastReport:
     items: tuple[BlastItem, ...]
     statement: str
     scope: str
+    coverage: str  # what the preview does and does not look at (ADR-018, G36)
     preview: str
     note: str | None  # a fixed line when no live promise matched the path
+
+
+@dataclass(frozen=True)
+class CitedPath:
+    """A vault-relative path some live promise cites, and how many live promises cite it."""
+
+    source_path: str
+    promise_count: int
 
 
 @dataclass(frozen=True)
 class PromiseView:
     promise: Promise
     voided: bool
+    ack: AckState
 
 
 @dataclass(frozen=True)
@@ -259,6 +302,41 @@ def _plan(
     return _Ready(answer, row, text, baseline)
 
 
+def _new_promise(customer_id: str, ready: _Ready, workbook_sha256: str, sent: date) -> NewPromise:
+    """The promise a ready row makes. The citation is the run record's, only."""
+    answer, row, text, baseline = ready.answer, ready.row, ready.text, ready.baseline
+    status: PromiseStatus = "SUPPORTED" if answer.status == "SUPPORTED" else "PARTIAL"
+    return NewPromise(
+        customer_id=customer_id,
+        run_id=answer.run_id,
+        run_row_index=answer.row_index,
+        question_sha256=answer.question_sha256,
+        question_text=row.question_text,
+        answer_text=text,
+        status=status,
+        source_path=baseline.source_path,
+        doc_id=baseline.doc_id,
+        start_line=baseline.start_line,
+        end_line=baseline.end_line,
+        quote=baseline.quote,
+        cited_lines_sha256=baseline.cited_lines_sha256,
+        cited_file_sha256=baseline.cited_file_sha256,
+        edited_after_draft=sha256_hex(text) != answer.answer_cell_sha256,
+        import_workbook_sha256=workbook_sha256,
+        sent_on=sent,
+    )
+
+
+def _review_counts(marks: Counter[str]) -> dict[str, int]:
+    return {mark: marks.get(mark, 0) for mark in ("approved", "rejected", "unreviewed", "other")}
+
+
+def _other_values(others: Counter[tuple[str, bool]]) -> tuple[OtherValue, ...]:
+    return tuple(
+        OtherValue(text, truncated, count) for (text, truncated), count in sorted(others.items())
+    )
+
+
 class LedgerService:
     """The ledger's operations.
 
@@ -282,9 +360,19 @@ class LedgerService:
     # ----- import ------------------------------------------------------------------------------
 
     async def import_reviewed(
-        self, run_id: str, file: str, customer: CustomerChoice, sent_on: str
+        self,
+        run_id: str,
+        file: str,
+        customer: CustomerChoice,
+        sent_on: str,
+        preview: bool = False,
     ) -> ImportOutcome:
-        """Turn the approved rows of a reviewed draft into promises. See the module docstring."""
+        """Turn the approved rows of a reviewed draft into promises. See the module docstring.
+
+        With `preview` every check and count runs exactly as in a real import, but nothing is
+        written: no customer, no promise, no event. `created` then counts the promises that WOULD
+        be created, `promise_ids` is empty and `customer_created` is False.
+        """
         root = self._export_root
         if root is None:
             raise ExportRootNotConfiguredError
@@ -329,6 +417,10 @@ class LedgerService:
 
         customer_id = None if existing is None else existing.customer_id
         customer_created = False
+        if preview:
+            return await self._preview_outcome(
+                customer_id, pending, workbook_sha256, sent, skipped, marks, others
+            )
         if pending and customer_id is None and new_name is not None:
             customer_id = (await self._repo.add_customer(new_name)).customer_id
             customer_created = True
@@ -351,15 +443,48 @@ class LedgerService:
             customer_id=customer_id,
             customer_created=customer_created,
             skipped=skipped,
-            review={
-                mark: marks.get(mark, 0) for mark in ("approved", "rejected", "unreviewed", "other")
-            },
-            other_values=tuple(
-                OtherValue(text, truncated, count)
-                for (text, truncated), count in sorted(others.items())
-            ),
+            review=_review_counts(marks),
+            other_values=_other_values(others),
             promise_ids=tuple(created_ids),
             already_changed_since_draft=await self._count_already_changed(created),
+        )
+
+    async def _preview_outcome(
+        self,
+        customer_id: str | None,
+        pending: list[_Ready],
+        workbook_sha256: str,
+        sent: date,
+        skipped: dict[str, int],
+        marks: Counter[str],
+        others: Counter[tuple[str, bool]],
+    ) -> ImportOutcome:
+        """The outcome a real import would have, built without a single write.
+
+        The would-be promises are built in memory with the same function the real import uses and
+        counted with the same recall check; none of them is stored, and a new customer is not made.
+        """
+        today = self._clock.today()
+        would_be = [
+            Promise(
+                **_new_promise(customer_id or "preview", ready, workbook_sha256, sent).model_dump(),
+                promise_id="preview",
+                created_on=today,
+                row_sha256="preview",
+            )
+            for ready in pending
+        ]
+        return ImportOutcome(
+            created=len(would_be),
+            created_edited=sum(p.edited_after_draft for p in would_be),
+            customer_id=customer_id,
+            customer_created=False,
+            skipped=skipped,
+            review=_review_counts(marks),
+            other_values=_other_values(others),
+            promise_ids=(),
+            already_changed_since_draft=await self._count_already_changed(would_be),
+            preview=True,
         )
 
     async def draft_rows(self, file: str) -> DraftRows:
@@ -419,29 +544,9 @@ class LedgerService:
         self, customer_id: str, ready: _Ready, workbook_sha256: str, sent: date
     ) -> Promise | None:
         """One promise, or None if it already exists. The citation is the run record's, only."""
-        answer, row, text, baseline = ready.answer, ready.row, ready.text, ready.baseline
-        status: PromiseStatus = "SUPPORTED" if answer.status == "SUPPORTED" else "PARTIAL"
         try:
             return await self._repo.add_promise(
-                NewPromise(
-                    customer_id=customer_id,
-                    run_id=answer.run_id,
-                    run_row_index=answer.row_index,
-                    question_sha256=answer.question_sha256,
-                    question_text=row.question_text,
-                    answer_text=text,
-                    status=status,
-                    source_path=baseline.source_path,
-                    doc_id=baseline.doc_id,
-                    start_line=baseline.start_line,
-                    end_line=baseline.end_line,
-                    quote=baseline.quote,
-                    cited_lines_sha256=baseline.cited_lines_sha256,
-                    cited_file_sha256=baseline.cited_file_sha256,
-                    edited_after_draft=sha256_hex(text) != answer.answer_cell_sha256,
-                    import_workbook_sha256=workbook_sha256,
-                    sent_on=sent,
-                )
+                _new_promise(customer_id, ready, workbook_sha256, sent)
             )
         except LedgerRefusedError as error:
             if error.code == "promise_exists":
@@ -455,22 +560,32 @@ class LedgerService:
         return await self._repo.list_customers()
 
     async def promises(
-        self, customer_id: str | None, include_voided: bool, page: int
+        self,
+        customer_id: str | None,
+        include_voided: bool,
+        page: int,
+        page_size: int = PAGE_SIZE,
     ) -> PromisePage:
         """One page of promises, oldest first. Voided ones are left out unless asked for.
 
         A promise is voided when any of its events is `voided`. That is one query per promise, which
-        is fine at a single owner's scale and is recorded as a limit in the ADR.
+        is fine at a single owner's scale and is recorded as a limit in the ADR. `page_size` is
+        1 to `MAX_PAGE_SIZE`; the route enforces the range and the service checks it again.
         """
+        if not 1 <= page_size <= MAX_PAGE_SIZE:
+            raise ValueError("page_size out of range")  # a programming error; the route checks
         await self._repo.open_or_create()
         found = await self._repo.list_promises(customer_id)
+        start, end = (page - 1) * page_size, page * page_size
         if include_voided:
-            window = found[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
-            views = [PromiseView(p, await self._is_voided(p)) for p in window]
-            return PromisePage(page, PAGE_SIZE, len(found), tuple(views))
-        kept = [p for p in found if not await self._is_voided(p)]
-        window = kept[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
-        return PromisePage(page, PAGE_SIZE, len(kept), tuple(PromiseView(p, False) for p in window))
+            views = [await self._view(p) for p in found[start:end]]
+            return PromisePage(page, page_size, len(found), tuple(views))
+        kept = [view for view in [await self._view(p) for p in found] if not view.voided]
+        return PromisePage(page, page_size, len(kept), tuple(kept[start:end]))
+
+    async def _view(self, promise: Promise) -> PromiseView:
+        events = await self._repo.list_events(promise.promise_id)
+        return PromiseView(promise, any(e.kind == "voided" for e in events), _ack_state(events))
 
     async def _is_voided(self, promise: Promise) -> bool:
         events = await self._repo.list_events(promise.promise_id)
@@ -504,7 +619,7 @@ class LedgerService:
             previous = _last_recall_state(events)
             record = result.state != previous
             if record:
-                await self._repo.add_event(
+                appended = await self._repo.add_event(
                     NewPromiseEvent(
                         promise_id=promise.promise_id,
                         kind="recall_state_changed",
@@ -512,15 +627,23 @@ class LedgerService:
                         detail_code=result.detail,
                     )
                 )
+                events = [*events, appended]  # so the item names the event just recorded
+            shown, not_listed = _capped(result.locations)
             items.append(
                 RecallItem(
                     promise_id=promise.promise_id,
+                    customer_id=promise.customer_id,
+                    source_path=promise.source_path,
+                    start_line=promise.start_line,
+                    end_line=promise.end_line,
                     state=result.state,
                     detail=result.detail,
-                    locations=result.locations,
+                    locations=shown,
+                    locations_not_listed=not_listed,
                     flags=result.flags,
                     previous_state=previous,
                     event_recorded=record,
+                    ack=_ack_state(events),
                     statement=result.statement,
                     scope=result.scope,
                 )
@@ -552,6 +675,23 @@ class LedgerService:
         return {
             path: await asyncio.to_thread(read_vault_text, root, path) for path in sorted(paths)
         }
+
+    # ----- cited paths (read-only; for the blast-radius picker) ----------------------------------
+
+    async def cited_paths(self) -> tuple[CitedPath, ...]:
+        """The distinct stored `source_path` values of live (not voided) promises, with counts.
+
+        Paths are exactly as stored, sorted, not case-folded. Above `MAX_CITED_PATHS` distinct
+        paths the whole call is refused (`too_many_paths`, integer counts): a partial list that
+        looked complete would hide promises. Nothing is written or recorded.
+        """
+        await self._repo.open_or_create()
+        counts = Counter(promise.source_path for promise, _ in await self._live_promises(None))
+        if len(counts) > MAX_CITED_PATHS:
+            raise RecallRefusedError(
+                "too_many_paths", {"paths": len(counts), "cap": MAX_CITED_PATHS}
+            )
+        return tuple(CitedPath(path, count) for path, count in sorted(counts.items()))
 
     # ----- blast radius (a preview; reads, never writes) ------------------------------------------
 
@@ -592,7 +732,7 @@ class LedgerService:
         for promise in live:
             now = check_promise(promise, texts[promise.source_path], today)
             then = check_promise(promise, proposed, today)
-            items.append(_blast_item(promise.promise_id, now, then))
+            items.append(_blast_item(promise, now, then))
         return BlastReport(
             checked=len(items),
             would_change=sum(item.would_change for item in items),
@@ -602,6 +742,7 @@ class LedgerService:
             items=tuple(items),
             statement=STATEMENT,
             scope=SCOPE,
+            coverage=COVERAGE_LINE,
             preview=PREVIEW_LINE,
             note=None if items else NO_MATCH_LINE,
         )
@@ -615,12 +756,16 @@ class LedgerService:
             NewPromiseEvent(promise_id=promise_id, kind="voided", detail_code=reason)
         )
 
-    async def acknowledge(self, promise_id: str) -> PromiseEvent:
-        """Record that the owner saw a flag on this promise."""
-        await self._open_promise(promise_id)
-        return await self._repo.add_event(
-            NewPromiseEvent(promise_id=promise_id, kind="acknowledged")
-        )
+    async def acknowledge(self, promise_id: str, seen_recall_event_id: int) -> PromiseEvent:
+        """Record that the owner saw the promise's latest recall state (G35).
+
+        The event is appended only if `seen_recall_event_id` is still the promise's latest
+        `recall_state_changed` event, and it carries that event's state and detail code. Otherwise
+        the call is refused (`acknowledge_stale`) and nothing is written. The repository decides,
+        inside one transaction, so a recall that lands in between cannot be missed.
+        """
+        await self._repo.open_or_create()
+        return await self._repo.acknowledge_current(promise_id, seen_recall_event_id)
 
     async def _open_promise(self, promise_id: str) -> Promise:
         """The promise, if it exists and is not voided."""
@@ -653,18 +798,50 @@ def _normalize_proposed(proposed_text: str) -> VaultText:
         raise BlastRadiusRefusedError("proposed_text_has_nul") from None
 
 
-def _blast_item(promise_id: str, now: RecallResult, then: RecallResult) -> BlastItem:
+def _blast_item(promise: Promise, now: RecallResult, then: RecallResult) -> BlastItem:
+    shown, not_listed = _capped(then.locations)
     return BlastItem(
-        promise_id=promise_id,
+        promise_id=promise.promise_id,
+        customer_id=promise.customer_id,
+        source_path=promise.source_path,
+        start_line=promise.start_line,
+        end_line=promise.end_line,
         state_now=now.state,
         state_proposed=then.state,
         would_change=now.state != then.state,
         proposed_detail=then.detail,
-        locations=then.locations,
+        locations=shown,
+        locations_not_listed=not_listed,
         flags=then.flags,
+        flags_now=now.flags,
         statement=then.statement,
         scope=then.scope,
         preview=PREVIEW_LINE,
+    )
+
+
+def _capped(
+    locations: tuple[tuple[int, int], ...],
+) -> tuple[tuple[tuple[int, int], ...], int]:
+    """At most `MAX_LOCATIONS` places, and how many more there were (a bound on every response)."""
+    return locations[:MAX_LOCATIONS], max(0, len(locations) - MAX_LOCATIONS)
+
+
+def _ack_state(events: list[PromiseEvent]) -> AckState:
+    """The latest recall event and acknowledgement, from a promise's events in id order."""
+    recall_id: int | None = None
+    acknowledged: PromiseEvent | None = None
+    for event in events:
+        if event.kind == "recall_state_changed":
+            recall_id = event.event_id
+        elif event.kind == "acknowledged":
+            acknowledged = event
+    current = acknowledged is not None and (recall_id is None or recall_id < acknowledged.event_id)
+    return AckState(
+        recall_event_id=recall_id,
+        acknowledged_event_id=None if acknowledged is None else acknowledged.event_id,
+        acknowledged_state=None if acknowledged is None else acknowledged.state,
+        acknowledgement_current=current,
     )
 
 

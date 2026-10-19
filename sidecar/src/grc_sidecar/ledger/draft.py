@@ -60,6 +60,7 @@ class DraftRow:
 
 @dataclass(frozen=True)
 class DraftRows:
+    run_id: str  # the FULL id of the record found by the full file name, never the 8 hex digits
     model: str
     file_name: str
     complete: bool
@@ -140,6 +141,7 @@ async def read_draft_rows(repo: LedgerRepository, export_root: Path, file: str) 
 
     rows = tuple(_draft_row(answer, reviewed.rows[answer.row_index]) for answer in answers)
     return DraftRows(
+        run_id=record.run_id,
         model=record.model,
         file_name=record.file_name,
         complete=record.complete,

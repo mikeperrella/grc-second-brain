@@ -2,6 +2,7 @@
 size of 100, voided promises left out unless asked for, and the service wiring from the settings."""
 
 import hashlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
@@ -18,6 +19,7 @@ from grc_sidecar.security.net import create_async_client
 from grc_sidecar.vault.clock import FixedClock
 
 from .ledgerkit import (
+    ANSWER_COL,
     REVIEW_COL,
     SENT_ON,
     Draft,
@@ -69,6 +71,7 @@ ROUTES = [
     ("POST", "/ledger/import", {"json": {}}),
     ("GET", "/ledger/customers", {}),
     ("GET", "/ledger/promises", {}),
+    ("GET", "/ledger/cited-paths", {}),
 ]
 
 
@@ -95,6 +98,7 @@ def test_every_ledger_route_needs_the_token(  # [NEG]
         ),
         ("GET", "/ledger/customers", {}),
         ("GET", "/ledger/promises", {}),
+        ("GET", "/ledger/cited-paths", {}),
     ],
 )
 def test_with_no_ledger_folder_every_route_says_so(  # [NEG]
@@ -249,6 +253,149 @@ def test_a_canary_in_an_unknown_field_is_not_echoed(tmp_path: Path) -> None:  # 
         assert response.status_code == 422 and CANARY not in response.text
 
 
+# ----- preview: every check and count, nothing written (chunk 65b) -------------------------------
+
+
+def ledger_bytes(tmp_path: Path) -> bytes:
+    return (tmp_path / "ledger" / "ledger.sqlite3").read_bytes()
+
+
+def test_a_preview_writes_nothing_and_makes_no_customer(tmp_path: Path) -> None:  # [NEG]
+    with draft_for(tmp_path, supported_outcomes(2)) as d:
+        approve(d, 2, 3)
+        before = ledger_bytes(tmp_path)
+        response = call(
+            d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d, preview=True)
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["preview"] is True and body["created"] == 2  # what a real import would make
+        assert body["customer_created"] is False and body["customer_id"] is None
+        assert body["promise_ids"] == []  # nothing exists to point at
+        assert ledger_bytes(tmp_path) == before  # not one byte of the ledger file changed
+        assert call(d.service, "GET", "/ledger/customers", headers=AUTH).json() == []
+        assert call(d.service, "GET", "/ledger/promises", headers=AUTH).json()["total"] == 0
+
+
+def test_a_preview_counts_exactly_what_the_real_import_then_does(tmp_path: Path) -> None:
+    with draft_for(tmp_path, supported_outcomes(4)) as d:
+        edit_cells(
+            d,
+            {
+                (2, REVIEW_COL): "approved",
+                (3, REVIEW_COL): "approved",
+                (3, ANSWER_COL): "Yes, and we edited this answer.",
+                (4, REVIEW_COL): "rejected",
+                (5, REVIEW_COL): f"{CANARY} maybe",
+            },
+        )
+        previewed = call(
+            d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d, preview=True)
+        ).json()
+        real = call(d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d)).json()
+        assert previewed["preview"] is True and real["preview"] is False
+        assert previewed["created"] == real["created"] == 2
+        assert previewed["created_edited"] == real["created_edited"] == 1
+        for key in ("skipped", "review", "other_values", "already_changed_since_draft"):
+            assert previewed[key] == real[key], key
+        assert len(real["promise_ids"]) == 2
+        # Previewing again, for the customer that now exists, shows the rows as already imported.
+        existing = {"existing_customer_id": real["customer_id"]}
+        again = call(
+            d.service,
+            "POST",
+            "/ledger/import",
+            headers=AUTH,
+            json=import_body(
+                d, new_customer_name=None, confirm_new=False, preview=True, **existing
+            ),
+        ).json()
+        assert again["created"] == 0 and again["skipped"]["already_imported"] == 2
+        assert again["customer_id"] == real["customer_id"]
+
+
+def test_a_preview_refuses_everything_a_real_import_refuses_and_writes_nothing(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    with draft_for(tmp_path, supported_outcomes(2)) as d:
+        approve(d, 2)
+        before = ledger_bytes(tmp_path)
+        cases: list[tuple[dict[str, object], int, str]] = [
+            ({"run_id": "b" * 32}, 422, "run_record_missing"),
+            ({"sent_on": "2099-01-01"}, 422, "sent_on_in_future"),
+            ({"sent_on": "2026-02-30"}, 422, "sent_on_invalid"),
+            ({"confirm_new": False}, 422, "new_customer_not_confirmed"),
+            ({"new_customer_name": None}, 422, "customer_choice_invalid"),
+            ({"new_customer_name": "bad​name"}, 422, "customer_name_invalid"),
+        ]
+        for changes, status, code in cases:
+            real = call(
+                d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d, **changes)
+            )
+            shown = call(
+                d.service,
+                "POST",
+                "/ledger/import",
+                headers=AUTH,
+                json=import_body(d, preview=True, **changes),
+            )
+            assert (shown.status_code, shown.json()) == (status, real.json()), changes
+            assert shown.json()["code"] == code
+        assert ledger_bytes(tmp_path) == before
+
+
+def test_a_preview_of_a_name_that_exists_is_refused_with_the_id_not_the_name(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    with draft_for(tmp_path, supported_outcomes(2)) as d:
+        approve(d, 2)
+        first = call(d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d)).json()
+        before = ledger_bytes(tmp_path)
+        refused = call(
+            d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d, preview=True)
+        )
+        assert refused.status_code == 422
+        assert refused.json() == {
+            "error": "ledger_refused",
+            "code": "customer_exists",
+            "customer_id": first["customer_id"],
+        }
+        assert ledger_bytes(tmp_path) == before
+
+
+def test_a_preview_flag_must_be_a_boolean_and_other_fields_are_still_refused(  # [NEG]
+    tmp_path: Path,
+) -> None:
+    with draft_for(tmp_path, supported_outcomes(1)) as d:
+        approve(d, 2)
+        before = ledger_bytes(tmp_path)
+        for bad in ({"preview": "maybe"}, {"preview": [True]}, {"previews": True}, {"url": "x"}):
+            refused = call(
+                d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d, **bad)
+            )
+            assert refused.status_code == 422 and refused.json()["error"] == "invalid_request"
+            assert "maybe" not in refused.text
+        assert ledger_bytes(tmp_path) == before
+
+
+def test_a_canary_in_a_customer_name_is_not_echoed_or_logged_by_a_preview(  # [NEG]
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    with draft_for(tmp_path, supported_outcomes(1)) as d:
+        approve(d, 2)
+        response = call(
+            d.service,
+            "POST",
+            "/ledger/import",
+            headers=AUTH,
+            json=import_body(d, new_customer_name=f"Customer {CANARY}", preview=True),
+        )
+        assert response.status_code == 200 and CANARY not in response.text
+        assert CANARY not in caplog.text
+        assert CANARY.encode() not in ledger_bytes(tmp_path)  # and no customer was made from it
+
+
 # ----- the listings -------------------------------------------------------------------------------
 
 
@@ -332,6 +479,64 @@ def test_a_page_holds_at_most_one_hundred_promises(tmp_path: Path) -> None:
         assert three["promises"] == []
         bad = call(d.service, "GET", "/ledger/promises", headers=AUTH, params={"page": 0})
         assert bad.status_code == 422
+
+
+def five_promises(d: Draft) -> list[str]:
+    """Import one promise, then add four more rows of it, so five promises exist."""
+    call(d.service, "POST", "/ledger/import", headers=AUTH, json=import_body(d))
+    [seed] = run(d.repo.list_promises())
+    for extra in range(4):
+        run(
+            d.repo.add_promise(
+                NewPromise(
+                    **{
+                        **seed.model_dump(exclude={"promise_id", "created_on", "row_sha256"}),
+                        "run_row_index": 100 + extra,
+                    }
+                )
+            )
+        )
+    return [p.promise_id for p in run(d.repo.list_promises())]
+
+
+def listing(d: Draft, **params: object) -> httpx.Response:
+    return call(d.service, "GET", "/ledger/promises", headers=AUTH, params=params)  # type: ignore[arg-type]
+
+
+def test_page_size_shortens_the_page_and_the_pages_still_add_up(tmp_path: Path) -> None:
+    with draft_for(tmp_path, supported_outcomes(1)) as d:
+        approve(d, 2)
+        ids = five_promises(d)
+        seen: list[str] = []
+        for page, expected in ((1, 2), (2, 2), (3, 1), (4, 0)):
+            body = listing(d, page=page, page_size=2).json()
+            assert (body["page"], body["page_size"], body["total"]) == (page, 2, 5)
+            assert len(body["promises"]) == expected
+            seen += [p["promise_id"] for p in body["promises"]]
+        assert seen == ids
+        voided = listing(d, page=3, page_size=2, include_voided="true").json()
+        assert (voided["total"], len(voided["promises"])) == (5, 1)
+        assert listing(d, page_size=1).json()["promises"][0]["promise_id"] == ids[0]
+
+
+def test_page_size_defaults_to_one_hundred_as_before(tmp_path: Path) -> None:
+    with draft_for(tmp_path, supported_outcomes(1)) as d:
+        approve(d, 2)
+        five_promises(d)
+        body = listing(d).json()
+        assert (body["page_size"], len(body["promises"])) == (PAGE_SIZE, 5) and PAGE_SIZE == 100
+
+
+def test_page_size_stays_in_the_closed_range_one_to_one_hundred(tmp_path: Path) -> None:  # [NEG]
+    with draft_for(tmp_path, supported_outcomes(1)) as d:
+        approve(d, 2)
+        five_promises(d)
+        for ok_value in (1, 100):
+            assert listing(d, page_size=ok_value).status_code == 200
+        for bad in (0, 101, -1, 100_000, "x", "1.5", ""):
+            refused = listing(d, page_size=bad)
+            assert refused.status_code == 422, bad
+            assert refused.json() == {"error": "invalid_request", "fields": ["query.page_size"]}
 
 
 # ----- the wiring from the settings ---------------------------------------------------------------
