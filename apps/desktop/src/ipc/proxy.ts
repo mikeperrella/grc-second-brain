@@ -144,7 +144,7 @@ const blastPath = codePoints(1, 1_000).refine(
 );
 
 /** route.rs `scope_is_valid`: a vault-relative prefix of 1 to 260 characters. */
-const contradictionScope = codePoints(1, 260).refine(
+export const contradictionScope = codePoints(1, 260).refine(
   (scope) =>
     !scope.includes("\\") &&
     !scope.includes(":") &&

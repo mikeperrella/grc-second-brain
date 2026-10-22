@@ -261,3 +261,99 @@ export const BLAST_TEXT_HAS_NUL_TEXT = "The proposed text contains a NUL charact
 export const BLAST_TEXT_NOT_UTF8_TEXT = "The proposed text cannot be encoded as UTF-8.";
 
 // ===== end of 65h DRAFT =========================================================================
+
+// ===== 65i DRAFT ================================================================================
+// Every constant from here to the end of the file was added in chunk 65i (the Contradictions
+// screen). They are DRAFTS until the owner approves them. Plain functional labels, and one short
+// sentence per state or refusal that names what the code means. The screen's statements are the
+// DESIGN.md 11.1 "Contradictions" rows (fixedTexts.ts), not here.
+
+export const NAV_GROUP_CHECKS = "Checks";
+export const NAV_LABEL_CONTRADICTIONS = "Contradictions";
+
+export const CONTRA_TITLE = "Contradictions";
+export const CONTRA_SCOPE_LABEL = "Scope (vault path prefix, optional)";
+export const CONTRA_CAP_LABEL = "Pair cap (1 to 100, optional)";
+export const CONTRA_START_BUTTON = "Start";
+export const CONTRA_STARTING = "Starting.";
+export const CONTRA_NOT_STARTED = "No run has been started.";
+
+/** Input problems, found before any call. */
+export const CONTRA_PROBLEM_SCOPE = "The scope is not a valid vault path prefix. Nothing was sent.";
+export const CONTRA_PROBLEM_CAP = "The pair cap must be a whole number from 1 to 100. Nothing was sent.";
+
+/** Progress: numbers from the status route, no estimate. */
+export const CONTRA_PAIRS_DONE = "Pairs done";
+export const CONTRA_PAIRS_OF = "of";
+export const CONTRA_PAIRS_COUNTING = "The pairs are still being counted.";
+
+/** End states. */
+export const CONTRA_CANCELLED_TEXT = "The run was stopped when the sidecar shut down.";
+export const CONTRA_COMPLETE_NONE = "The run finished with no findings.";
+export const CONTRA_REPORT_MISSING_TEXT = "The run finished but sent no report, so ALIBI shows no result.";
+export const CONTRA_FAILED_NO_WORD_TEXT = "The run failed and the sidecar gave no reason.";
+export const CONTRA_FAILED_INDEX_NOT_BUILT_TEXT = "The run failed because the vault has not been indexed yet.";
+export const CONTRA_FAILED_DETECTOR_ERROR_TEXT = "The run failed because the detector hit an error.";
+export const CONTRA_FAILED_INTERNAL_ERROR_TEXT = "The run failed because the sidecar hit an internal error.";
+export const CONTRA_UNKNOWN_RUN_TEXT =
+  "This run is no longer known. The sidecar keeps only its last few finished runs, and none survive closing ALIBI.";
+
+/** The result, labels only. */
+export const CONTRA_RESULT_HEADING = "Result";
+export const CONTRA_FINDINGS_HEADING = "Findings";
+export const CONTRA_MODEL_LABEL = "Model";
+export const CONTRA_MODEL_STATUS_LABEL = "Model status";
+export const CONTRA_NOT_AVAILABLE = "not available";
+export const CONTRA_COUNT_FINDINGS = "Findings";
+export const CONTRA_COUNT_OVER_CAP = "Left out by the cap";
+export const CONTRA_COUNT_NO_VERDICT = "Pairs with no model verdict";
+export const CONTRA_COUNT_MODEL_CALLS = "Model calls";
+export const CONTRA_COUNT_CLAIMS_FOUND = "Claims found";
+export const CONTRA_COUNT_PAIRS_GENERATED = "Pairs generated";
+export const CONTRA_COUNT_WITHHELD_STALE = "Withheld (changed after indexing)";
+export const CONTRA_COUNT_EXCLUDED_CHUNKS = "Excluded chunks";
+export const CONTRA_COUNT_CHUNKS_READ = "Chunks read";
+
+/** One finding, labels only. */
+export const CONTRA_SUBJECT_LABEL = "Subject";
+export const CONTRA_NUMBERS_LABEL = "Numbers";
+export const CONTRA_QUOTE_A_LABEL = "Quote A";
+export const CONTRA_QUOTE_B_LABEL = "Quote B";
+export const CONTRA_SOURCE_LABEL = "Source";
+export const CONTRA_REASONS_LABEL = "Reasons";
+export const CONTRA_FLAGS_LABEL = "Flags";
+export const CONTRA_VERDICT_LABEL = "The model's verdict";
+export const CONTRA_RELATION_LABEL = "Relation";
+export const CONTRA_EXPLANATION_LABEL = "The model's words";
+
+/** `CANDIDATE` reasons (the sidecar's closed set), as plain labels. */
+export const CONTRA_REASON_DAYS_VS_MONTHS = "Days compared with months";
+export const CONTRA_REASON_WEAK_SUBJECT_OVERLAP = "Weak subject overlap";
+export const CONTRA_REASON_NO_MODEL_VERDICT = "No model verdict";
+export const CONTRA_REASON_MODEL_LOWERED = "The model lowered this pair";
+export const CONTRA_REASON_MODEL_QUOTE_NOT_VERIFIED = "A model quote was not verified";
+
+/** Finding flags. */
+export const CONTRA_FLAG_MODEL_NOT_CONSULTED = "Model not consulted";
+
+/** The model's relation word (the sidecar's closed set), as plain labels. */
+export const CONTRA_RELATION_SAME_SUBJECT_VALUE_MISMATCH = "Same subject, different value";
+export const CONTRA_RELATION_SCOPE_DIFFERENCE = "Different scope";
+export const CONTRA_RELATION_UNRELATED = "Unrelated";
+export const CONTRA_RELATION_UNCLEAR = "Unclear";
+
+/** `model_status` (the sidecar's closed set), as plain labels. */
+export const CONTRA_MODEL_STATUS_AVAILABLE = "Available";
+export const CONTRA_MODEL_STATUS_UNAVAILABLE = "Unavailable";
+export const CONTRA_MODEL_STATUS_MODEL_MISSING = "Model missing";
+export const CONTRA_MODEL_STATUS_NON_LOCAL_REFUSED = "Non-local model refused";
+export const CONTRA_MODEL_STATUS_PARTIAL = "Partial";
+
+/** Shown for a value outside a closed set. It never prints the value as a label. */
+export const CONTRA_UNKNOWN_STATUS_TEXT = "Unknown status: ALIBI cannot show a label for this value.";
+export const CONTRA_UNKNOWN_REASON_TEXT = "Unknown reason: ALIBI cannot show a label for this value.";
+export const CONTRA_UNKNOWN_FLAG_TEXT = "Unknown flag: ALIBI cannot show a label for this value.";
+export const CONTRA_UNKNOWN_RELATION_TEXT = "Unknown relation: ALIBI cannot show a label for this value.";
+export const CONTRA_UNKNOWN_MODEL_STATUS_TEXT = "Unknown model status: ALIBI cannot show a label for this value.";
+
+// ===== end of 65i DRAFT =========================================================================
