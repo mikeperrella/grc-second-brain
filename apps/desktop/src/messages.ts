@@ -45,15 +45,29 @@ import {
   PROMISE_VOIDED_TEXT,
   RECALL_TOO_MANY_PATHS_TEXT,
   RECALL_TOO_MANY_TEXT,
+  REALITY_CHECK_CLAIM_NOT_VERBATIM_TEXT,
+  REALITY_CHECK_FUTURE_TEXT,
+  REALITY_CHECK_NO_USERS_TEXT,
+  REALITY_EXPORT_DUPLICATE_COLUMN_TEXT,
+  REALITY_EXPORT_ENCODING_TEXT,
+  REALITY_EXPORT_FIELD_TOO_LONG_TEXT,
+  REALITY_EXPORT_FILE_TOO_LARGE_TEXT,
+  REALITY_EXPORT_MISSING_COLUMN_TEXT,
+  REALITY_EXPORT_NUL_TEXT,
+  REALITY_EXPORT_TOO_MANY_ROWS_TEXT,
+  REALITY_EXPORT_UNREADABLE_TEXT,
+  REALITY_ROOT_NOT_CONFIGURED_TEXT,
 } from "./ledgerText";
 import type { FolderErrorWord, FolderProblem } from "./ipc/folders";
 import { FIXED_ERROR_WORDS } from "./ipc/proxy";
 import type {
   ApiError,
   BLAST_RADIUS_REFUSAL_CODES,
+  CHECK_REFUSAL_CODES,
   CONTRADICTION_FAILURES,
   CallResult,
   DRAFT_REFUSAL_CODES,
+  EXPORT_REFUSAL_CODES,
   IMPORT_REFUSAL_CODES,
   LEDGER_REFUSAL_CODES,
   MAPPING_REFUSAL_CODES,
@@ -489,6 +503,69 @@ export function describeContradictionError(body: LedgerErrorBody): Described {
     return error("run_not_found", CONTRA_UNKNOWN_RUN_TEXT);
   }
   return describeLedgerError(body);
+}
+
+// ----- the reality check screen (chunk 65j) ------------------------------------------------------
+
+type ExportRefusalCode = (typeof EXPORT_REFUSAL_CODES)[number];
+type CheckRefusalCode = (typeof CHECK_REFUSAL_CODES)[number];
+
+/** Each `export_refused` code has its own words (chunk 65j). No wildcard. */
+export function exportRefusalMessage(code: ExportRefusalCode): string {
+  switch (code) {
+    case "file_too_large":
+      return REALITY_EXPORT_FILE_TOO_LARGE_TEXT;
+    case "too_many_rows":
+      return REALITY_EXPORT_TOO_MANY_ROWS_TEXT;
+    case "field_too_long":
+      return REALITY_EXPORT_FIELD_TOO_LONG_TEXT;
+    case "encoding_not_allowed":
+      return REALITY_EXPORT_ENCODING_TEXT;
+    case "nul_character":
+      return REALITY_EXPORT_NUL_TEXT;
+    case "missing_column":
+      return REALITY_EXPORT_MISSING_COLUMN_TEXT;
+    case "duplicate_column":
+      return REALITY_EXPORT_DUPLICATE_COLUMN_TEXT;
+    case "unreadable":
+      return REALITY_EXPORT_UNREADABLE_TEXT;
+    default:
+      return assertNever(code);
+  }
+}
+
+/** Each `check_refused` code has its own words (chunk 65j). No wildcard. */
+export function checkRefusalMessage(code: CheckRefusalCode): string {
+  switch (code) {
+    case "exported_at_in_future":
+      return REALITY_CHECK_FUTURE_TEXT;
+    case "claim_not_verbatim":
+      return REALITY_CHECK_CLAIM_NOT_VERBATIM_TEXT;
+    case "no_users_in_scope":
+      return REALITY_CHECK_NO_USERS_TEXT;
+    default:
+      return assertNever(code);
+  }
+}
+
+/**
+ * Turn one typed error body of a reality route into fixed words. `export_refused` and
+ * `check_refused` have a message per code (describeLedgerError gives them one shared sentence);
+ * `import_root_not_configured` names both folders, because the sidecar also says it when the vault
+ * folder is not set. The `column` of an `export_refused` is not shown. Every other body goes
+ * through describeLedgerError.
+ */
+export function describeRealityError(body: LedgerErrorBody): Described {
+  switch (body.error) {
+    case "export_refused":
+      return error(`export_refused:${body.code}`, exportRefusalMessage(body.code));
+    case "check_refused":
+      return error(`check_refused:${body.code}`, checkRefusalMessage(body.code));
+    case "import_root_not_configured":
+      return error("import_root_not_configured", `${REALITY_ROOT_NOT_CONFIGURED_TEXT} ${CHOOSE_FOLDER}`);
+    default:
+      return describeLedgerError(body);
+  }
 }
 
 /** Every call outcome that is not a sidecar reply. */

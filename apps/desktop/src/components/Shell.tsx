@@ -4,7 +4,8 @@
 // M6_PLAN C.1). Folders, Index the vault, Questionnaire (6g) and the Review queue (6h) are built,
 // chunk 65f adds the Ledger and Recall screens, chunk 65g the Import screen and chunk 65h the Blast
 // radius screen (in the Promises group, between Recall and Import, DESIGN.md 11.4), and chunk 65i
-// the Contradictions screen (a third group, Checks; Reality check joins it in a later chunk). The
+// the Contradictions screen (a third group, Checks), and chunk 65j the Reality check screen (after
+// Contradictions in Checks, DESIGN.md 11.4). The
 // entries are in three groups, and the group names and labels are drafts for the owner's approval
 // (ledgerText.ts).
 
@@ -20,6 +21,7 @@ import {
   NAV_LABEL_INDEX,
   NAV_LABEL_LEDGER,
   NAV_LABEL_QUESTIONNAIRE,
+  NAV_LABEL_REALITY,
   NAV_LABEL_RECALL,
   NAV_LABEL_REVIEW,
 } from "../ledgerText";
@@ -33,7 +35,8 @@ export type ScreenId =
   | "recall"
   | "blast"
   | "import"
-  | "contradictions";
+  | "contradictions"
+  | "reality";
 
 interface NavEntry {
   label: string;
@@ -73,7 +76,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     heading: NAV_GROUP_CHECKS,
-    entries: [{ label: NAV_LABEL_CONTRADICTIONS, screen: "contradictions" }],
+    entries: [
+      { label: NAV_LABEL_CONTRADICTIONS, screen: "contradictions" },
+      { label: NAV_LABEL_REALITY, screen: "reality" },
+    ],
   },
 ];
 

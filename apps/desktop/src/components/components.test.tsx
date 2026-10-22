@@ -187,12 +187,13 @@ describe("the shell", () => {
     expect(html).toContain("<main>");
   });
 
-  it("enables all nine screens, the review queue, ledger, recall, blast radius, import and contradictions included, when healthy", () => {
+  it("enables all ten screens, the review queue, ledger, recall, blast radius, import, contradictions and reality check included, when healthy", () => {
     const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="folders" />);
     expect(html).not.toContain("not built yet");
     const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
-    expect(buttons).toHaveLength(9);
+    expect(buttons).toHaveLength(10);
     expect(buttons.some((button) => button.endsWith(">Contradictions</button>"))).toBe(true);
+    expect(buttons.some((button) => button.endsWith(">Reality check</button>"))).toBe(true);
     expect(buttons.some((button) => button.includes("Review queue"))).toBe(true);
     expect(buttons.some((button) => button.includes("Ledger"))).toBe(true);
     expect(buttons.some((button) => button.includes("Recall"))).toBe(true);
@@ -215,6 +216,7 @@ describe("the shell", () => {
       blast: "Blast radius",
       import: "Import",
       contradictions: "Contradictions",
+      reality: "Reality check",
     } as const;
     for (const [screen, label] of Object.entries(labels)) {
       const html = renderToStaticMarkup(
@@ -222,7 +224,7 @@ describe("the shell", () => {
       );
       expect(html.match(/aria-current/g), screen).toHaveLength(1);
       const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
-      expect(buttons).toHaveLength(9);
+      expect(buttons).toHaveLength(10);
       for (const button of buttons) {
         // The same box on every entry, so marking one cannot shift the others.
         expect(button).toMatch(/class="[^"]*\bborder\b[^"]*\bborder-border\b[^"]*\bborder-b-4\b/);
@@ -251,13 +253,16 @@ describe("the shell", () => {
     ]);
     const screens = NAV_ENTRIES.map((entry) => entry.screen);
     expect(new Set(screens).size).toBe(screens.length);
-    expect(screens).toHaveLength(9);
-    // Three groups (DESIGN.md 11.4): Questionnaires, Promises and Checks, with Contradictions alone
-    // in Checks until the Reality check screen is built.
+    expect(screens).toHaveLength(10);
+    // Three groups (DESIGN.md 11.4): Questionnaires, Promises and Checks, with Contradictions and
+    // then Reality check in Checks (the Map group comes with the graph screen).
     expect(NAV_GROUPS.map((group) => group.heading)).toEqual(["Questionnaires", "Promises", "Checks"]);
     expect(
       NAV_GROUPS.find((group) => group.heading === "Checks")?.entries.map((entry) => [entry.label, entry.screen]),
-    ).toEqual([["Contradictions", "contradictions"]]);
+    ).toEqual([
+      ["Contradictions", "contradictions"],
+      ["Reality check", "reality"],
+    ]);
     const html = renderToStaticMarkup(<Shell healthy statusBar={null} current="import" />);
     expect(html).toMatch(/<button[^>]*aria-current="page"[^>]*>Import<\/button>/);
     const blast = renderToStaticMarkup(<Shell healthy statusBar={null} current="blast" />);
@@ -278,7 +283,7 @@ describe("the shell", () => {
   it("disables every entry, built or not, while the sidecar is not healthy", () => {
     const html = renderToStaticMarkup(<Shell healthy={false} statusBar={null} />);
     const buttons = html.match(/<button[^>]*>[^<]*<\/button>/g) ?? [];
-    expect(buttons).toHaveLength(9);
+    expect(buttons).toHaveLength(10);
     for (const button of buttons) {
       expect(button).toContain("disabled");
     }

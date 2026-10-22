@@ -229,3 +229,19 @@ export const CONTRADICTIONS_LABEL_VALUE_CONFLICT = "Numbers differ (the model ke
  * owner's reading: the label is "Numbers differ (not kept)" and the reasons are shown beside it.
  */
 export const CONTRADICTIONS_LABEL_CANDIDATE = "Numbers differ (not kept)";
+
+/**
+ * Reality check, the two result sentences (DESIGN.md 11.1, first row; ADR-016 decision 11). The
+ * window shows one of them from the reply's `finding` word, never a verdict of its own.
+ */
+export const REALITY_RESULT_EXCEPTIONS =
+  "This export shows users in scope without MFA, by the MFA types you confirmed.";
+export const REALITY_RESULT_NONE =
+  "This export shows no users in scope without MFA, by the MFA types you confirmed.";
+
+/** Reality check, beside the phone choice (DESIGN.md 11.1; ADR-016 decision 6). */
+export const REALITY_PHONE_POLICY =
+  "Counting phone (text message or voice) as MFA is a policy choice: phone codes can be phished or intercepted.";
+
+/** Reality check, above any list of logins (DESIGN.md 11.1; threat model F26-7). */
+export const REALITY_LOGINS_PERSONAL = "The logins below are personal data. ALIBI does not save or log them.";

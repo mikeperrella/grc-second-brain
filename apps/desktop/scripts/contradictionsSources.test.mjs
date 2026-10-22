@@ -87,8 +87,13 @@ describe("the contradictions sources (65i)", () => {
     expect(hook).toMatch(
       /sent\.then\(\(result\) => \{\s*dispatch\(\{ type: "start_result", result \}\);\s*gate\.end\(\);\s*\}\)/,
     );
-    // The gate is made once, by the pure module, and nothing else sends a start.
-    expect(windowFilesWith(/createStartGate\(\)/).sort()).toEqual(["src/contradictions.ts", "src/hooks/useContradictions.ts"]);
+    // The gate is made once, by the pure module, and nothing else sends a start. The Reality check
+    // hook (65j) reuses it for its check button.
+    expect(windowFilesWith(/createStartGate\(\)/).sort()).toEqual([
+      "src/contradictions.ts",
+      "src/hooks/useContradictions.ts",
+      "src/hooks/useReality.ts",
+    ]);
   });
 
   it("the unset start values are left out, never null (65i)", () => {
@@ -198,7 +203,12 @@ describe("the contradictions sources (65i)", () => {
     expect(end).toBeGreaterThan(start);
     expect(text.indexOf("// ===== 65i DRAFT ", start + 1)).toBe(-1);
     expect(text.slice(start, end)).toContain("They are DRAFTS until the owner approves them.");
-    expect(text.slice(end)).not.toMatch(/export const/);
+    // Nothing is exported after this block but the 65j DRAFT block (checked in its own test).
+    const afterContradictions = text.slice(end);
+    const next65j = afterContradictions.indexOf("// ===== 65j DRAFT ");
+    expect(afterContradictions.slice(0, next65j < 0 ? afterContradictions.length : next65j)).not.toMatch(
+      /export const/,
+    );
     let inside = 0;
     for (const match of text.matchAll(/^export const ([A-Z0-9_]+)/gm)) {
       const at = match.index ?? 0;
