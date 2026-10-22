@@ -1,11 +1,12 @@
-// Wires the built screens (the Ledger, Recall, Blast radius and Import screens included) to their thin hooks. The state of the index job and of the
-// questionnaire run lives here (not inside a screen), so leaving a screen does not forget a job
+// Wires the built screens (the Ledger, Recall, Blast radius, Import and Contradictions screens included) to their thin hooks. The state of the index job, of the
+// questionnaire run and of the contradictions run lives here (not inside a screen), so leaving a screen does not forget a job
 // that is still running; the hooks' polling stops when health leaves `healthy` or this component
 // unmounts.
 
 import { useEffect } from "react";
 import { blastEventOnScreen } from "./blast";
 import { BlastScreen } from "./components/BlastScreen";
+import { ContradictionsScreen } from "./components/ContradictionsScreen";
 import { FoldersScreen } from "./components/FoldersScreen";
 import { ImportScreen } from "./components/ImportScreen";
 import { IndexScreen } from "./components/IndexScreen";
@@ -18,6 +19,7 @@ import { confirmEventOnScreen } from "./confirm";
 import { folderInUse, foldersScreenView, ledgerInUse } from "./foldersScreen";
 import { useFolderPicker } from "./hooks/useFolderPicker";
 import { useBlast } from "./hooks/useBlast";
+import { useContradictions } from "./hooks/useContradictions";
 import type { FoldersHandle } from "./hooks/useFolders";
 import { useImport } from "./hooks/useImport";
 import { useIndexJob } from "./hooks/useIndexJob";
@@ -48,6 +50,9 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
   const recall = useRecall();
   const imports = useImport();
   const blast = useBlast();
+  // Like the index job and the questionnaire run, a contradictions run lives here, so leaving the
+  // screen does not forget a run that is going (nothing resets it on a screen change).
+  const contradictions = useContradictions(healthy);
 
   // Entering the Ledger reads the customers and a page of promises; entering Recall reads the
   // customers only (its select); entering Blast radius reads the customers and the cited files;
@@ -204,6 +209,15 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
           onOpenImport={imports.openImport}
           onConfirmImport={() => imports.confirmImport(refreshCustomers)}
           onCancelImport={imports.cancelImport}
+        />
+      );
+    case "contradictions":
+      return (
+        <ContradictionsScreen
+          state={contradictions.state}
+          enabled={healthy}
+          onInputChange={contradictions.changeInput}
+          onStart={contradictions.start}
         />
       );
   }

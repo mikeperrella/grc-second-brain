@@ -201,3 +201,31 @@ export const BLAST_NEW_FLAG_WORD = "New";
 /** Blast radius, always visible next to the proposed-text box (DESIGN.md 11.1; ADR-018 decision 7). */
 export const BLAST_PASTE_NOTE =
   "The text you paste stays in this window for this preview only. ALIBI does not save it.";
+
+// ----- the contradictions screen (chunk 65i; docs/DESIGN.md 11.1, the "Contradictions" rows). ----
+// ----- Each sentence is copied from the section 11.1 table. The numbers-only statement is the ----
+// ----- sidecar's own sentence, CONTRADICTIONS_NUMERIC_ONLY_STATEMENT above. ---------------------
+
+/** Contradictions, with results (DESIGN.md 11.1; threat model F33-11, G42). */
+export const CONTRADICTIONS_MODEL_VARIES =
+  "The model's answer for the same pair can differ between identical runs.";
+
+/** Contradictions, with results (DESIGN.md 11.1; ADR-019 decision 1). */
+export const CONTRADICTIONS_NOT_KEPT =
+  "Findings are not kept. Closing ALIBI or starting another run drops them.";
+
+/** Contradictions, beside the two quotes (DESIGN.md 11.1; threat model F33-10). */
+export const CONTRADICTIONS_BOTH_QUOTES =
+  "Both quotes are shown so you can decide. ALIBI does not decide which statement is right.";
+
+/**
+ * The `VALUE_CONFLICT` label (DESIGN.md 11.1, the first sentence of the row; the rest of the row,
+ * "Never detected or confirmed", is a rule for the window, not a label).
+ */
+export const CONTRADICTIONS_LABEL_VALUE_CONFLICT = "Numbers differ (the model kept this pair in this run)";
+
+/**
+ * The `CANDIDATE` label (DESIGN.md 11.1: "Numbers differ (not kept), with the reason shown."). The
+ * owner's reading: the label is "Numbers differ (not kept)" and the reasons are shown beside it.
+ */
+export const CONTRADICTIONS_LABEL_CANDIDATE = "Numbers differ (not kept)";

@@ -24,6 +24,11 @@ import {
   BLAST_TEXT_NOT_UTF8_TEXT,
   BLAST_TEXT_TOO_LARGE_TEXT,
   BLAST_TOO_MANY_PROMISES_TEXT,
+  CONTRA_FAILED_DETECTOR_ERROR_TEXT,
+  CONTRA_FAILED_INDEX_NOT_BUILT_TEXT,
+  CONTRA_FAILED_INTERNAL_ERROR_TEXT,
+  CONTRA_FAILED_NO_WORD_TEXT,
+  CONTRA_UNKNOWN_RUN_TEXT,
   CUSTOMER_EXISTS_TEXT,
   CUSTOMER_NAME_INVALID_TEXT,
   CUSTOMER_UNKNOWN_TEXT,
@@ -46,6 +51,7 @@ import { FIXED_ERROR_WORDS } from "./ipc/proxy";
 import type {
   ApiError,
   BLAST_RADIUS_REFUSAL_CODES,
+  CONTRADICTION_FAILURES,
   CallResult,
   DRAFT_REFUSAL_CODES,
   IMPORT_REFUSAL_CODES,
@@ -443,6 +449,46 @@ export function describeLedgerError(body: LedgerErrorBody): Described {
     default:
       return assertNever(body);
   }
+}
+
+// ----- the contradictions screen (chunk 65i) ----------------------------------------------------
+
+type ContradictionFailure = (typeof CONTRADICTION_FAILURES)[number];
+
+/**
+ * The words of a failed run. Each failure word has its own text, and a failed run with no word
+ * (`null`) has its own text too: it is never blank. No wildcard.
+ */
+export function contradictionFailureMessage(word: ContradictionFailure | null): string {
+  switch (word) {
+    case "index_not_built":
+      return CONTRA_FAILED_INDEX_NOT_BUILT_TEXT;
+    case "detector_error":
+      return CONTRA_FAILED_DETECTOR_ERROR_TEXT;
+    case "internal_error":
+      return CONTRA_FAILED_INTERNAL_ERROR_TEXT;
+    case null:
+      return CONTRA_FAILED_NO_WORD_TEXT;
+    default:
+      return assertNever(word);
+  }
+}
+
+/** A failed run as fixed words and a code. The code of a run with no word is `failure_word_missing`. */
+export function describeContradictionFailure(word: ContradictionFailure | null): Described {
+  return error(word ?? "failure_word_missing", contradictionFailureMessage(word));
+}
+
+/**
+ * Turn one typed error body of a contradictions route into fixed words. `run_not_found` has its
+ * own text here (the questionnaire text names a number of runs this route does not keep); every
+ * other body goes through describeLedgerError, so each typed refusal keeps its own message.
+ */
+export function describeContradictionError(body: LedgerErrorBody): Described {
+  if (body.error === "run_not_found") {
+    return error("run_not_found", CONTRA_UNKNOWN_RUN_TEXT);
+  }
+  return describeLedgerError(body);
 }
 
 /** Every call outcome that is not a sidecar reply. */
