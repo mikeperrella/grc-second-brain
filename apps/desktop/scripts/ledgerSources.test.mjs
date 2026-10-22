@@ -35,6 +35,9 @@ const sources = new Map(FILES.map((file) => [file, fs.readFileSync(file, "utf8")
 /** The constants of the 65i DRAFT block of ledgerText.ts (the Contradictions screen). */
 const IS_65I_NAME = /^(CONTRA_|NAV_GROUP_CHECKS$|NAV_LABEL_CONTRADICTIONS$)/;
 
+/** The constants of the 65j DRAFT block of ledgerText.ts (the Reality check screen). */
+const IS_65J_NAME = /^(REALITY_|NAV_LABEL_REALITY$)/;
+
 /** Every window source file under src/ (tests and test helpers excluded). */
 function allSources(dir = "src") {
   const out = [];
@@ -231,7 +234,7 @@ describe("the ledger and recall sources (F40)", () => {
         new RegExp(`if \\(confirmEventOnScreen<ScreenId>\\("${owner}", screen\\) !== null\\) \\{\\s*${cancel}\\(\\);`),
       );
     }
-    expect(screens).toMatch(/\}, \[screen, cancelVoid, cancelAcknowledge, cancelImport, resetBlast\]\);/);
+    expect(screens).toMatch(/\}, \[screen, cancelVoid, cancelAcknowledge, cancelImport, resetBlast, resetReality\]\);/);
   });
 
   it("screens.tsx resets the Blast radius state when the screen shown is not blast (65h fix)", () => {
@@ -289,7 +292,7 @@ describe("the ledger and recall sources (F40)", () => {
     for (const match of text.matchAll(/^export const ([A-Z0-9_]+)/gm)) {
       const name = match[1];
       const at = match.index ?? 0;
-      if (/^(BLAST_|NAV_LABEL_BLAST$)/.test(name) || IS_65I_NAME.test(name)) {
+      if (/^(BLAST_|NAV_LABEL_BLAST$)/.test(name) || IS_65I_NAME.test(name) || IS_65J_NAME.test(name)) {
         continue;
       }
       if (newNames.test(name)) {

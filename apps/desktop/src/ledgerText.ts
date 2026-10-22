@@ -357,3 +357,117 @@ export const CONTRA_UNKNOWN_RELATION_TEXT = "Unknown relation: ALIBI cannot show
 export const CONTRA_UNKNOWN_MODEL_STATUS_TEXT = "Unknown model status: ALIBI cannot show a label for this value.";
 
 // ===== end of 65i DRAFT =========================================================================
+
+// ===== 65j DRAFT ================================================================================
+// Every constant from here to the end of the file was added in chunk 65j (the Reality check
+// screen). They are DRAFTS until the owner approves them. Plain functional labels, and one short
+// sentence per state, input problem or refusal that names what the code means. The screen's
+// statements are the DESIGN.md 11.1 "Reality check" rows (fixedTexts.ts), not here. No label here
+// says compliant, non-compliant, pass or fail.
+
+export const NAV_LABEL_REALITY = "Reality check";
+
+export const REALITY_TITLE = "Reality check";
+export const REALITY_CHOOSE_HEADING = "Choose an export";
+export const REALITY_READING_FILES = "Reading the file names in the imports folder.";
+/** In the style of NO_WORKBOOKS (fixedTexts.ts). */
+export const REALITY_NO_CSV_FILES = "no .csv files in the folder";
+export const REALITY_USE_EXPORT = "Use this export";
+export const REALITY_SELECTED = "Selected";
+export const REALITY_INSPECTING = "Reading the export.";
+export const REALITY_NOT_CHECKED = "No check has been run.";
+
+/** What the export holds, from the inspect reply. */
+export const REALITY_EXPORT_HEADING = "What the export holds";
+export const REALITY_LABEL_SHA256_READ = "SHA-256 of the export read";
+export const REALITY_LABEL_SHA256_COUNTED = "SHA-256 of the export counted";
+export const REALITY_LABEL_SIZE = "Size in bytes";
+export const REALITY_LABEL_DATA_ROWS = "Data rows";
+export const REALITY_LABEL_MALFORMED = "Malformed rows";
+export const REALITY_LABEL_REPEATED_LOGINS = "Repeated logins";
+export const REALITY_LABEL_STATUSES_NOT_LISTED = "Statuses not listed";
+export const REALITY_LABEL_TYPES_NOT_LISTED = "Authenticator types not listed";
+
+/** The three choices the person confirms, each from the values the export holds. */
+export const REALITY_MFA_HEADING = "MFA types that count";
+export const REALITY_PHONE_HEADING = "Types that are phone (text message or voice)";
+export const REALITY_STATUS_HEADING = "Statuses in scope";
+export const REALITY_VALUE_COUNT = "count";
+export const REALITY_CONFIRM_LABEL = "I confirm that these MFA types count as MFA";
+
+/** The policy claim, from the claims reply. */
+export const REALITY_CLAIM_HEADING = "Policy claim";
+export const REALITY_READING_CLAIMS = "Reading the policy sentences.";
+export const REALITY_NO_CLAIMS = 'No policy sentence that reads like "MFA is required" was found in the vault.';
+export const REALITY_USE_CLAIM = "Use this claim";
+export const REALITY_CLAIM_FILE = "File";
+export const REALITY_CLAIM_LINES = "Lines";
+export const REALITY_CLAIM_DOC_ID = "Document id";
+export const REALITY_CLAIM_SCOPE_WORDS = "Scope words in the sentence";
+export const REALITY_CLAIM_MAPPED = "Document maps to an authentication control";
+export const REALITY_CLAIM_CONTROLS = "Matched controls";
+export const REALITY_CLAIMS_NOT_LISTED = "Sentences not listed";
+export const REALITY_CLAIMS_TOO_LONG = "Sentences too long to list";
+
+export const REALITY_DATE_LABEL = "Export date (YYYY-MM-DD)";
+export const REALITY_CHECK_BUTTON = "Check the export";
+export const REALITY_CHECKING = "Counting the export.";
+
+/** Input problems, found before any call. */
+export const REALITY_PROBLEM_NO_FILE = "Choose an export first.";
+export const REALITY_PROBLEM_NOT_READ = "Wait until the export has been read.";
+export const REALITY_PROBLEM_NO_MFA = "Choose at least one MFA type.";
+export const REALITY_PROBLEM_NO_STATUS = "Choose at least one status in scope.";
+export const REALITY_PROBLEM_NO_CLAIM = "Choose a policy claim.";
+export const REALITY_PROBLEM_NO_DATE = "Enter the export date as YYYY-MM-DD.";
+export const REALITY_PROBLEM_DATE_INVALID = "The export date is not a real date in the form YYYY-MM-DD.";
+export const REALITY_PROBLEM_NOT_CONFIRMED = "Tick the box to confirm the MFA types.";
+
+/** The result, labels only. */
+export const REALITY_RESULT_HEADING = "Result";
+export const REALITY_LABEL_CLAIM_CHECKED = "Claim checked";
+export const REALITY_LABEL_EXPORT_DATE = "Export date (as you supplied it)";
+export const REALITY_LABEL_IN_SCOPE = "In scope";
+export const REALITY_LABEL_WITH_MFA = "With MFA";
+export const REALITY_LABEL_WITHOUT_MFA = "Without MFA";
+export const REALITY_LABEL_ADMINS_WITHOUT_MFA = "Administrators without MFA";
+export const REALITY_LABEL_ADMIN_UNKNOWN = "Administrator status unknown";
+export const REALITY_LABEL_PHONE_ONLY = "With only a phone type";
+export const REALITY_LABEL_PHONE_TYPES_NAMED = "Phone types named";
+export const REALITY_LABEL_SKIPPED = "Skipped statuses";
+export const REALITY_LABEL_SKIPPED_NOT_LISTED = "Skipped statuses not listed";
+export const REALITY_LABEL_TYPES_NOT_PRESENT = "Confirmed types not in the file";
+export const REALITY_LABEL_LOGINS_HEADING = "Users in scope without MFA";
+export const REALITY_LABEL_LOGINS_NOT_LISTED = "Logins not listed";
+export const REALITY_YES = "yes";
+export const REALITY_NO = "no";
+export const REALITY_NONE = "none";
+export const REALITY_NOT_AVAILABLE = "not available";
+
+/** Shown instead of a result when the reply does not hold together. No result sentence goes with them. */
+export const REALITY_DISAGREE_TEXT = "The finding and the counts in the reply do not agree, so ALIBI shows no result.";
+export const REALITY_HASH_MISMATCH_TEXT =
+  "The export that was counted is not the export that was read, so ALIBI shows no result.";
+export const REALITY_UNKNOWN_FINDING_TEXT = "The reply holds a finding ALIBI does not know, so ALIBI shows no result.";
+
+/** `import_root_not_configured` on a reality route (the sidecar also says it when the vault folder is not set). */
+export const REALITY_ROOT_NOT_CONFIGURED_TEXT = "Either the imports folder or the vault folder is not in use.";
+
+/** `export_refused` codes (the sidecar's refusals of the export file). */
+export const REALITY_EXPORT_FILE_TOO_LARGE_TEXT = "The export is larger than ALIBI accepts.";
+export const REALITY_EXPORT_TOO_MANY_ROWS_TEXT = "The export has more rows than ALIBI accepts.";
+export const REALITY_EXPORT_FIELD_TOO_LONG_TEXT = "A field in the export is longer than ALIBI accepts.";
+export const REALITY_EXPORT_ENCODING_TEXT = "The export uses a text encoding ALIBI does not allow.";
+export const REALITY_EXPORT_NUL_TEXT = "The export contains a NUL character, which ALIBI refuses.";
+export const REALITY_EXPORT_MISSING_COLUMN_TEXT = "The export is missing a column ALIBI needs.";
+export const REALITY_EXPORT_DUPLICATE_COLUMN_TEXT = "The export has the same column name more than once.";
+export const REALITY_EXPORT_UNREADABLE_TEXT = "The export could not be read.";
+
+/** `check_refused` codes. */
+export const REALITY_CHECK_FUTURE_TEXT = "The export date is after today.";
+export const REALITY_CHECK_CLAIM_NOT_VERBATIM_TEXT =
+  "The chosen claim is not a sentence the vault holds now, so nothing was counted.";
+export const REALITY_CHECK_NO_USERS_TEXT =
+  "No user in the export has one of the statuses you chose, so nothing was counted.";
+
+// ===== end of 65j DRAFT =========================================================================

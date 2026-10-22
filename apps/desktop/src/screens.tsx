@@ -12,6 +12,7 @@ import { ImportScreen } from "./components/ImportScreen";
 import { IndexScreen } from "./components/IndexScreen";
 import { LedgerScreen } from "./components/LedgerScreen";
 import { QuestionnaireScreen } from "./components/QuestionnaireScreen";
+import { RealityScreen } from "./components/RealityScreen";
 import { RecallScreen } from "./components/RecallScreen";
 import { ReviewQueueScreen } from "./components/ReviewQueueScreen";
 import type { ScreenId } from "./components/Shell";
@@ -26,10 +27,12 @@ import { useIndexJob } from "./hooks/useIndexJob";
 import { useLedger } from "./hooks/useLedger";
 import { useNow } from "./hooks/useNow";
 import { useQuestionnaire } from "./hooks/useQuestionnaire";
+import { useReality } from "./hooks/useReality";
 import { useRecall } from "./hooks/useRecall";
 import { useReviewQueue } from "./hooks/useReviewQueue";
 import { runIsActive } from "./questionnaireRun";
 import type { ReadinessView } from "./readiness";
+import { realityEventOnScreen } from "./reality";
 
 export interface ScreensProps {
   screen: ScreenId;
@@ -53,6 +56,9 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
   // Like the index job and the questionnaire run, a contradictions run lives here, so leaving the
   // screen does not forget a run that is going (nothing resets it on a screen change).
   const contradictions = useContradictions(healthy);
+  // The Reality check state (the chosen export, the types, the result and the logins) is dropped when
+  // the person leaves its screen (reality.ts realityEventOnScreen, below).
+  const reality = useReality();
 
   // Entering the Ledger reads the customers and a page of promises; entering Recall reads the
   // customers only (its select); entering Blast radius reads the customers and the cited files;
@@ -61,6 +67,7 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
   const { refreshCustomers, refreshPromises } = ledger;
   const { refreshFiles: refreshImportFiles } = imports;
   const { refreshPaths: refreshBlastPaths } = blast;
+  const { refresh: refreshReality } = reality;
   useEffect(() => {
     if (healthy && screen === "ledger") {
       refreshCustomers();
@@ -73,8 +80,11 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
     } else if (healthy && screen === "import") {
       refreshCustomers();
       refreshImportFiles();
+    } else if (healthy && screen === "reality") {
+      // The imports folder's file names and the policy claims: two read calls.
+      refreshReality();
     }
-  }, [healthy, screen, refreshCustomers, refreshPromises, refreshBlastPaths, refreshImportFiles]);
+  }, [healthy, screen, refreshCustomers, refreshPromises, refreshBlastPaths, refreshImportFiles, refreshReality]);
 
   // Leaving a screen (or entering another) cancels its open confirm area: nothing is sent and the
   // area is gone when the person returns (confirm.ts confirmEventOnScreen).
@@ -82,10 +92,15 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
   const { cancelAcknowledge } = recall;
   const { cancelImport } = imports;
   const { reset: resetBlast } = blast;
+  const { reset: resetReality } = reality;
   useEffect(() => {
     // The pasted text of the Blast radius screen stays for that preview only (DESIGN.md 11.1).
     if (blastEventOnScreen(screen) !== null) {
       resetBlast();
+    }
+    // The chosen export, the confirmed types, the result and the logins are dropped on leaving.
+    if (realityEventOnScreen(screen) !== null) {
+      resetReality();
     }
     if (confirmEventOnScreen<ScreenId>("ledger", screen) !== null) {
       cancelVoid();
@@ -96,7 +111,7 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
     if (confirmEventOnScreen<ScreenId>("import", screen) !== null) {
       cancelImport();
     }
-  }, [screen, cancelVoid, cancelAcknowledge, cancelImport, resetBlast]);
+  }, [screen, cancelVoid, cancelAcknowledge, cancelImport, resetBlast, resetReality]);
 
   const { refreshFiles } = questionnaire;
   useEffect(() => {
@@ -218,6 +233,16 @@ export function Screens({ screen, healthy, readiness, folders, onNavigate }: Scr
           enabled={healthy}
           onInputChange={contradictions.changeInput}
           onStart={contradictions.start}
+        />
+      );
+    case "reality":
+      return (
+        <RealityScreen
+          state={reality.state}
+          enabled={healthy}
+          onChooseFile={reality.chooseFile}
+          onInputChange={reality.changeInput}
+          onCheck={reality.check}
         />
       );
   }
