@@ -3,7 +3,7 @@
 # Build context is sidecar/:  docker build -f sidecar/Dockerfile.airgap -t grc-airgap sidecar
 # Same base image (pinned by digest) as the Python 3.11.9 dev environment; Dependabot's
 # docker ecosystem proposes digest updates.
-FROM python:3.11.16-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e
+FROM python:3.11.18-slim@sha256:ffe4b0c76963e64f05484d74dbb3f67fad1effcf3c5c22c2235f0fafc8a9c98f
 
 # No .pyc writes (the runtime filesystem is read-only), unbuffered output for CI logs.
 ENV PYTHONDONTWRITEBYTECODE=1 \
