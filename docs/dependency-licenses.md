@@ -1,6 +1,6 @@
 # Dependency licenses (sidecar)
 
-**Snapshot dated 2026-10-06; eight version cells updated on 2026-10-17.** Regenerate and re-review whenever `sidecar/pyproject.toml` or `sidecar/constraints.txt` changes. The rows below match `sidecar/constraints.txt` as of PR #53 (the pip group bump): the versions of `ast_serialize`, `fastapi`, `iniconfig`, `opentelemetry-api`, `pydantic`, `pydantic_core`, `ruff` and `starlette` were updated from the pins, their licenses were re-read from package metadata in a throwaway Python 3.11 virtualenv outside the repo, and their "Required by" cells were not re-checked. Six pinned packages have no row yet (`et_xmlfile`, `openpyxl`, `PyYAML`, `sqlite-vec`, `types-openpyxl`, `types-PyYAML`); regenerating this file is G22 (M8).
+**Snapshot dated 2026-10-06; eight version cells updated on 2026-10-17.** Regenerate and re-review whenever `sidecar/pyproject.toml` or `sidecar/constraints.txt` changes. The rows below match `sidecar/constraints.txt` as of PR #53 (the pip group bump): the versions of `ast_serialize`, `fastapi`, `iniconfig`, `opentelemetry-api`, `pydantic`, `pydantic_core`, `ruff` and `starlette` were updated from the pins, their licenses were re-read from package metadata in a throwaway Python 3.11 virtualenv outside the repo, and their "Required by" cells were not re-checked. Six pinned packages have no row yet (`et_xmlfile`, `openpyxl`, `PyYAML`, `sqlite-vec`, `types-openpyxl`, `types-PyYAML`); regenerating this file is G22 (M8). 2026-11-17: certifi and opentelemetry-api version cells updated for security advisories PYSEC-2026-4320 and CVE-2026-126360; licenses not re-read.
 
 Method: a throwaway stdlib-only script read `importlib.metadata` for every installed distribution in `sidecar/.venv` (Python 3.11.9), skipping pip, setuptools and the editable `grc-sidecar`. For each package it read the license metadata and the license files in `dist-info`, and matched known license text. Mike reviewed and approved the results on 2026-10-06.
 
@@ -12,7 +12,7 @@ Allowed set: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, PSF-2.0. MPL-2.0 
 | annotated-types | 0.8.0 | MIT | pydantic |
 | anyio | 4.15.1 | MIT | httpx, starlette |
 | ast_serialize | 0.13.0 | MIT | mypy |
-| certifi | 2026.7.22 | MPL-2.0 (approved exception) | httpcore, httpx |
+| certifi | 2026.10.18 | MPL-2.0 (approved exception) | httpcore, httpx |
 | click | 8.5.0 | BSD-3-Clause | uvicorn |
 | colorama | 0.4.6 | BSD-3-Clause | pytest (Windows) |
 | fastapi | 0.143.0 | MIT | direct |
@@ -24,7 +24,7 @@ Allowed set: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, PSF-2.0. MPL-2.0 
 | librt | 0.16.0 | MIT | mypy |
 | mypy | 2.4.0 | MIT (bundles typeshed: Apache-2.0 and MIT) | direct (dev) |
 | mypy_extensions | 1.1.0 | MIT | mypy |
-| opentelemetry-api | 1.45.1 | Apache-2.0 | fastapi |
+| opentelemetry-api | 1.45.2 | Apache-2.0 | fastapi |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | pytest |
 | pathspec | 1.1.1 | MPL-2.0 (approved exception) | mypy |
 | pluggy | 1.6.0 | MIT | pytest |

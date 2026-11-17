@@ -4,7 +4,7 @@ annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
 ast_serialize==0.13.0
-certifi==2026.7.22
+certifi==2026.10.18
 click==8.5.0
 colorama==0.4.6
 fastapi==0.143.0
@@ -18,7 +18,7 @@ librt==0.16.0
 mypy==2.4.0
 mypy_extensions==1.1.0
 openpyxl==3.1.5
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
 packaging==26.3
 pathspec==1.1.1
 pluggy==1.6.0
