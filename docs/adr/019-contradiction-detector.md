@@ -226,15 +226,15 @@ Get-ChildItem $env:TEMP,$env:TMP,'C:\Windows\Temp' -Directory -Filter 'ollama-re
 ```
 Success: all six values empty and no directory found.
 
-**Step 3: make the results folder (once).** Any folder you like; the examples use `C:\Users\miker\Downloads\m55-live-c`. It must exist, and it should not be inside the repository.
+**Step 3: make the results folder (once).** Any folder you like; the examples use `C:\Users\<user>\Downloads\m55-live-c`. It must exist, and it should not be inside the repository.
 ```
-New-Item -ItemType Directory -Force C:\Users\miker\Downloads\m55-live-c
+New-Item -ItemType Directory -Force C:\Users\<user>\Downloads\m55-live-c
 ```
 
 **Step 4: the dev split (it may be run more than once while the template is tuned; every dev run is reported, each under a new output name such as `dev-run-2.txt`). Working directory: `C:\dev\grc-second-brain\sidecar`.**
 ```
 $env:ALIBI_CONTRADICTION_SPLIT = "dev"
-$env:ALIBI_CONTRADICTION_OUT_DIR = "C:\Users\miker\Downloads\m55-live-c"
+$env:ALIBI_CONTRADICTION_OUT_DIR = "C:\Users\<user>\Downloads\m55-live-c"
 $env:ALIBI_CONTRADICTION_OUT_NAME = "dev-run.txt"
 .venv/Scripts/python -m pytest -m ollama -s -rN tests/test_contradiction_live.py -k chosen_split
 ```
@@ -242,7 +242,7 @@ $env:ALIBI_CONTRADICTION_OUT_NAME = "dev-run.txt"
 ```
 $env:ALIBI_CONTRADICTION_SPLIT = "heldout"
 $env:ALIBI_CONTRADICTION_HELDOUT_CONFIRM = "run-the-heldout-split-three-times"
-$env:ALIBI_CONTRADICTION_OUT_DIR = "C:\Users\miker\Downloads\m55-live-c"
+$env:ALIBI_CONTRADICTION_OUT_DIR = "C:\Users\<user>\Downloads\m55-live-c"
 $env:ALIBI_CONTRADICTION_OUT_NAME = "heldout-run-1.txt"
 .venv/Scripts/python -m pytest -m ollama -s -rN tests/test_contradiction_live.py -k chosen_split
 ```
@@ -258,7 +258,7 @@ Then the same block with `heldout-run-2.txt`, then `heldout-run-3.txt` (only the
 
 ## Live check C: results
 
-Run by the owner on 2026-10-15 on the owner's machine; the assistant ran nothing against Ollama (decision 16). **What was given to me:** the four results files below (read from `C:\Users\miker\Downloads\m55-live-c\`, copied by the owner to `C:\Users\miker\OneDrive\Documents\alibi-plans\m55-live-c`). **What the owner ran before the dev run and pasted to the reviewer (steps 1 and 2):** Ollama version 0.40.4; `llama3.1:8b` ID `46e0c10c039e` (4.9 GB); `nomic-embed-text:latest` ID `0a109f422b47`; the environment check at 01:55 on 2026-10-15 showed all six values empty (`OLLAMA_DEBUG` and `OLLAMA_DEBUG_LOG_REQUESTS`, each at Process, User and Machine) and no `ollama-request-logs-*` folder found. The terminal output of each run is not stored in the repository; the results files hold the same text. **Every run is reported, in order: the dev run, then held-out runs 1, 2 and 3. None was selected, averaged, ranked or discarded.** Counts only, no percentages, no targets (decision 15 (c)).
+Run by the owner on 2026-10-15 on the owner's machine; the assistant ran nothing against Ollama (decision 16). **What was given to me:** the four results files below (read from `C:\Users\<user>\Downloads\m55-live-c\`, copied by the owner to `C:\Users\<user>\OneDrive\Documents\alibi-plans\m55-live-c`). **What the owner ran before the dev run and pasted to the reviewer (steps 1 and 2):** Ollama version 0.40.4; `llama3.1:8b` ID `46e0c10c039e` (4.9 GB); `nomic-embed-text:latest` ID `0a109f422b47`; the environment check at 01:55 on 2026-10-15 showed all six values empty (`OLLAMA_DEBUG` and `OLLAMA_DEBUG_LOG_REQUESTS`, each at Process, User and Machine) and no `ollama-request-logs-*` folder found. The terminal output of each run is not stored in the repository; the results files hold the same text. **Every run is reported, in order: the dev run, then held-out runs 1, 2 and 3. None was selected, averaged, ranked or discarded.** Counts only, no percentages, no targets (decision 15 (c)).
 
 **The setup, from the header of every results file (identical in all four):** `model=llama3.1:8b`, `digest=46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e`, `template_sha256=70898002f9b13eeffb3ba0f904466aba6f2662e3d5c5e80b6c5aaed10ce1e1e3` (the pinned template, unchanged), `cap=1000`, `num_ctx=11264`, `num_predict=1900`, `seed=42`; temperature 0 by design (decision 10). No template, rule, item, note or pin was changed between runs. Each results file prints its per-item table twice (once after the header and once before the counts); the two copies hold the same item rows.
 **The files (sha256, from the owner's `Get-FileHash`, not recomputed):**
@@ -451,3 +451,7 @@ This section records the proposed answer to G40. **Nothing in it is built, no de
 - **The old route (N7).** `POST /contradictions/run` stays, outside the host proxy for now, so the existing route tests keep working; the window would use only the start and status routes.
 - **Proxy.** Two new variants (`ContradictionsStart`, `ContradictionsStatus`) with small request caps and a short timeout each (ADR-020 addendum), so no request is held open for the whole run.
 - **What does not change:** the statuses, the ceiling rule, the numbers-only statement, the model gate and the measured results. The screen must carry the numbers-only statement (F33-9) and the note that the model's verdict can differ between identical runs (F33-11, G42); neither is built.
+
+## Addendum (2026-11-17): username redacted from example paths
+
+Before the repository was made public, the owner's Windows username was replaced with `<user>` in the example paths and recorded log paths of this ADR. No other text changed. The original lines remain in the git history.
