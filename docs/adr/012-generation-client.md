@@ -85,8 +85,8 @@ It took 0.61 s. So on Ollama 0.40.3 the chat path honours `shift: false` and ref
 **The canary in Ollama's own logs.** A vault note carrying the string `ALIBI-CANARY-d32f898691d0` was indexed (65 chunks, one more than the 64 of the dev run) and one question about it was answered (`status=SUPPORTED reasons=[]`). The test then searched for the string:
 
 ```
-searched C:\Users\miker\AppData\Local\Ollama\server.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
-searched C:\Users\miker\AppData\Local\Ollama\app.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
+searched C:\Users\<user>\AppData\Local\Ollama\server.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
+searched C:\Users\<user>\AppData\Local\Ollama\app.log: 0 occurrence(s) of ALIBI-CANARY-d32f898691d0
 ```
 
 It also looks for `ollama-request-logs-*` folders and found none to search. **Limits:** this is at Ollama's default log level (`OLLAMA_DEBUG` was empty); it says nothing about DEBUG or TRACE logging, and the prompt text would have been in the log only if Ollama wrote prompts at the default level. Zero occurrences in two files after one question is evidence that it does not, not proof.
@@ -232,3 +232,7 @@ Live check A found that the read timeout (120 s, 180 s for the first call) was s
 ## Addendum (2026-10-17): screen milestone labels
 
 One sentence in this ADR names "M6" for something that M6 did not build: "and, above all, human approval (M6)" (in "Prompt builder, schema and retry (M5d)", under "Honest limits"). The M6 review queue is read-only and records no approval (`M6_PLAN.md`, section "C.5 Review queue (6h) and F12-2c, answered honestly", the sentence beginning "The queue records no approval"; threat-model row F37-3), and a screen for approving answers belongs to M6.5 (same section, "approval is a M6.5 screen"). Until then the control is, in the words of threat-model rows F12-4c and F12-2c as they stand, "human review in the review queue" "which has no completion check and records no approval". The original sentence above is not edited.
+
+## Addendum (2026-11-17): username redacted from example paths
+
+Before the repository was made public, the owner's Windows username was replaced with `<user>` in the example paths and recorded log paths of this ADR. No other text changed. The original lines remain in the git history.

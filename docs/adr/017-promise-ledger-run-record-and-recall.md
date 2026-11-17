@@ -70,13 +70,13 @@ This ADR records the decisions so the owner can explain each one. It **amends AD
 
 ```
 cd C:\dev\grc-second-brain\sidecar
-.venv/Scripts/python -m tests.offline_draft draft --work-dir C:\Users\miker\Downloads\alibi-l3\work --questionnaire-dir C:\Users\miker\Downloads\alibi-l3\questionnaires --export-dir C:\Users\miker\Downloads\alibi-l3\exports --ledger-dir C:\Users\miker\Downloads\alibi-l3\ledger
+.venv/Scripts/python -m tests.offline_draft draft --work-dir C:\Users\<user>\Downloads\alibi-l3\work --questionnaire-dir C:\Users\<user>\Downloads\alibi-l3\questionnaires --export-dir C:\Users\<user>\Downloads\alibi-l3\exports --ledger-dir C:\Users\<user>\Downloads\alibi-l3\ledger
 ```
 
 Success: it prints `run_id ...`, `draft <file name>`, the row list and the next steps; the draft is in the `exports` folder. Open it in Excel, type `approved` in the Review column (the letter it printed) of the SUPPORTED and PARTIAL rows, press **Save** (not Save As), close Excel, then run the command it printed, which has this shape:
 
 ```
-.venv/Scripts/python -m tests.offline_draft import-check --ledger-dir C:\Users\miker\Downloads\alibi-l3\ledger --export-dir C:\Users\miker\Downloads\alibi-l3\exports --run-id <the run id> --file <the draft file name> --new-customer-name "Acme Test Co"
+.venv/Scripts/python -m tests.offline_draft import-check --ledger-dir C:\Users\<user>\Downloads\alibi-l3\ledger --export-dir C:\Users\<user>\Downloads\alibi-l3\exports --run-id <the run id> --file <the draft file name> --new-customer-name "Acme Test Co"
 ```
 
 Success: `created N (edited_after_draft 0)`, one `promise row R edited_after_draft False` line per approved row, and no `refused:` line on the error output. `question_mismatch` or any `True` means Excel changed something the hashes treat as text; that is the finding STOP L3 exists to make, and it is reported, not adjusted.
@@ -232,3 +232,7 @@ This section records what M6.5 proposes to add around the ledger. **Nothing in i
 - **`GET /ledger/cited-paths` (planned, 65b).** A read-only route returning the distinct stored `source_path` values of live promises with counts, capped (starting value 2,000) and refused whole above the cap.
 - **Locations cap (planned, 65b).** Decision 17(b) says `moved` carries every location. The route responses would list at most 20 per item with an integer `locations_not_listed`, so a response has a bound.
 - **`page_size` (planned, 65b).** `GET /ledger/promises` would accept a `page_size` in a closed range (proposed 1 to 100; today the page is fixed at 100, chunk 2d detail 9).
+
+## Addendum (2026-11-17): username redacted from example paths
+
+Before the repository was made public, the owner's Windows username was replaced with `<user>` in the example paths and recorded log paths of this ADR. No other text changed. The original lines remain in the git history.
