@@ -38,7 +38,7 @@ serde_json = "1"
 getrandom = "=0.4.3"
 thiserror = "=2.0.21"
 # M2b (M2 plan section 11): logging facade only, no sink. Already in the graph through tauri.
-log = "=0.4.34"
+log = "=0.4.35"
 # M2c (M2 plan section 7), approved after the cargo tree and cargo deny review: the loopback health
 # client. No default features: no TLS, no `json`, no `stream`, no system-proxy lookup. Its tree is
 # already in the lockfile (Tauri pulls it for other targets); on Windows it adds hyper, tokio, tower
@@ -48,7 +48,7 @@ reqwest = { version = "=0.13.5", default-features = false }
 # called from Rust only (commands.rs). No permission is granted to the window, so the window cannot
 # call plugin:dialog|*. Apache-2.0 OR MIT. It pulls tauri-plugin-fs and rfd; the fs plugin is never
 # registered (tests/security_config.rs checks lib.rs and every capability).
-tauri-plugin-dialog = "=2.8.3"
+tauri-plugin-dialog = "=2.8.4"
 
 # M2b: Job Object, suspended-spawn thread resume and the system directory (ADR-004). Windows is the
 # only supported target; sidecar/mod.rs refuses to compile elsewhere. Already in the graph through
