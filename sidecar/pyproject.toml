@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools==84.0.0"]
+requires = ["setuptools==84.2.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,10 +9,10 @@ description = "Local-first, air-gapped intelligence sidecar for GRC Second Brain
 requires-python = ">=3.11,<3.12"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
-    "fastapi==0.143.0",
+    "fastapi==0.165.0",
     "uvicorn==0.54.0",
-    "pydantic==2.14.1",
-    "pydantic-settings==2.15.0",
+    "pydantic==2.14.4",
+    "pydantic-settings==2.16.3",
     "httpx==0.28.1",
     "PyYAML==6.0.3",
     "sqlite-vec==0.1.9",
@@ -22,9 +22,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.1.1",
-    "ruff==0.17.0",
-    "mypy==2.4.0",
+    "pytest==9.2.0",
+    "ruff==0.17.6",
+    "mypy==2.4.1",
     "types-PyYAML==6.0.12.20260906",
     "types-openpyxl==3.1.5.20260827",
 ]
